@@ -1,0 +1,390 @@
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
+import { ImportJob, ImportJobStatus } from './entities/import-job.entity';
+import { ImportParserService } from './import-parser.service';
+import { ImportValidatorService, FilaValidada } from './import-validator.service';
+import { ImportType } from '../../common/enums/import-type.enum';
+import { CreateImportDto } from './dto/create-import.dto';
+import { AuditService } from '../audit/audit.service';
+import { MovementsService } from '../movements/movements.service';
+import { Product } from '../products/entities/product.entity';
+import { Client } from '../clients/entities/client.entity';
+import { Comercial } from '../comerciales/entities/comercial.entity';
+import { ProductStatus } from '../../common/enums/product-status.enum';
+import { MovementType } from '../../common/enums/movement-type.enum';
+import { UploadedFilePayload } from '../documents/documents.service';
+
+const TABLA = 'import_jobs';
+const TIPOS_POR_EMPRESA = [ImportType.PRODUCTOS, ImportType.CANTIDADES];
+
+/**
+ * M18: importación desde la maestra contable.
+ *  - PRODUCTOS (HU-010): nuevos → crea; existentes (mismo código, misma
+ *    empresa) → actualiza atributos; resumen con diferencias (HU-016).
+ *  - CANTIDADES: genera movimientos AJUSTE_IMPORTACION por diferencia,
+ *    SOLO tras aprobación del Administrador (M18). Nunca sobrescritura.
+ *  - CLIENTES / COMERCIALES: catálogos globales; crea nuevos, actualiza
+ *    existentes por identificación (o nombre si no hay identificación).
+ */
+@Injectable()
+export class ImportsService {
+  constructor(
+    @InjectRepository(ImportJob) private readonly jobs: Repository<ImportJob>,
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly parser: ImportParserService,
+    private readonly validator: ImportValidatorService,
+    private readonly audit: AuditService,
+    private readonly movements: MovementsService,
+  ) {}
+
+  /** Carga y valida el archivo (HU-016). El resumen queda en el job. */
+  async upload(
+    dto: CreateImportDto,
+    file: UploadedFilePayload,
+    user: { id: string; username: string },
+  ) {
+    if (!file) throw new BadRequestException('Archivo requerido');
+    if (TIPOS_POR_EMPRESA.includes(dto.tipo) && !dto.empresaId) {
+      throw new BadRequestException(
+        `La empresa es obligatoria para importaciones de ${dto.tipo}`,
+      );
+    }
+
+    const parsed = this.parser.parse(file.buffer, file.originalname);
+    const resultado = this.validator.validar(
+      dto.tipo,
+      parsed.columnas,
+      parsed.filas,
+      dto.mapeo,
+    );
+
+    // Resumen con diferencias contra la BD (HU-016)
+    const resumen = await this.buildResumen(dto, resultado.validas);
+
+    const job = await this.jobs.save(
+      this.jobs.create({
+        tipo: dto.tipo,
+        empresaId: dto.empresaId ?? null,
+        nombreArchivo: file.originalname,
+        mapeo: dto.mapeo,
+        estado: ImportJobStatus.PENDIENTE_APROBACION,
+        createdBy: user.id,
+        resumen: {
+          totalFilas: parsed.filas.length,
+          validas: resultado.validas.length,
+          invalidas: resultado.invalidas.map((f) => ({
+            fila: f.numeroFila,
+            errores: f.errores,
+          })),
+          duplicados: resultado.duplicados,
+          columnas: parsed.columnas,
+          ...resumen,
+          filasValidas: resultado.validas,
+        },
+      }),
+    );
+
+    await this.audit.log({
+      usuarioId: user.id,
+      usuarioUsername: user.username,
+      accion: 'IMPORTACION_CARGA',
+      tabla: TABLA,
+      registroId: job.id,
+      valorNuevo: {
+        tipo: dto.tipo,
+        empresaId: dto.empresaId,
+        archivo: file.originalname,
+        validas: resultado.validas.length,
+        invalidas: resultado.invalidas.length,
+      },
+    });
+    return this.toResponse(job);
+  }
+
+  /** HU-016: resumen previo a la aprobación. */
+  async getResumen(id: string) {
+    const job = await this.findJob(id);
+    return this.toResponse(job);
+  }
+
+  async findAll(tipo?: ImportType) {
+    const where = tipo ? { tipo } : {};
+    const jobs = await this.jobs.find({ where, order: { createdAt: 'DESC' }, take: 100 });
+    return jobs.map((j) => this.toResponse(j, false));
+  }
+
+  /**
+   * Aprobación (M18):
+   *  - CANTIDADES: solo el Administrador; genera movimientos AJUSTE_IMPORTACION
+   *    por las diferencias en una única transacción.
+   *  - PRODUCTOS / CLIENTES / COMERCIALES: el rol que cargó (Generador) o
+   *    Administrador; crea/actualiza registros.
+   */
+  async approve(id: string, user: { id: string; username: string; rol: string }) {
+    const job = await this.findJob(id);
+    if (job.estado !== ImportJobStatus.PENDIENTE_APROBACION) {
+      throw new BadRequestException(
+        `La importación está en estado ${job.estado}; no se puede aprobar`,
+      );
+    }
+    if (job.tipo === ImportType.CANTIDADES && user.rol !== 'ADMINISTRADOR') {
+      throw new BadRequestException(
+        'La importación de cantidades requiere aprobación del Administrador (M18)',
+      );
+    }
+    const filas = (job.resumen as any)?.filasValidas as FilaValidada[];
+    if (!filas || filas.length === 0) {
+      throw new BadRequestException('No hay filas válidas para aplicar');
+    }
+
+    let aplicado: Record<string, number>;
+    switch (job.tipo) {
+      case ImportType.PRODUCTOS:
+        aplicado = await this.aplicarProductos(job, filas, user);
+        break;
+      case ImportType.CANTIDADES:
+        aplicado = await this.aplicarCantidades(job, filas, user);
+        break;
+      case ImportType.CLIENTES:
+        aplicado = await this.aplicarClientes(filas, Client);
+        break;
+      case ImportType.COMERCIALES:
+        aplicado = await this.aplicarClientes(filas, Comercial);
+        break;
+    }
+
+    job.estado = ImportJobStatus.APLICADO;
+    job.aprobadoPor = user.id;
+    job.resumen = { ...(job.resumen as any), aplicado };
+    await this.jobs.save(job);
+
+    await this.audit.log({
+      usuarioId: user.id,
+      usuarioUsername: user.username,
+      accion: 'IMPORTACION_APROBADA',
+      tabla: TABLA,
+      registroId: job.id,
+      valorNuevo: aplicado,
+    });
+    return this.toResponse(job);
+  }
+
+  async reject(id: string, user: { id: string; username: string }, motivo?: string) {
+    const job = await this.findJob(id);
+    if (job.estado !== ImportJobStatus.PENDIENTE_APROBACION) {
+      throw new BadRequestException(
+        `La importación está en estado ${job.estado}; no se puede rechazar`,
+      );
+    }
+    job.estado = ImportJobStatus.RECHAZADO;
+    await this.jobs.save(job);
+    await this.audit.log({
+      usuarioId: user.id,
+      usuarioUsername: user.username,
+      accion: 'IMPORTACION_RECHAZADA',
+      tabla: TABLA,
+      registroId: job.id,
+      motivo: motivo ?? null,
+    });
+    return this.toResponse(job);
+  }
+
+  // ---------------------------------------------------------------------
+
+  /** HU-016: diferencias contra BD antes de aplicar. */
+  private async buildResumen(dto: CreateImportDto, validas: FilaValidada[]) {
+    if (dto.tipo === ImportType.PRODUCTOS) {
+      const codigos = validas.map((f) => f.datos.codigo);
+      const existentes = await this.dataSource.getRepository(Product).find({
+        where: { empresaId: dto.empresaId },
+      });
+      const set = new Set(existentes.map((p) => p.codigo));
+      return {
+        nuevos: validas.filter((f) => !set.has(f.datos.codigo)).length,
+        actualizados: validas.filter((f) => set.has(f.datos.codigo)).length,
+        codigosMuestra: codigos.slice(0, 10),
+      };
+    }
+    if (dto.tipo === ImportType.CANTIDADES) {
+      const productos = await this.dataSource.getRepository(Product).find({
+        where: { empresaId: dto.empresaId },
+      });
+      const map = new Map(productos.map((p) => [p.codigo, p.cantidad]));
+      const diferencias = validas
+        .map((f) => {
+          const actual = map.get(f.datos.codigo);
+          const nueva = Number(f.datos.cantidad);
+          return actual === undefined
+            ? { codigo: f.datos.codigo, estado: 'PRODUCTO_NO_EXISTE' }
+            : { codigo: f.datos.codigo, actual, nueva, diferencia: nueva - actual };
+        })
+        .filter((d: any) => d.estado === 'PRODUCTO_NO_EXISTE' || d.diferencia !== 0);
+      return {
+        conDiferencia: diferencias.filter((d: any) => d.diferencia !== undefined).length,
+        productosNoExistentes: diferencias
+          .filter((d: any) => d.estado === 'PRODUCTO_NO_EXISTE')
+          .map((d: any) => d.codigo),
+        diferencias: diferencias.filter((d: any) => d.diferencia !== undefined).slice(0, 50),
+      };
+    }
+    // CLIENTES / COMERCIALES
+    return { nuevos: validas.length, actualizados: 0 };
+  }
+
+  private async aplicarProductos(
+    job: ImportJob,
+    filas: FilaValidada[],
+    user: { id: string; username: string },
+  ) {
+    const repo = this.dataSource.getRepository(Product);
+    const existentes = await repo.find({ where: { empresaId: job.empresaId! } });
+    const map = new Map(existentes.map((p) => [p.codigo, p]));
+    let nuevos = 0;
+    let actualizados = 0;
+
+    for (const fila of filas) {
+      const { codigo, ...datos } = fila.datos;
+      const limpio = Object.fromEntries(
+        Object.entries(datos).filter(([, v]) => v !== ''),
+      );
+      const existente = map.get(codigo);
+      if (existente) {
+        const anterior = { ...existente };
+        Object.assign(existente, limpio, { precio: limpio.precio ? Number(limpio.precio) : existente.precio });
+        await repo.save(existente);
+        actualizados++;
+        await this.audit.log({
+          usuarioId: user.id,
+          usuarioUsername: user.username,
+          accion: 'EDITAR',
+          tabla: 'Productos',
+          registroId: existente.id,
+          valorAnterior: anterior as any,
+          valorNuevo: existente as any,
+          motivo: `Importación contable ${job.nombreArchivo}`,
+        });
+      } else {
+        const producto = await repo.save(
+          repo.create({
+            ...limpio,
+            codigo,
+            empresaId: job.empresaId!,
+            precio: limpio.precio ? Number(limpio.precio) : 0,
+            cantidad: 0,
+            cantidadBloqueada: 0,
+            estado: ProductStatus.ACTIVO,
+          }),
+        );
+        nuevos++;
+        await this.audit.log({
+          usuarioId: user.id,
+          usuarioUsername: user.username,
+          accion: 'CREAR',
+          tabla: 'Productos',
+          registroId: producto.id,
+          valorNuevo: producto as any,
+          motivo: `Importación contable ${job.nombreArchivo}`,
+        });
+      }
+    }
+    return { nuevos, actualizados };
+  }
+
+  /**
+   * M18: las cantidades se ajustan por MOVIMIENTOS, nunca por sobrescritura.
+   * Una única transacción para todos los productos del archivo.
+   */
+  private async aplicarCantidades(
+    job: ImportJob,
+    filas: FilaValidada[],
+    user: { id: string; username: string },
+  ) {
+    const repo = this.dataSource.getRepository(Product);
+    const productos = await repo.find({ where: { empresaId: job.empresaId! } });
+    const map = new Map(productos.map((p) => [p.codigo, p]));
+    let ajustes = 0;
+    const omitidos: string[] = [];
+
+    await this.dataSource.transaction(async (em) => {
+      for (const fila of filas) {
+        const producto = map.get(fila.datos.codigo);
+        if (!producto) {
+          omitidos.push(fila.datos.codigo);
+          continue;
+        }
+        const nueva = Number(fila.datos.cantidad);
+        const delta = nueva - producto.cantidad;
+        if (delta === 0) continue;
+        await this.movements.apply(
+          {
+            productId: producto.id,
+            tipo: MovementType.AJUSTE_IMPORTACION,
+            cantidadDelta: delta,
+            docTipo: 'IMPORTACION',
+            docId: job.id,
+            usuarioId: user.id,
+          },
+          em,
+        );
+        producto.cantidad = nueva; // reflejar para el siguiente cálculo del mismo código
+        ajustes++;
+      }
+    });
+
+    // Auditoría de la entidad Productos por cada ajuste (trazabilidad)
+    await this.audit.log({
+      usuarioId: user.id,
+      usuarioUsername: user.username,
+      accion: 'AJUSTE_IMPORTACION',
+      tabla: 'Productos',
+      registroId: null,
+      valorNuevo: { ajustes, omitidos, importacion: job.id },
+      motivo: `Ajuste de cantidades por importación ${job.nombreArchivo}`,
+    });
+    return { ajustes, omitidos: omitidos.length };
+  }
+
+  private async aplicarClientes(
+    filas: FilaValidada[],
+    entity: typeof Client | typeof Comercial,
+  ) {
+    const repo = this.dataSource.getRepository(entity as any) as Repository<any>;
+    let nuevos = 0;
+    let actualizados = 0;
+    for (const fila of filas) {
+      const limpio = Object.fromEntries(
+        Object.entries(fila.datos).filter(([, v]) => v !== ''),
+      );
+      const existente = limpio.identificacion
+        ? await repo.findOne({ where: { identificacion: limpio.identificacion } })
+        : await repo.findOne({ where: { nombre: limpio.nombre } });
+      if (existente) {
+        Object.assign(existente, limpio);
+        await repo.save(existente);
+        actualizados++;
+      } else {
+        await repo.save(repo.create(limpio));
+        nuevos++;
+      }
+    }
+    return { nuevos, actualizados };
+  }
+
+  private async findJob(id: string): Promise<ImportJob> {
+    const job = await this.jobs.findOne({ where: { id } });
+    if (!job) throw new NotFoundException('Importación no encontrada');
+    return job;
+  }
+
+  private toResponse(job: ImportJob, incluirFilas = true) {
+    const { resumen, ...rest } = job as any;
+    const r = resumen ? { ...resumen } : null;
+    if (r && !incluirFilas) delete r.filasValidas;
+    return { ...rest, resumen: r };
+  }
+}
