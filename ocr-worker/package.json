@@ -1,0 +1,19 @@
+{
+  "name": "sofia-ocr-worker",
+  "version": "0.1.0",
+  "description": "Worker OCR de SofIA (M13) — esqueleto I0; la lógica OCR llega en la iteración I5",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts"
+  },
+  "dependencies": {
+    "ioredis": "^5.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.10",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  }
+}

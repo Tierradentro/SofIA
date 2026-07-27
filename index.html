@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SofIA Logística Inteligente — WMS</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; background: #f1f5f9; color: #0f172a; }
+    main { max-width: 860px; margin: 0 auto; padding: 2rem; }
+    h1 { color: #1d4ed8; }
+    .card { background: #fff; border-radius: .75rem; padding: 1.25rem 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,.1); margin-bottom: 1rem; }
+    .tag { display: inline-block; background: #dbeafe; color: #1d4ed8; border-radius: 9999px; padding: .15rem .75rem; font-size: .8rem; margin: .15rem .25rem .15rem 0; }
+    code { background: #e2e8f0; border-radius: .25rem; padding: .1rem .35rem; font-size: .85em; }
+    ul { line-height: 1.7; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>SofIA Logística Inteligente</h1>
+    <p>WMS multiempresa para <b>IRE</b> e <b>ICV</b> (bodega física compartida, existencias separadas por empresa).</p>
+
+    <div class="card">
+      <h2>Estado del proyecto — Iteración I14 (residuales QA V2)</h2>
+      <span class="tag">I0–I1 Fundaciones + Auth/RBAC/Auditoría</span>
+      <span class="tag">I2 Administración</span>
+      <span class="tag">I3 Catálogos y productos</span>
+      <span class="tag">I4 Importaciones/Exportaciones</span>
+      <span class="tag">I5 OCR</span>
+      <span class="tag">I6 Ingresos</span>
+      <span class="tag">I7 Pedidos y alistamiento</span>
+      <span class="tag">I8 Despachos y cajas</span>
+      <span class="tag">I9 Devoluciones PQRS</span>
+      <span class="tag">I10 Inventarios por empresa</span>
+      <span class="tag">I11 API externa</span>
+      <span class="tag">I12 Consultas y tablero del comercial</span>
+      <span class="tag">I13 Endurecimiento y cierre de spec</span>
+      <span class="tag">I14 Residuales QA V2</span>
+      <ul>
+        <li><b>Backend:</b> NestJS 10 + TypeORM + PostgreSQL 16 (migraciones versionadas, seeds idempotentes).</li>
+        <li><b>Frontend:</b> Next.js 14 (App Router) + Tailwind. Módulos: dashboard, productos, clientes, comerciales, importaciones, OCR, ingresos, pedidos, despachos, devoluciones, inventarios, tablero del comercial; <b>API externa</b> (X-API-Key + rate limit).</li>
+        <li><b>I14 (QA V2):</b> RBAC en listados/detalle de pedidos (una API key ya no puede navegar <code>/orders</code> interno — 403); la purga de auditoría (que ya exportaba a CSV antes de borrar y se auto-auditaba) ahora permite <b>listar y descargar el respaldo de salvaguarda desde el módulo de administración</b> (<code>GET /audit/purge</code> y <code>GET /audit/purge/:archivo</code>, con protección contra path traversal); la lista de productos marca con badge <i>Incompleto</i> los que el Generador puede completar (código OE, marca, ubicación). Se mantienen las decisiones: bloqueo de inventario solo En Conteo, guía inline, sin scoping de lectura por empresa.</li>
+        <li><b>I13 (post-QA):</b> endurecimiento de concurrencia (cierre de caja y alistamiento atómicos con pruebas de carrera reales; cancelación libera solo lo no despachado, con whitelist de estados), seguridad (API keys OCR cifradas AES-256-GCM, secretos obligatorios en producción, rate limit de la API externa parametrizable, login sin canal lateral de tiempo), <b>despacho GLOBAL compartido</b> con consecutivo <code>DES-######</code> (spec v1.1), API externa según spec §7 (PUT de pedido, <code>created_via</code>, nomenclatura <code>/api/orders</code>, <code>/api/products</code>, <code>/api/dispatch</code>, <code>/api/carrier-guide</code>, <code>/api/box</code>), exports CSV de los 5 listados generales, kardex <code>/movimientos</code> y gestión de <code>/empresas</code> en el frontend.</li>
+        <li><b>I12 (EP-10):</b> consulta de caja enriquecida con cliente, empresas, documentos (facturas) y fecha (HU-053); filtros de despachos por estado, cliente, empresa, rango de fechas, documento, caja y guía (HU-054); <b>tablero del Comercial (M02)</b>: los listados y detalles de pedidos, despachos y PQRS quedan restringidos automáticamente a su comercial (404 en detalles ajenos), con página <code>/tablero</code> de resumen.</li>
+        <li><b>I9 (M11):</b> casos de devolución PQRS con búsqueda de asociación por producto/caja/factura/despacho (HU-044); factura manual u observación obligatoria sin coincidencia (HU-045/CU-007); motivos del catálogo G01–G40/N01–N18 (HU-047); soportes fotográficos con observación (HU-046) y soporte de respuesta del proveedor; ciclo de corrección (Abierta → Pendiente corrección → Abierta); solución y cierre por Operador; cancelación por Generador en cualquier punto; <b>reingreso manual al inventario como movimiento REINGRESO_DEVOLUCION</b>.</li>
+        <li><b>Pruebas:</b> 56 unitarias + 133 e2e, todas verdes. Humo de producción superado (8/8).</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>Cómo ejecutar</h2>
+      <ul>
+        <li><code>docker-compose.yml</code> en la raíz levanta PostgreSQL, backend, frontend, nginx y ocr-worker.</li>
+        <li>Backend: <code>backend/</code> — <code>npm run start:prod</code> (aplica migraciones y seeds al arrancar).</li>
+        <li>Frontend: <code>frontend/</code> — <code>npm run build && npm start</code>.</li>
+      </ul>
+    </div>
+  </main>
+</body>
+</html>
