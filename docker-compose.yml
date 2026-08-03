@@ -1,11 +1,10 @@
-version: '3.9'
-
 # SofIA Logística Inteligente — servicios según Spec §9.
 # El esquema de BD se crea con las migraciones del backend al arrancar
 # (RUN_MIGRATIONS=true por defecto) y las semillas I0 son idempotentes.
 
 services:
   postgres:
+    restart: unless-stopped
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: sofia_app
@@ -20,6 +19,7 @@ services:
       retries: 10
 
   redis:
+    restart: unless-stopped
     image: redis:7-alpine
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
@@ -28,6 +28,7 @@ services:
       retries: 10
 
   backend:
+    restart: unless-stopped
     build: ./backend
     environment:
       NODE_ENV: production
@@ -55,6 +56,7 @@ services:
         condition: service_healthy
 
   ocr-worker:
+    restart: unless-stopped
     build: ./ocr-worker
     environment:
       NODE_ENV: production
@@ -67,6 +69,7 @@ services:
         condition: service_healthy
 
   frontend:
+    restart: unless-stopped
     build:
       context: ./frontend
       args:
@@ -76,6 +79,7 @@ services:
       - backend
 
   nginx:
+    restart: unless-stopped
     image: nginx:alpine
     ports:
       - '8080:80'
