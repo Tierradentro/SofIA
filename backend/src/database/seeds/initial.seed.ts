@@ -29,7 +29,13 @@ export async function runInitialSeed(dataSource: DataSource): Promise<void> {
     { nombre: 'IRE', siglas: 'IRE', descripcion: 'Empresa IRE' },
     { nombre: 'ICV', siglas: 'ICV', descripcion: 'Empresa ICV' },
   ]) {
-    const exists = await companyRepo.findOne({ where: { nombre: c.nombre } });
+    // `siglas` es la clave de negocio inmutable (P-09); `nombre` es editable
+    // desde la UI de Empresas. Si se busca solo por nombre, renombrar IRE/ICV
+    // hace que un reinicio reintente el INSERT y choque con UQ_companies_siglas
+    // (crash-loop del backend). Se verifica por cualquiera de los dos campos.
+    const exists = await companyRepo.findOne({
+      where: [{ nombre: c.nombre }, { siglas: c.siglas }],
+    });
     if (!exists) await companyRepo.save(companyRepo.create(c));
   }
 
