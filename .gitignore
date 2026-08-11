@@ -1,0 +1,23 @@
+# Dependencias
+node_modules/
+
+# Builds
+dist/
+.next/
+coverage/
+*.tsbuildinfo
+
+# Entorno y secretos (los .example sí se versionan)
+.env
+.env.*
+!.env.example
+!.env.easypanel.example
+
+# Datos operativos en runtime
+uploads/
+exports/
+ocr-worker/tmp/
+
+# Logs y SO
+*.log
+.DS_Store
