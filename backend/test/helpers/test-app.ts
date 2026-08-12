@@ -5,6 +5,8 @@ import request from 'supertest';
 import { AppModule } from '../../src/app.module';
 import { AppDataSource } from '../../src/database/data-source';
 import { runInitialSeed } from '../../src/database/seeds/initial.seed';
+import { traducirErroresValidacion } from '../../src/common/validation/validation-exception.factory';
+import { AllExceptionsFilter } from '../../src/common/filters/all-exceptions.filter';
 
 /**
  * Reinicia la BD de pruebas (drop/create), corre migraciones y semillas.
@@ -44,13 +46,16 @@ export interface TestApp {
 export async function createTestApp(): Promise<TestApp> {
   const app = await NestFactory.create(AppModule, { logger: false });
   app.setGlobalPrefix('api/v1');
+  // Misma configuración global que main.ts (pipe en español + filtro de excepciones)
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
       transform: true,
       forbidNonWhitelisted: true,
+      exceptionFactory: traducirErroresValidacion,
     }),
   );
+  app.useGlobalFilters(new AllExceptionsFilter());
   await app.init();
   return { app, http: request(app.getHttpServer()), dataSource: AppDataSource };
 }

@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { IMPORT_FIELDS, ImportType } from '../../common/enums/import-type.enum';
+import { IMPORT_FIELD_LIMITS } from '../../common/constants/field-limits';
 import { ParsedRow } from './import-parser.service';
 
 export interface FilaValidada {
@@ -92,6 +93,19 @@ export class ImportValidatorService {
         const n = Number(datos['precio']);
         if (!Number.isFinite(n) || n < 0) {
           errores.push(`Precio inválido: '${datos['precio']}'`);
+        }
+      }
+
+      // Longitud máxima por campo (QA Func. 1.1): nunca dejar llegar al
+      // INSERT un texto que exceda el varchar de la columna → la fila se
+      // reporta como inválida en el resumen (mejor esfuerzo), sin 500.
+      const limites = IMPORT_FIELD_LIMITS[tipo];
+      for (const [campo, maximo] of Object.entries(limites)) {
+        const valor = datos[campo];
+        if (valor && valor.length > maximo) {
+          errores.push(
+            `El campo '${campo}' excede el máximo de ${maximo} caracteres (tiene ${valor.length})`,
+          );
         }
       }
 

@@ -238,6 +238,74 @@ describe('Importaciones contables (e2e)', () => {
     expect(logs[0].valor_nuevo.registros).toBe(2);
   });
 
+  it('QA Func. 1.1: fila con texto largo se reporta (no 500); las válidas se aplican (mejor esfuerzo)', async () => {
+    const larga = 'x'.repeat(300); // descripcion es varchar(250)
+    const buffer = xlsxBuffer([
+      { Referencia: 'LARGA-1', Descripción: larga, Marca: 'Bosch' },
+      { Referencia: 'OK-1', Descripción: 'Filtro válido', Marca: 'Brembo' },
+    ]);
+    const res = await t.http
+      .post('/api/v1/imports')
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .field('tipo', 'PRODUCTOS')
+      .field('empresaId', ireId)
+      .field('mapeo', JSON.stringify({
+        Referencia: 'codigo',
+        Descripción: 'descripcion',
+        Marca: 'marca',
+      }))
+      .attach('file', buffer, { filename: 'larga.xlsx', contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    expect(res.status).toBe(201);
+    expect(res.body.resumen.validas).toBe(1);
+    expect(res.body.resumen.invalidas.length).toBe(1);
+    const err = res.body.resumen.invalidas[0].errores[0];
+    expect(err).toContain('descripcion');
+    expect(err).toContain('250');
+
+    // Aprobar: mejor esfuerzo → aplica la válida, no 500
+    const approve = await t.http
+      .post(`/api/v1/imports/${res.body.id}/approve`)
+      .set('Authorization', `Bearer ${generadorToken}`);
+    expect(approve.status).toBe(201);
+    expect(approve.body.resumen.aplicado.nuevos).toBe(1);
+
+    const aplicados = await t.dataSource.query(
+      `SELECT codigo FROM products WHERE empresa_id=$1 AND codigo IN ('LARGA-1','OK-1')`,
+      [ireId],
+    );
+    expect(aplicados.map((p: any) => p.codigo)).toEqual(['OK-1']);
+  });
+
+  it('QA Func. 1.1: campos snake_case del mapeo (codigo_oe, unidad_medida) persisten en la entidad', async () => {
+    const buffer = xlsxBuffer([
+      { Referencia: 'OE-1', Descripción: 'Con OE', OE: 'OE-999', UM: 'UND' },
+    ]);
+    const res = await t.http
+      .post('/api/v1/imports')
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .field('tipo', 'PRODUCTOS')
+      .field('empresaId', ireId)
+      .field('mapeo', JSON.stringify({
+        Referencia: 'codigo',
+        Descripción: 'descripcion',
+        OE: 'codigo_oe',
+        UM: 'unidad_medida',
+      }))
+      .attach('file', buffer, { filename: 'oe.xlsx', contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    expect(res.status).toBe(201);
+    const approve = await t.http
+      .post(`/api/v1/imports/${res.body.id}/approve`)
+      .set('Authorization', `Bearer ${generadorToken}`);
+    expect(approve.status).toBe(201);
+
+    const [p] = await t.dataSource.query(
+      `SELECT codigo_oe, unidad_medida FROM products WHERE empresa_id=$1 AND codigo='OE-1'`,
+      [ireId],
+    );
+    expect(p.codigo_oe).toBe('OE-999');
+    expect(p.unidad_medida).toBe('UND');
+  });
+
   it('RBAC negativo: Operador recibe 403 al importar y exportar', async () => {
     const buffer = xlsxBuffer([{ Referencia: 'X', Descripción: 'Y' }]);
     const imp = await t.http
