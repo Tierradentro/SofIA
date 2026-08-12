@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 
@@ -53,7 +53,7 @@ const ESTADOS: Record<Pedido['estado'], string> = {
  * Alistamiento (Operador): escaneo modo INICIAL/COMPLETO (HU-030/031).
  * Corrección: creador en Pendiente_Corrección. Factura y cancelación: Generador.
  */
-export default function PedidosPage() {
+function PedidosContenido() {
   const router = useRouter();
   const [sesion, setSesion] = useState<Sesion | null>(null);
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
@@ -276,15 +276,19 @@ export default function PedidosPage() {
                   </button>
                 ))}
                 <button
-                  onClick={() => setPestana('OTROS')}
+                  onClick={() => {
+                    setPestana('OTROS');
+                    // Al entrar a "Otros" siempre hay un estado concreto
+                    // preseleccionado: nunca muestra todos los pedidos
+                    if (!filtroEstado) setFiltroEstado('PENDIENTE_CORRECCION');
+                  }}
                   className={`px-3 py-1 ${pestana === 'OTROS' ? 'bg-sofia-600 text-white' : 'bg-white hover:bg-slate-50'}`}
                 >
                   Otros estados
                 </button>
               </div>
               {pestana === 'OTROS' && (
-                <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)} className="rounded border px-2 py-1 text-sm">
-                  <option value="">Todos (otros)</option>
+                <select value={filtroEstado || 'PENDIENTE_CORRECCION'} onChange={(e) => setFiltroEstado(e.target.value)} className="rounded border px-2 py-1 text-sm">
                   <option value="PENDIENTE_CORRECCION">Pendiente corrección</option>
                   <option value="CANCELADO">Cancelado</option>
                 </select>
@@ -499,5 +503,17 @@ export default function PedidosPage() {
         )}
       </div>
     </main>
+  );
+}
+
+/**
+ * Next.js 14: useSearchParams() exige un boundary de Suspense para el
+ * prerendering estático; sin él `next build` falla.
+ */
+export default function PedidosPage() {
+  return (
+    <Suspense>
+      <PedidosContenido />
+    </Suspense>
   );
 }
