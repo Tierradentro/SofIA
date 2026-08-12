@@ -254,7 +254,7 @@ export class PqrsService {
     }
     if (!file) throw new BadRequestException('Archivo requerido');
     if (!file.mimetype?.startsWith('image/')) {
-      throw new BadRequestException('El soporte debe ser una imagen (HU-046)');
+      throw new BadRequestException('El soporte debe ser una imagen');
     }
     const doc = await this.documents.store('pqrs', DocumentType.SOPORTE_PQRS, file, user.id);
     const soporte = await this.dataSource.getRepository(PqrsSupport).save(

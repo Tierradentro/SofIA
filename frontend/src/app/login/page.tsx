@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { guardarSesion, login } from '@/lib/api';
+import { guardarSesion, login, mensajeError } from '@/lib/api';
 
 /** HU-001: inicio de sesión. Error genérico sin revelar información sensible. */
 export default function LoginPage() {
@@ -23,7 +23,7 @@ export default function LoginPage() {
       guardarSesion({ token: body.access_token, usuario: body.usuario });
       router.replace(body.usuario.debeCambiarClave ? '/cambiar-clave' : '/dashboard');
     } else {
-      setError(body.message || 'Usuario o contraseña incorrectos');
+      setError(mensajeError(body, 'Usuario o contraseña incorrectos'));
     }
   }
 

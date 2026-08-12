@@ -45,7 +45,7 @@ export async function runInitialSeed(dataSource: DataSource): Promise<void> {
     await userRepo.save(
       userRepo.create({
         nombre: 'Administrador del sistema',
-        descripcion: 'Usuario inicial (M14)',
+        descripcion: 'Usuario inicial',
         username: 'Admin',
         email: 'admin@sofia.local',
         passwordHash: await bcrypt.hash('Admin', 10),
@@ -68,17 +68,17 @@ export async function runInitialSeed(dataSource: DataSource): Promise<void> {
         expiration_days: 60,
         max_failed_attempts: 5,
       },
-      descripcion: 'Política de contraseñas (Spec M02)',
+      descripcion: 'Política de contraseñas',
     },
     {
       clave: PARAM_KEYS.API_RATE_LIMIT,
       valor: { requests_per_minute: 20 },
-      descripcion: 'Rate limiting API externa (Spec §7)',
+      descripcion: 'Límite de peticiones de la API externa',
     },
     {
       clave: PARAM_KEYS.OCR_ACTIVE_ENGINE,
       valor: { engine: 'OCR_LOCAL' },
-      descripcion: 'Motor OCR activo (Spec M13)',
+      descripcion: 'Motor OCR activo',
     },
   ];
   for (const p of params) {

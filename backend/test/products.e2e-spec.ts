@@ -184,6 +184,107 @@ describe('Productos (e2e)', () => {
     expect(empresas.size).toBe(2);
   });
 
+  it('QA Func. 2.3: PUT barcode reemplaza transaccionalmente, libera el anterior y audita', async () => {
+    const p = await crearProducto(ireId, 'IRE-REF-005', 'Kit de embrague');
+    await t.http
+      .post(`/api/v1/products/${p.id}/barcode`)
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ barcode: '770MAL000001', origen: 'MANUAL' });
+
+    // Reemplazo por el Generador
+    const res = await t.http
+      .put(`/api/v1/products/${p.id}/barcode`)
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ barcode: '770BIEN00002', origen: 'MANUAL' });
+    expect(res.status).toBe(200);
+    expect(res.body.codigoBarras.barcode).toBe('770BIEN00002');
+
+    // El código anterior quedó libre: se puede asociar a otro producto
+    const otro = await crearProducto(ireId, 'IRE-REF-006', 'Rodamiento delantero');
+    const reasignar = await t.http
+      .post(`/api/v1/products/${otro.id}/barcode`)
+      .set('Authorization', `Bearer ${operadorToken}`)
+      .send({ barcode: '770MAL000001', origen: 'ESCANEADO' });
+    expect(reasignar.status).toBe(201);
+
+    // Auditoría con valor anterior y nuevo
+    const logs = await t.dataSource.query(
+      `SELECT valor_anterior, valor_nuevo FROM audit_logs WHERE accion='CORREGIR_BARCODE' AND registro_id=$1`,
+      [p.id],
+    );
+    expect(logs.length).toBe(1);
+    expect(logs[0].valor_anterior.barcode).toBe('770MAL000001');
+    expect(logs[0].valor_nuevo.barcode).toBe('770BIEN00002');
+
+    // RBAC negativo: Operador no puede corregir
+    const prohibido = await t.http
+      .put(`/api/v1/products/${p.id}/barcode`)
+      .set('Authorization', `Bearer ${operadorToken}`)
+      .send({ barcode: 'OTRO', origen: 'MANUAL' });
+    expect(prohibido.status).toBe(403);
+  });
+
+  it('QA Func. 2.4: búsqueda parcial por código, OE y referencia cruzada', async () => {
+    const p = await crearProducto(ireId, 'IRE-REF-007', 'Bomba de agua');
+    await t.http
+      .patch(`/api/v1/products/${p.id}`)
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ codigoOE: 'OE-ABC-777', refCruzada1: 'GATES-999' });
+
+    // Subcadena en medio del código (antes no aparecía con match exacto)
+    const porCodigo = await t.http
+      .get('/api/v1/products/search?q=REF-007&empresaId=' + ireId)
+      .set('Authorization', `Bearer ${operadorToken}`);
+    expect(porCodigo.body.some((x: any) => x.codigo === 'IRE-REF-007')).toBe(true);
+
+    const porOe = await t.http
+      .get('/api/v1/products/search?q=ABC-777&empresaId=' + ireId)
+      .set('Authorization', `Bearer ${operadorToken}`);
+    expect(porOe.body.some((x: any) => x.id === p.id)).toBe(true);
+
+    const porRef = await t.http
+      .get('/api/v1/products/search?q=GATES-999&empresaId=' + ireId)
+      .set('Authorization', `Bearer ${operadorToken}`);
+    expect(porRef.body.some((x: any) => x.id === p.id)).toBe(true);
+
+    // La búsqueda por descripción sigue funcionando como antes
+    const porDesc = await t.http
+      .get('/api/v1/products/search?q=bomba%20agua&empresaId=' + ireId)
+      .set('Authorization', `Bearer ${operadorToken}`);
+    expect(porDesc.body.some((x: any) => x.id === p.id)).toBe(true);
+  });
+
+  it('QA Func. 2.2: GET /products/:id devuelve la ficha completa y PATCH actualiza campos del catálogo', async () => {
+    const p = await crearProducto(ireId, 'IRE-REF-008', 'Termostato');
+    const res = await t.http
+      .patch(`/api/v1/products/${p.id}`)
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({
+        categoria: 'Refrigeración',
+        subcategoria: 'Termostatos',
+        aplicacion: 'Motor 2.0',
+        linkImagen: 'https://ejemplo.com/termostato.png',
+        grupoSiete: 'G7-01',
+      });
+    expect(res.status).toBe(200);
+
+    const ficha = await t.http
+      .get(`/api/v1/products/${p.id}`)
+      .set('Authorization', `Bearer ${operadorToken}`);
+    expect(ficha.status).toBe(200);
+    expect(ficha.body.categoria).toBe('Refrigeración');
+    expect(ficha.body.linkImagen).toBe('https://ejemplo.com/termostato.png');
+    expect(ficha.body.grupoSiete).toBe('G7-01');
+    expect(ficha.body.empresa.nombre).toBe('IRE');
+
+    // La empresa no se puede cambiar por PATCH
+    const cambioEmpresa = await t.http
+      .patch(`/api/v1/products/${p.id}`)
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ empresaId: icvId });
+    expect(cambioEmpresa.status).toBe(400);
+  });
+
   it('Aislamiento multiempresa: listado por empresa nunca mezcla productos', async () => {
     const ire = await t.http
       .get(`/api/v1/products?empresaId=${ireId}`)

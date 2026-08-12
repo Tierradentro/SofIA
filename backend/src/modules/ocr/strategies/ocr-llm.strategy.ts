@@ -14,10 +14,42 @@ type FetchFn = typeof fetch;
 
 const CAMPOS_JSON = `{
   "numeroFactura": string|null, "fecha": "YYYY-MM-DD"|null,
-  "proveedor": string|null, "cliente": string|null, "direccion": string|null,
+  "proveedor": string|null, "cliente": string|null,
+  "nit": string|null, "telefono": string|null, "direccion": string|null,
   "numeroGuia": string|null, "transportadora": string|null,
-  "items": [{"referencia": string, "descripcion": string|null, "cantidad": number, "unidad": string}]
+  "total": number|null, "observaciones": string|null,
+  "items": [{"referencia": string, "descripcion": string|null, "cantidad": number, "unidad": string, "valorUnitario": number|null, "valorTotal": number|null}]
 }`;
+
+/** QA Func. 2.5: instrucción específica por tipo de documento. */
+function instruccionPorTipo(tipo: DocumentType): string {
+  switch (tipo) {
+    case DocumentType.ORDEN_PEDIDO:
+    case DocumentType.COTIZACION:
+      return (
+        'Es un documento de VENTA: extrae cliente, nit (identificación tributaria), ' +
+        'dirección, teléfono y, por cada ítem, el valorUnitario y valorTotal. ' +
+        'proveedor/numeroGuia/transportadora normalmente no aplican (usa null).'
+      );
+    case DocumentType.FACTURA_VENTA:
+      return (
+        'Es una factura de VENTA: extrae cliente, nit, dirección, teléfono, el total ' +
+        'de la factura y, por cada ítem, valorUnitario y valorTotal.'
+      );
+    case DocumentType.FACTURA_IMPORTACION:
+      return (
+        'Es una factura de IMPORTACIÓN (compra): extrae proveedor, numeroGuia y ' +
+        'transportadora; los ítems no llevan valor (usa null en valorUnitario/valorTotal).'
+      );
+    case DocumentType.GUIA_TRANSPORTE:
+      return (
+        'Es una guía de transporte: lo esencial es numeroGuia, transportadora, ' +
+        'destinatario (cliente) y dirección.'
+      );
+    default:
+      return 'Extrae los campos que aparezcan; usa null en los que no apliquen.';
+  }
+}
 
 /**
  * HU-019: OCR basado en LLM (OpenAI, Gemini, OpenRouter).
@@ -50,7 +82,8 @@ export class OcrLlmStrategy {
   ): Promise<OcrExtractionResult> {
     const prompt =
       `Eres un extractor de datos de documentos logísticos (${tipo}). ` +
-      `Extrae los campos del documento y responde ÚNICAMENTE con JSON válido, sin markdown, con esta forma exacta: ${CAMPOS_JSON}. ` +
+      instruccionPorTipo(tipo) +
+      ` Responde ÚNICAMENTE con JSON válido, sin markdown, con esta forma exacta: ${CAMPOS_JSON}. ` +
       `Si un campo no aparece usa null. cantidad debe ser entero. unidad por defecto "UND".`;
     const base64 = buffer.toString('base64');
 
@@ -178,14 +211,20 @@ export class OcrLlmStrategy {
       );
     }
     const items = Array.isArray(raw.items) ? raw.items : [];
+    const numero = (v: any): number | null =>
+      Number.isFinite(Number(v)) ? Number(v) : null;
     return {
       numeroFactura: raw.numeroFactura ?? null,
       fecha: raw.fecha ?? null,
       proveedor: raw.proveedor ?? null,
       cliente: raw.cliente ?? null,
+      nit: raw.nit ?? null,
+      telefono: raw.telefono ?? null,
       direccion: raw.direccion ?? null,
       numeroGuia: raw.numeroGuia ?? null,
       transportadora: raw.transportadora ?? null,
+      total: numero(raw.total),
+      observaciones: raw.observaciones ?? null,
       items: items
         .filter((i: any) => i && i.referencia)
         .map((i: any) => ({
@@ -193,6 +232,8 @@ export class OcrLlmStrategy {
           descripcion: i.descripcion ?? null,
           cantidad: Number.isFinite(Number(i.cantidad)) ? Math.trunc(Number(i.cantidad)) : 0,
           unidad: i.unidad ?? 'UND',
+          valorUnitario: numero(i.valorUnitario),
+          valorTotal: numero(i.valorTotal),
         })),
     };
   }

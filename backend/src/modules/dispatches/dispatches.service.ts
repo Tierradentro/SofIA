@@ -714,8 +714,8 @@ export class DispatchesService {
 
     let carrier: Carrier | null = null;
     if (dto.tipo === TransportType.EXTERNA) {
-      if (!dto.carrierId) throw new BadRequestException('Seleccione la transportadora (HU-039)');
-      if (!dto.guia?.trim()) throw new BadRequestException('La guía es obligatoria (HU-039)');
+      if (!dto.carrierId) throw new BadRequestException('Seleccione la transportadora');
+      if (!dto.guia?.trim()) throw new BadRequestException('La guía es obligatoria');
       carrier = await this.dataSource
         .getRepository(Carrier)
         .findOne({ where: { id: dto.carrierId } });
@@ -725,7 +725,7 @@ export class DispatchesService {
       }
     } else {
       if (!dto.nombreTransporte?.trim()) {
-        throw new BadRequestException('Indique el nombre del transporte interno (HU-040)');
+        throw new BadRequestException('Indique el nombre del transporte interno');
       }
       if (dto.carrierId) {
         carrier = await this.dataSource

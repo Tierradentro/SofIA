@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, obtenerSesion, Sesion } from '@/lib/api';
+import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 
 interface Empresa { id: string; nombre: string; siglas: string }
 interface Cliente { id: string; nombre: string; identificacion: string | null; ciudad: string | null }
@@ -252,7 +252,7 @@ export default function PedidosPage() {
       cargarLista();
       return true;
     }
-    setError(body.message ?? 'La acción falló');
+    setError(mensajeError(body, 'La acción falló'));
     return false;
   }
 
@@ -290,7 +290,7 @@ export default function PedidosPage() {
           .join(' · ');
         setError(`La factura tiene diferencias y no se puede aprobar: ${detalle}`);
       } else {
-        setError(body.message ?? 'Error al cargar la factura');
+        setError(mensajeError(body, 'Error al cargar la factura'));
       }
     } catch (err: any) {
       setError(err.message);
@@ -615,7 +615,7 @@ export default function PedidosPage() {
             {/* HU-032: factura de venta (Generador) */}
             {esGenerador && pedido.estado === 'ALISTADO' && (
               <div className="mt-4 rounded bg-slate-50 p-3">
-                <p className="mb-2 text-sm font-medium">Cargar factura de venta para aprobar (HU-032)</p>
+                <p className="mb-2 text-sm font-medium">Cargar factura de venta para aprobar</p>
                 <div className="flex flex-wrap items-center gap-3">
                   <input type="file" accept=".pdf,.png,.jpg,.jpeg,.tiff" onChange={(e) => setArchivoFactura(e.target.files?.[0] ?? null)} className="text-sm" />
                   <button onClick={cargarFactura} disabled={cargando || !archivoFactura} className="rounded bg-green-600 px-4 py-2 text-white hover:bg-green-700 disabled:opacity-50">

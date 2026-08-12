@@ -150,6 +150,55 @@ export class ProductsService {
   }
 
   /**
+   * QA Func. 2.3: corrección de un código de barras mal asociado.
+   * Transaccional: desasocia el actual y asocia el nuevo en una sola
+   * operación; el código liberado queda disponible de inmediato. Audita
+   * valor anterior y nuevo (corrección sensible).
+   */
+  async replaceBarcode(productId: string, dto: AssignBarcodeDto, user: { id: string; username: string }) {
+    const product = await this.findById(productId);
+    // Transacción mínima: solo los escritos. Las lecturas de respuesta se
+    // hacen DESPUÉS, fuera de la transacción — mezclar un queryRunner
+    // externo con el pool de 1 conexión de pruebas bloqueaba el release.
+    await this.dataSource.transaction(async (em) => {
+      const repo = em.getRepository(ProductBarcode);
+
+      const duplicado = await repo.findOne({ where: { barcode: dto.barcode } });
+      if (duplicado && duplicado.productId !== productId) {
+        throw new ConflictException('El código de barras ya está asociado a otro producto');
+      }
+
+      const actual = await repo.findOne({ where: { productId } });
+      const valorAnterior = actual
+        ? { barcode: actual.barcode, origen: actual.origen }
+        : null;
+      if (actual?.barcode === dto.barcode) return; // idempotente
+      if (actual) await repo.remove(actual);
+      await repo.save(
+        repo.create({
+          barcode: dto.barcode,
+          productId,
+          origen: dto.origen,
+          createdBy: user.id,
+        }),
+      );
+      await this.audit.log(
+        {
+          usuarioId: user.id,
+          usuarioUsername: user.username,
+          accion: 'CORREGIR_BARCODE',
+          tabla: TABLA,
+          registroId: productId,
+          valorAnterior,
+          valorNuevo: { barcode: dto.barcode, origen: dto.origen },
+        },
+        em,
+      );
+    });
+    return this.withBarcode(product);
+  }
+
+  /**
    * HU-013: consulta por código de barras, código, código OE o referencias
    * cruzadas. El barcode es global; el resto se resuelve por empresa.
    * Devuelve empresa, referencia, descripción, código de barras, ubicación
@@ -185,17 +234,27 @@ export class ProductsService {
    * similitud. Las existencias se visualizan juntas en el dashboard, pero
    * cada producto es de su empresa: si se pasa empresaId se filtra en backend.
    */
+  /**
+   * Búsqueda parcial (QA Func. 2.4): además de la descripción (pg_trgm),
+   * admite coincidencia parcial en código, código OE y referencias cruzadas.
+   * El barcode NO entra aquí: su match sigue siendo exacto vía lookup.
+   */
   async search(q: string, empresaId?: string, limit = 25) {
-    const palabras = (q || '').trim().split(/\s+/).filter(Boolean);
+    const texto = (q || '').trim();
+    const palabras = texto.split(/\s+/).filter(Boolean);
     if (palabras.length === 0) return [];
     const qb = this.products
       .createQueryBuilder('p')
       .addSelect(`similarity(p.descripcion, :qs)`, 'sim')
-      .setParameter('qs', q.trim())
+      .setParameter('qs', texto)
       .orderBy('sim', 'DESC')
       .take(Math.min(100, limit));
+    // Cada palabra debe aparecer en algún identificador o en la descripción
     palabras.forEach((palabra, i) => {
-      qb.andWhere(`p.descripcion ILIKE :w${i}`, { [`w${i}`]: `%${palabra}%` });
+      qb.andWhere(
+        `(p.descripcion ILIKE :w${i} OR p.codigo ILIKE :w${i} OR p.codigo_oe ILIKE :w${i} OR p.ref_cruzada_1 ILIKE :w${i} OR p.ref_cruzada_2 ILIKE :w${i})`,
+        { [`w${i}`]: `%${palabra}%` },
+      );
     });
     if (empresaId) qb.andWhere('p.empresa_id = :empresaId', { empresaId });
     const items = await qb.getMany();

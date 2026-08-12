@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import * as XLSX from 'xlsx';
-import { api, obtenerSesion, Sesion } from '@/lib/api';
+import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 
 interface Empresa {
   id: string;
@@ -199,7 +199,7 @@ export default function ImportacionesPage() {
           `Disponibles en el archivo: ${body.columnasDisponibles.join(', ')}`,
       );
     } else {
-      setError(body.message ?? 'Error al cargar el archivo');
+      setError(mensajeError(body, 'Error al cargar el archivo'));
     }
   }
 
@@ -216,7 +216,7 @@ export default function ImportacionesPage() {
       setMensaje('Importación aplicada correctamente.');
       cargarHistorial();
     } else {
-      setError((body as { message?: string }).message ?? 'No se pudo aprobar');
+      setError(mensajeError(body, 'No se pudo aprobar'));
     }
   }
 
@@ -234,7 +234,7 @@ export default function ImportacionesPage() {
       setMensaje('Importación rechazada.');
       cargarHistorial();
     } else {
-      setError((body as { message?: string }).message ?? 'No se pudo rechazar');
+      setError(mensajeError(body, 'No se pudo rechazar'));
     }
   }
 
@@ -349,7 +349,7 @@ export default function ImportacionesPage() {
             <p className="mt-3 rounded bg-amber-50 px-3 py-2 text-sm text-amber-800">
               Las cantidades se ajustan por <strong>movimientos de inventario</strong>{' '}
               (nunca por sobrescritura) y la aprobación la realiza únicamente el
-              Administrador (M18).
+              Administrador.
             </p>
           )}
         </section>

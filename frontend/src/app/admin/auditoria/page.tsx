@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, obtenerSesion } from '@/lib/api';
+import { api, obtenerSesion, mensajeError } from '@/lib/api';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 
@@ -102,7 +102,7 @@ export default function AuditoriaPage() {
       cargar();
       cargarRespaldos();
     } else {
-      setError(body.message || 'No se pudo purgar');
+      setError(mensajeError(body, 'No se pudo purgar'));
     }
   }
 

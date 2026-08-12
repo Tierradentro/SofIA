@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiUpload, obtenerSesion } from '@/lib/api';
+import { apiUpload, obtenerSesion, mensajeError } from '@/lib/api';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 
@@ -41,7 +41,7 @@ export default function LogoPage() {
       setLogoExiste(true);
       setArchivo(null);
     } else {
-      setError(body.message || 'No se pudo cargar el logo');
+      setError(mensajeError(body, 'No se pudo cargar el logo'));
     }
   }
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, obtenerSesion, Sesion } from '@/lib/api';
+import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 
 interface Cliente {
   id: string;
@@ -54,7 +54,7 @@ export default function ClientesPage() {
       setEditando(null);
       cargar();
     } else {
-      setError(body.message || 'No se pudo guardar');
+      setError(mensajeError(body, 'No se pudo guardar'));
     }
   }
 

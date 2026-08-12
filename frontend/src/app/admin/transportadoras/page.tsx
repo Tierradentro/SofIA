@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, obtenerSesion } from '@/lib/api';
+import { api, obtenerSesion, mensajeError } from '@/lib/api';
 
 interface Transportadora {
   id: string;
@@ -46,7 +46,7 @@ export default function TransportadorasPage() {
       setForm({ nombre: '', tipo: 'EXTERNA', identificacion: '', telefonos: '' });
       cargar();
     } else {
-      setError(body.message || 'No se pudo crear');
+      setError(mensajeError(body, 'No se pudo crear'));
     }
   }
 

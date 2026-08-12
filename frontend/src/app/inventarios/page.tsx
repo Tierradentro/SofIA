@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, obtenerSesion, Sesion } from '@/lib/api';
+import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 
 interface Empresa { id: string; nombre: string; siglas: string }
 interface Producto { id: string; codigo: string; descripcion: string; cantidad: number }
@@ -143,7 +143,7 @@ export default function InventariosPage() {
       setInstruccion('');
       cargarLista();
       cargarDetalle(body.id);
-    } else setError(body.message || 'No se pudo crear la jornada');
+    } else setError(mensajeError(body, 'No se pudo crear la jornada'));
   }
 
   async function registrarConteo() {
@@ -163,7 +163,7 @@ export default function InventariosPage() {
       setConteoVal('');
       setUbicacionVal('');
       cargarDetalle(jornada.id);
-    } else setError(body.message || 'Conteo rechazado');
+    } else setError(mensajeError(body, 'Conteo rechazado'));
   }
 
   async function accion(path: string, textoOk: string, body: any = {}) {
@@ -177,7 +177,7 @@ export default function InventariosPage() {
       setMensaje(textoOk);
       cargarDetalle(jornada.id);
       cargarLista();
-    } else setError(resp.message || 'Operación rechazada');
+    } else setError(mensajeError(resp, 'Operación rechazada'));
   }
 
   async function documentarYAprobar() {
@@ -196,7 +196,7 @@ export default function InventariosPage() {
         method: 'POST',
         body: JSON.stringify({ notas: nuevas }),
       });
-      if (status !== 201) return setError(body.message || 'No se pudieron documentar las diferencias');
+      if (status !== 201) return setError(mensajeError(body, 'No se pudieron documentar las diferencias'));
     }
     await accion('/aprobar', 'Inventario aprobado: existencias actualizadas');
   }
@@ -228,9 +228,9 @@ export default function InventariosPage() {
         {/* Conteo (Operador, EN_CONTEO) */}
         {jornada.estado === 'EN_CONTEO' && esOperador && (
           <section className="mb-4 rounded-lg bg-white p-4 shadow">
-            <h2 className="mb-2 font-semibold">Conteo físico (HU-049)</h2>
+            <h2 className="mb-2 font-semibold">Conteo físico</h2>
             <p className="mb-2 text-sm text-slate-500">
-              El alistamiento, despacho e ingreso de estos productos están bloqueados mientras la jornada esté en conteo (M12).
+              El alistamiento, despacho e ingreso de estos productos están bloqueados mientras la jornada esté en conteo.
               Pendientes por contar: {sinContar}.
             </p>
             <div className="flex flex-wrap gap-2 text-sm">
@@ -256,7 +256,7 @@ export default function InventariosPage() {
 
         {/* Comparación (HU-050) */}
         <section className="mb-4 rounded-lg bg-white p-4 shadow">
-          <h2 className="mb-2 font-semibold">Comparación conteo vs existencia (HU-050)</h2>
+          <h2 className="mb-2 font-semibold">Comparación conteo vs existencia</h2>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left text-slate-500">
@@ -290,7 +290,7 @@ export default function InventariosPage() {
         {/* Aprobación (Generador, PENDIENTE_APROBACION): documentar diferencias */}
         {jornada.estado === 'PENDIENTE_APROBACION' && esGenerador && (
           <section className="mb-4 rounded-lg border-2 border-amber-300 bg-amber-50 p-4">
-            <h2 className="mb-2 font-semibold">Aprobación: documente cada diferencia (M12)</h2>
+            <h2 className="mb-2 font-semibold">Aprobación: documente cada diferencia</h2>
             {conDif.length === 0 ? (
               <p className="text-sm text-slate-600">Sin diferencias: puede aprobar directamente.</p>
             ) : (
@@ -352,7 +352,7 @@ export default function InventariosPage() {
 
       {mostrarCrear && (
         <section className="mb-4 rounded-lg bg-white p-4 shadow text-sm">
-          <h2 className="mb-2 font-semibold">Crear jornada de inventario (HU-048)</h2>
+          <h2 className="mb-2 font-semibold">Crear jornada de inventario</h2>
           <p className="mb-2 text-slate-500">Al crearla se toma el snapshot de existencias; la comparación del conteo se hace contra ese snapshot.</p>
           <div className="mb-2 flex gap-2">
             <select value={empresaSel} onChange={(e) => setEmpresaSel(e.target.value)} className="rounded border px-2 py-1">

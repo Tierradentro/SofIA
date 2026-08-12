@@ -574,7 +574,7 @@ export class OrdersService {
       .findOne({ where: { id: ocrDocumentId } });
     if (!ocrDoc) throw new NotFoundException('Documento OCR no encontrado');
     if (ocrDoc.tipoDocumento !== DocumentType.FACTURA_VENTA) {
-      throw new BadRequestException('El documento OCR debe ser FACTURA_VENTA (HU-032)');
+      throw new BadRequestException('El documento OCR debe ser una factura de venta');
     }
 
     // Matchear las referencias de la factura contra productos de la empresa

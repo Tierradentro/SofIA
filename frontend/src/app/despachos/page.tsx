@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, obtenerSesion, Sesion } from '@/lib/api';
+import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 
 interface PedidoAprobado { id: string; numero: string; clienteId: string }
 interface Carrier { id: string; nombre: string; tipo: 'EXTERNA' | 'INTERNA' }
@@ -171,7 +171,7 @@ export default function DespachosPage() {
       setMostrarCrear(false);
       cargarLista();
       cargarDetalle(body.id);
-    } else setError(body.message || 'No se pudo crear el despacho');
+    } else setError(mensajeError(body, 'No se pudo crear el despacho'));
   }
 
   async function asociar() {
@@ -185,7 +185,7 @@ export default function DespachosPage() {
       setMensaje('Pedido asociado');
       setPedidoAsociar('');
       cargarDetalle(despacho.id);
-    } else setError(body.message || 'No se pudo asociar');
+    } else setError(mensajeError(body, 'No se pudo asociar'));
   }
 
   async function retirarPedido(orderId: string) {
@@ -195,7 +195,7 @@ export default function DespachosPage() {
     if (status === 200) {
       setMensaje('Pedido retirado');
       cargarDetalle(despacho.id);
-    } else setError(body.message || 'No se pudo retirar');
+    } else setError(mensajeError(body, 'No se pudo retirar'));
   }
 
   async function accionSimple(path: string, textoOk: string, body: any = {}) {
@@ -209,7 +209,7 @@ export default function DespachosPage() {
       setMensaje(textoOk);
       cargarDetalle(despacho.id);
       cargarLista();
-    } else setError(resp.message || 'Operación rechazada');
+    } else setError(mensajeError(resp, 'Operación rechazada'));
   }
 
   async function crearCaja() {
@@ -220,7 +220,7 @@ export default function DespachosPage() {
       setMensaje(`Caja ${body.boxId} creada (Caja ${body.numeroEnDespacho})`);
       cargarDetalle(despacho.id);
       setCajaSel(body.id);
-    } else setError(body.message || 'No se pudo crear la caja');
+    } else setError(mensajeError(body, 'No se pudo crear la caja'));
   }
 
   async function escanear() {
@@ -236,7 +236,7 @@ export default function DespachosPage() {
       setCodigoScan('');
       setCantidadScan('1');
       cargarDetalle(despacho.id);
-    } else setError(body.message || 'Código rechazado');
+    } else setError(mensajeError(body, 'Código rechazado'));
   }
 
   async function cerrarCaja(boxPk: string) {
@@ -247,7 +247,7 @@ export default function DespachosPage() {
       setMensaje(`Caja ${body.boxId} cerrada: existencias descontadas`);
       setEtiqueta(body);
       cargarDetalle(despacho.id);
-    } else setError(body.message || 'No se pudo cerrar la caja');
+    } else setError(mensajeError(body, 'No se pudo cerrar la caja'));
   }
 
   async function verEtiqueta(boxPk: string) {
@@ -255,7 +255,7 @@ export default function DespachosPage() {
     if (!despacho) return;
     const { status, body } = await api<any>(`/dispatches/${despacho.id}/boxes/${boxPk}/etiqueta`);
     if (status === 200) setEtiqueta(body);
-    else setError(body.message || 'No se pudo generar la etiqueta');
+    else setError(mensajeError(body, 'No se pudo generar la etiqueta'));
   }
 
   async function consultarCaja() {
@@ -264,7 +264,7 @@ export default function DespachosPage() {
     if (!boxIdConsulta.trim()) return;
     const { status, body } = await api<any>(`/boxes/${encodeURIComponent(boxIdConsulta.trim())}`);
     if (status === 200) setConsultaCaja(body);
-    else setError(body.message || 'Caja no encontrada');
+    else setError(mensajeError(body, 'Caja no encontrada'));
   }
 
   if (!sesion) return null;
@@ -283,7 +283,7 @@ export default function DespachosPage() {
             <h1 className="text-xl font-bold">Despacho {despacho.numero}</h1>
             <p className="text-sm text-slate-600">
               {despacho.cliente?.nombre} · <span className="font-medium">{ESTADOS[despacho.estado]}</span>
-              {despacho.despachoOrigenId && ' · Despacho adicional (D-06)'}
+              {despacho.despachoOrigenId && ' · Despacho adicional'}
             </p>
           </div>
           <button onClick={() => { setDespacho(null); setEtiqueta(null); cargarLista(); }} className="rounded bg-slate-200 px-3 py-1 text-sm">
@@ -411,7 +411,7 @@ export default function DespachosPage() {
         {/* Aprobación de parcial (HU-041, Generador) */}
         {despacho.estado === 'PARCIAL' && !despacho.parcialMotivo && esGenerador && (
           <section className="mb-4 rounded-lg border-2 border-amber-300 bg-amber-50 p-4">
-            <h2 className="mb-2 font-semibold">Despacho parcial — requiere aprobación (HU-041)</h2>
+            <h2 className="mb-2 font-semibold">Despacho parcial — requiere aprobación</h2>
             <div className="flex gap-2">
               <input value={motivoParcial} onChange={(e) => setMotivoParcial(e.target.value)} placeholder="Motivo del despacho parcial…" className="flex-1 rounded border px-2 py-1 text-sm" />
               <button onClick={() => accionSimple('/aprobar-parcial', 'Parcial aprobado', { motivo: motivoParcial })} className="rounded bg-amber-600 px-3 py-1 text-sm text-white">
@@ -465,7 +465,7 @@ export default function DespachosPage() {
         {despacho.estado === 'DESPACHADO' && despacho.parcialMotivo && esGenerador && (
           <section className="mb-4 rounded-lg bg-white p-4 shadow">
             <button onClick={() => accionSimple('/completar', 'Despacho adicional creado para completar el parcial')} className="rounded bg-sofia-600 px-4 py-2 text-sm text-white">
-              Crear despacho adicional para completar (D-06)
+              Crear despacho adicional para completar
             </button>
           </section>
         )}
@@ -520,7 +520,7 @@ export default function DespachosPage() {
 
       {mostrarCrear && (
         <section className="mb-4 rounded-lg bg-white p-4 shadow">
-          <h2 className="mb-2 font-semibold">Crear despacho (HU-033)</h2>
+          <h2 className="mb-2 font-semibold">Crear despacho</h2>
           <p className="mb-2 text-sm text-slate-500">Se consolida a partir de un pedido APROBADO; la empresa del pedido define el consecutivo SIGLAS-####.</p>
           <div className="flex gap-2">
             <select value={pedidoSel} onChange={(e) => setPedidoSel(e.target.value)} className="flex-1 rounded border px-2 py-1 text-sm">
@@ -534,7 +534,7 @@ export default function DespachosPage() {
 
       {/* M10: consulta de caja por box_id (lo que trae el QR) */}
       <section className="mb-4 rounded-lg bg-white p-4 shadow">
-        <h2 className="mb-2 font-semibold">Consulta de caja (M10)</h2>
+        <h2 className="mb-2 font-semibold">Consulta de caja</h2>
         <div className="flex gap-2">
           <input value={boxIdConsulta} onChange={(e) => setBoxIdConsulta(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && consultarCaja()} placeholder="CJA-000000" className="rounded border px-2 py-1 text-sm" />
           <button onClick={consultarCaja} className="rounded bg-sofia-600 px-3 py-1 text-sm text-white">Consultar</button>

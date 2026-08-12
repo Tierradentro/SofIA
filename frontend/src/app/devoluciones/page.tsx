@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, obtenerSesion, Sesion } from '@/lib/api';
+import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 
 interface Cliente { id: string; nombre: string }
 interface Comercial { id: string; nombre: string }
@@ -175,9 +175,9 @@ export default function DevolucionesPage() {
     if (status === 200) {
       setBusqueda(body);
       if (!body.pedidos.length && !body.despachos.length && !body.cajas.length) {
-        setMensaje('Sin coincidencias: registre la factura manual u observación (CU-007)');
+        setMensaje('Sin coincidencias: registre la factura manual u observación');
       }
-    } else setError((body as any).message || 'Búsqueda fallida');
+    } else setError(mensajeError(body, 'Búsqueda fallida'));
   }
 
   async function crear() {
@@ -214,7 +214,7 @@ export default function DevolucionesPage() {
       setBoxIdSel('');
       cargarLista();
       cargarDetalle(body.id);
-    } else setError(body.message || 'No se pudo crear el caso');
+    } else setError(mensajeError(body, 'No se pudo crear el caso'));
   }
 
   async function adjuntarSoporte() {
@@ -237,7 +237,7 @@ export default function DevolucionesPage() {
       cargarDetalle(caso.id);
     } else {
       const body = await res.json();
-      setError(body.message || 'No se pudo adjuntar');
+      setError(mensajeError(body, 'No se pudo adjuntar'));
     }
   }
 
@@ -252,7 +252,7 @@ export default function DevolucionesPage() {
       setMensaje(textoOk);
       cargarDetalle(caso.id);
       cargarLista();
-    } else setError(resp.message || 'Operación rechazada');
+    } else setError(mensajeError(resp, 'Operación rechazada'));
   }
 
   if (!sesion) return null;
@@ -444,7 +444,7 @@ export default function DevolucionesPage() {
 
       {mostrarCrear && (
         <section className="mb-4 rounded-lg bg-white p-4 shadow text-sm">
-          <h2 className="mb-3 font-semibold">Crear caso de devolución (HU-043)</h2>
+          <h2 className="mb-3 font-semibold">Crear caso de devolución</h2>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <select value={clienteId} onChange={(e) => setClienteId(e.target.value)} className="rounded border px-2 py-1">
               {clientes.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
@@ -478,7 +478,7 @@ export default function DevolucionesPage() {
 
           {/* HU-044: búsqueda de pedido/despacho/caja/factura */}
           <div className="mt-3 rounded border p-2">
-            <p className="mb-1 font-medium">Buscar asociación (HU-044)</p>
+            <p className="mb-1 font-medium">Buscar asociación</p>
             <div className="flex gap-2">
               <select value={tipoBusqueda} onChange={(e) => setTipoBusqueda(e.target.value as any)} className="rounded border px-2 py-1">
                 <option value="codigo">Por producto</option>

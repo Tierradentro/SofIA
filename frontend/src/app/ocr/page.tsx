@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, obtenerSesion, Sesion } from '@/lib/api';
+import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 
 interface Empresa {
   id: string;
@@ -15,6 +15,8 @@ interface OcrItem {
   descripcion: string | null;
   cantidad: number;
   unidad: string;
+  valorUnitario?: number | null;
+  valorTotal?: number | null;
 }
 
 interface DatosExtraidos {
@@ -22,9 +24,13 @@ interface DatosExtraidos {
   fecha: string | null;
   proveedor: string | null;
   cliente: string | null;
+  nit: string | null;
+  telefono: string | null;
   direccion: string | null;
   numeroGuia: string | null;
   transportadora: string | null;
+  total?: number | null;
+  observaciones?: string | null;
   items: OcrItem[];
 }
 
@@ -49,11 +55,39 @@ const TIPOS = [
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 
+/** QA Func. 2.5: esquema de campos variable por tipo de documento. */
+const ETIQUETAS: Record<string, string> = {
+  numeroFactura: 'N° Factura / Documento',
+  fecha: 'Fecha',
+  proveedor: 'Proveedor',
+  cliente: 'Cliente',
+  nit: 'NIT / Identificación',
+  telefono: 'Teléfono',
+  direccion: 'Dirección',
+  numeroGuia: 'N° Guía',
+  transportadora: 'Transportadora',
+  total: 'Total',
+  observaciones: 'Observaciones',
+};
+
+const CAMPOS_POR_TIPO: Record<string, string[]> = {
+  FACTURA_IMPORTACION: ['numeroFactura', 'fecha', 'proveedor', 'numeroGuia', 'transportadora', 'direccion'],
+  ORDEN_PEDIDO: ['numeroFactura', 'fecha', 'cliente', 'nit', 'direccion', 'telefono'],
+  COTIZACION: ['numeroFactura', 'fecha', 'cliente', 'nit', 'direccion', 'telefono'],
+  FACTURA_VENTA: ['numeroFactura', 'fecha', 'cliente', 'nit', 'direccion', 'telefono', 'total', 'observaciones'],
+  GUIA_TRANSPORTE: ['numeroGuia', 'fecha', 'transportadora', 'cliente', 'direccion'],
+};
+
+/** Tipos cuyos ítems llevan valor unitario/total. */
+const TIPOS_CON_VALOR = ['ORDEN_PEDIDO', 'COTIZACION', 'FACTURA_VENTA'];
+
 const CAMPOS_CABECERA: { clave: keyof Omit<DatosExtraidos, 'items'>; etiqueta: string }[] = [
-  { clave: 'numeroFactura', etiqueta: 'N° Factura / Invoice' },
+  { clave: 'numeroFactura', etiqueta: 'N° Factura / Documento' },
   { clave: 'fecha', etiqueta: 'Fecha' },
   { clave: 'proveedor', etiqueta: 'Proveedor' },
   { clave: 'cliente', etiqueta: 'Cliente' },
+  { clave: 'nit', etiqueta: 'NIT / Identificación' },
+  { clave: 'telefono', etiqueta: 'Teléfono' },
   { clave: 'direccion', etiqueta: 'Dirección' },
   { clave: 'numeroGuia', etiqueta: 'N° Guía' },
   { clave: 'transportadora', etiqueta: 'Transportadora' },
@@ -124,7 +158,7 @@ export default function OcrPage() {
       );
       cargarHistorial();
     } else {
-      setError(body.message ?? 'No se pudo procesar el documento');
+      setError(mensajeError(body, 'No se pudo procesar el documento'));
       setDoc(null);
       setDatos(null);
     }
@@ -153,7 +187,7 @@ export default function OcrPage() {
       setDoc(body);
       setMensaje('Correcciones guardadas.');
     } else {
-      setError((body as { message?: string }).message ?? 'No se pudo guardar');
+      setError(mensajeError(body, 'No se pudo guardar'));
     }
   }
 
@@ -170,7 +204,7 @@ export default function OcrPage() {
       setMensaje('Documento confirmado.');
       cargarHistorial();
     } else {
-      setError((body as { message?: string }).message ?? 'No se pudo confirmar');
+      setError(mensajeError(body, 'No se pudo confirmar'));
     }
   }
 
@@ -185,7 +219,7 @@ export default function OcrPage() {
       }
       cargarHistorial();
     } else {
-      setError((body as { message?: string }).message ?? 'No se pudo eliminar');
+      setError(mensajeError(body, 'No se pudo eliminar'));
     }
   }
 
@@ -196,15 +230,24 @@ export default function OcrPage() {
   function setItem(idx: number, campo: keyof OcrItem, valor: string) {
     if (!datos) return;
     const items = [...datos.items];
+    const numericos: (keyof OcrItem)[] = ['cantidad', 'valorUnitario', 'valorTotal'];
     items[idx] = {
       ...items[idx],
-      [campo]: campo === 'cantidad' ? Number(valor) || 0 : valor,
+      [campo]: numericos.includes(campo)
+        ? valor === ''
+          ? null
+          : Number(valor) || 0
+        : valor,
     };
     setDatos({ ...datos, items });
   }
 
   if (!sesion) return null;
   const editable = doc?.estado === 'CREADO';
+  // Campos visibles según el tipo del documento abierto (o el seleccionado)
+  const tipoActivo = doc?.tipoDocumento ?? tipo;
+  const camposVisibles = (CAMPOS_POR_TIPO[tipoActivo] ?? CAMPOS_CABECERA.map((c) => c.clave)) as string[];
+  const conValor = TIPOS_CON_VALOR.includes(tipoActivo);
 
   return (
     <main className="min-h-screen bg-slate-100 p-6">
@@ -299,12 +342,12 @@ export default function OcrPage() {
             </div>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              {CAMPOS_CABECERA.map(({ clave, etiqueta }) => (
+              {CAMPOS_CABECERA.filter((c) => camposVisibles.includes(c.clave)).map(({ clave, etiqueta }) => (
                 <label key={clave} className="text-sm">
                   {etiqueta}
                   <input
                     type="text"
-                    value={datos[clave] ?? ''}
+                    value={(datos[clave] as string | number | null) ?? ''}
                     onChange={(e) => setCampo(clave, e.target.value)}
                     disabled={!editable}
                     className="mt-1 block w-full rounded border px-2 py-1.5 disabled:bg-slate-50"
@@ -321,6 +364,8 @@ export default function OcrPage() {
                   <th>Descripción</th>
                   <th className="w-24">Cantidad</th>
                   <th className="w-24">Unidad</th>
+                  {conValor && <th className="w-28">Valor unitario</th>}
+                  {conValor && <th className="w-28">Valor total</th>}
                   {editable && <th className="w-16"></th>}
                 </tr>
               </thead>
@@ -364,6 +409,30 @@ export default function OcrPage() {
                         className="w-full rounded border px-2 py-1 disabled:bg-slate-50"
                       />
                     </td>
+                    {conValor && (
+                      <td>
+                        <input
+                          type="number"
+                          min={0}
+                          value={item.valorUnitario ?? ''}
+                          onChange={(e) => setItem(idx, 'valorUnitario', e.target.value)}
+                          disabled={!editable}
+                          className="w-full rounded border px-2 py-1 disabled:bg-slate-50"
+                        />
+                      </td>
+                    )}
+                    {conValor && (
+                      <td>
+                        <input
+                          type="number"
+                          min={0}
+                          value={item.valorTotal ?? ''}
+                          onChange={(e) => setItem(idx, 'valorTotal', e.target.value)}
+                          disabled={!editable}
+                          className="w-full rounded border px-2 py-1 disabled:bg-slate-50"
+                        />
+                      </td>
+                    )}
                     {editable && (
                       <td>
                         <button
