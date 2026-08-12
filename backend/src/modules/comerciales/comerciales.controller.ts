@@ -19,14 +19,14 @@ import {
 
 /**
  * M06 Comerciales (catálogo global). Consulta: todos los roles (los pedidos
- * llevan comercial). Crear/editar: Generador y Administrador.
+ * llevan comercial). Crear/editar: solo Administrador (decisión QA Func. 3.5).
  */
 @Controller('comerciales')
 export class ComercialesController {
   constructor(private readonly comerciales: ComercialesService) {}
 
   @Post()
-  @Roles(Role.GENERADOR, Role.ADMINISTRADOR)
+  @Roles(Role.ADMINISTRADOR)
   create(@Body() dto: CreateComercialDto, @CurrentUser() user: AuthenticatedUser) {
     return this.comerciales.create(dto, user);
   }
@@ -42,7 +42,7 @@ export class ComercialesController {
   }
 
   @Patch(':id')
-  @Roles(Role.GENERADOR, Role.ADMINISTRADOR)
+  @Roles(Role.ADMINISTRADOR)
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateComercialDto,

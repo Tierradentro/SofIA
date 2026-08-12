@@ -128,7 +128,7 @@ describe('Clientes y Comerciales (e2e)', () => {
   it('M06: comercial global + usuario rol Comercial asociado; asociación inválida rechazada', async () => {
     const comercial = await t.http
       .post('/api/v1/comerciales')
-      .set('Authorization', `Bearer ${generadorToken}`)
+      .set('Authorization', `Bearer ${adminToken}`)
       .send({ nombre: 'Juan Comercial', identificacion: '1.234.567' });
     expect(comercial.status).toBe(201);
 
@@ -160,6 +160,32 @@ describe('Clientes y Comerciales (e2e)', () => {
         claveInicial: 'ClaveInicial1',
       });
     expect(invalido.status).toBe(400);
+  });
+
+  it('QA Func. 3.5: Generador recibe 403 al crear/editar comerciales; Administrador sigue pudiendo', async () => {
+    const creado = await t.http
+      .post('/api/v1/comerciales')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'Comercial Admin', identificacion: '9.876.543' });
+    expect(creado.status).toBe(201);
+
+    const porGenerador = await t.http
+      .post('/api/v1/comerciales')
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ nombre: 'No Debe Crearse' });
+    expect(porGenerador.status).toBe(403);
+
+    const edicion = await t.http
+      .patch(`/api/v1/comerciales/${creado.body.id}`)
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ nombre: 'Edición Bloqueada' });
+    expect(edicion.status).toBe(403);
+
+    const edicionAdmin = await t.http
+      .patch(`/api/v1/comerciales/${creado.body.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'Comercial Admin Editado' });
+    expect(edicionAdmin.status).toBe(200);
   });
 
   it('Consulta de clientes y comerciales disponible para roles operativos', async () => {

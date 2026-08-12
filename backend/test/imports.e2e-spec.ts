@@ -69,7 +69,7 @@ describe('Importaciones contables (e2e)', () => {
     ]);
     const res = await t.http
       .post('/api/v1/imports')
-      .set('Authorization', `Bearer ${generadorToken}`)
+      .set('Authorization', `Bearer ${adminToken}`)
       .field('tipo', 'PRODUCTOS')
       .field('empresaId', ireId)
       .field('mapeo', JSON.stringify({
@@ -84,10 +84,10 @@ describe('Importaciones contables (e2e)', () => {
     expect(res.body.resumen.nuevos).toBe(2);
     expect(res.body.resumen.actualizados).toBe(0);
 
-    // Aprobar (Generador puede aprobar productos)
+    // Aprobar (QA Func. 3.5: solo Administrador)
     const approve = await t.http
       .post(`/api/v1/imports/${res.body.id}/approve`)
-      .set('Authorization', `Bearer ${generadorToken}`);
+      .set('Authorization', `Bearer ${adminToken}`);
     expect(approve.status).toBe(201);
     expect(approve.body.resumen.aplicado.nuevos).toBe(2);
 
@@ -103,7 +103,7 @@ describe('Importaciones contables (e2e)', () => {
     const buffer = xlsxBuffer([{ Referencia: 'X-1' }]);
     const res = await t.http
       .post('/api/v1/imports')
-      .set('Authorization', `Bearer ${generadorToken}`)
+      .set('Authorization', `Bearer ${adminToken}`)
       .field('tipo', 'PRODUCTOS')
       .field('empresaId', ireId)
       .field('mapeo', JSON.stringify({ Referencia: 'codigo' })) // falta descripcion
@@ -120,7 +120,7 @@ describe('Importaciones contables (e2e)', () => {
     ]);
     const res = await t.http
       .post('/api/v1/imports')
-      .set('Authorization', `Bearer ${generadorToken}`)
+      .set('Authorization', `Bearer ${adminToken}`)
       .field('tipo', 'PRODUCTOS')
       .field('empresaId', ireId)
       .field('mapeo', JSON.stringify({ Referencia: 'codigo', Descripción: 'descripcion' }))
@@ -140,7 +140,7 @@ describe('Importaciones contables (e2e)', () => {
     ]);
     const res = await t.http
       .post('/api/v1/imports')
-      .set('Authorization', `Bearer ${generadorToken}`)
+      .set('Authorization', `Bearer ${adminToken}`)
       .field('tipo', 'CANTIDADES')
       .field('empresaId', ireId)
       .field('mapeo', JSON.stringify({ Referencia: 'codigo', Cantidad: 'cantidad' }))
@@ -149,11 +149,11 @@ describe('Importaciones contables (e2e)', () => {
     expect(res.body.resumen.conDiferencia).toBe(2);
     expect(res.body.resumen.productosNoExistentes).toContain('NO-EXISTE');
 
-    // Generador NO puede aprobar cantidades (M18: Administrador)
+    // Generador NO puede aprobar (M18 + QA Func. 3.5: solo Administrador → 403 RBAC)
     const porGenerador = await t.http
       .post(`/api/v1/imports/${res.body.id}/approve`)
       .set('Authorization', `Bearer ${generadorToken}`);
-    expect(porGenerador.status).toBe(400);
+    expect(porGenerador.status).toBe(403);
 
     // Administrador aprueba → movimientos AJUSTE_IMPORTACION en una transacción
     const porAdmin = await t.http
@@ -198,7 +198,7 @@ describe('Importaciones contables (e2e)', () => {
     ]);
     const res = await t.http
       .post('/api/v1/imports')
-      .set('Authorization', `Bearer ${generadorToken}`)
+      .set('Authorization', `Bearer ${adminToken}`)
       .field('tipo', 'CLIENTES')
       .field('mapeo', JSON.stringify({ Nombre: 'nombre', Nit: 'identificacion', Ciudad: 'ciudad' }))
       .attach('file', buffer, { filename: 'clientes.xlsx', contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -206,7 +206,7 @@ describe('Importaciones contables (e2e)', () => {
 
     await t.http
       .post(`/api/v1/imports/${res.body.id}/approve`)
-      .set('Authorization', `Bearer ${generadorToken}`);
+      .set('Authorization', `Bearer ${adminToken}`);
 
     const clientes = await t.dataSource.query(`SELECT nombre FROM clients ORDER BY nombre`);
     expect(clientes.map((c: any) => c.nombre)).toEqual([
@@ -246,7 +246,7 @@ describe('Importaciones contables (e2e)', () => {
     ]);
     const res = await t.http
       .post('/api/v1/imports')
-      .set('Authorization', `Bearer ${generadorToken}`)
+      .set('Authorization', `Bearer ${adminToken}`)
       .field('tipo', 'PRODUCTOS')
       .field('empresaId', ireId)
       .field('mapeo', JSON.stringify({
@@ -265,7 +265,7 @@ describe('Importaciones contables (e2e)', () => {
     // Aprobar: mejor esfuerzo → aplica la válida, no 500
     const approve = await t.http
       .post(`/api/v1/imports/${res.body.id}/approve`)
-      .set('Authorization', `Bearer ${generadorToken}`);
+      .set('Authorization', `Bearer ${adminToken}`);
     expect(approve.status).toBe(201);
     expect(approve.body.resumen.aplicado.nuevos).toBe(1);
 
@@ -282,7 +282,7 @@ describe('Importaciones contables (e2e)', () => {
     ]);
     const res = await t.http
       .post('/api/v1/imports')
-      .set('Authorization', `Bearer ${generadorToken}`)
+      .set('Authorization', `Bearer ${adminToken}`)
       .field('tipo', 'PRODUCTOS')
       .field('empresaId', ireId)
       .field('mapeo', JSON.stringify({
@@ -295,7 +295,7 @@ describe('Importaciones contables (e2e)', () => {
     expect(res.status).toBe(201);
     const approve = await t.http
       .post(`/api/v1/imports/${res.body.id}/approve`)
-      .set('Authorization', `Bearer ${generadorToken}`);
+      .set('Authorization', `Bearer ${adminToken}`);
     expect(approve.status).toBe(201);
 
     const [p] = await t.dataSource.query(
@@ -304,6 +304,27 @@ describe('Importaciones contables (e2e)', () => {
     );
     expect(p.codigo_oe).toBe('OE-999');
     expect(p.unidad_medida).toBe('UND');
+  });
+
+  it('QA Func. 3.5: Generador ya no puede importar (403); Administrador sigue pudiendo', async () => {
+    const buffer = xlsxBuffer([{ Referencia: 'X', Descripción: 'Y' }]);
+    const porGenerador = await t.http
+      .post('/api/v1/imports')
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .field('tipo', 'PRODUCTOS')
+      .field('empresaId', ireId)
+      .field('mapeo', JSON.stringify({ Referencia: 'codigo', Descripción: 'descripcion' }))
+      .attach('file', buffer, { filename: 'x.xlsx', contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    expect(porGenerador.status).toBe(403);
+
+    const porAdmin = await t.http
+      .post('/api/v1/imports')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .field('tipo', 'PRODUCTOS')
+      .field('empresaId', ireId)
+      .field('mapeo', JSON.stringify({ Referencia: 'codigo', Descripción: 'descripcion' }))
+      .attach('file', buffer, { filename: 'x.xlsx', contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    expect(porAdmin.status).toBe(201);
   });
 
   it('RBAC negativo: Operador recibe 403 al importar y exportar', async () => {

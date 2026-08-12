@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
+import { NuevoPedido } from './nuevo';
 
 interface Empresa { id: string; nombre: string; siglas: string }
 interface Cliente { id: string; nombre: string; identificacion: string | null; ciudad: string | null }
@@ -69,15 +70,9 @@ export default function PedidosPage() {
 
   // Creación
   const [mostrarCrear, setMostrarCrear] = useState(false);
-  const [clienteId, setClienteId] = useState('');
-  const [comercialId, setComercialId] = useState('');
-  const [ciudad, setCiudad] = useState('');
-  const [notas, setNotas] = useState('');
   const [itemsNuevos, setItemsNuevos] = useState<{ referencia: string; cantidad: string; valorUnidad: string }[]>([
     { referencia: '', cantidad: '1', valorUnidad: '' },
   ]);
-  const [archivoOrden, setArchivoOrden] = useState<File | null>(null);
-  const [archivoExcel, setArchivoExcel] = useState<File | null>(null);
 
   // Alistamiento
   const [modo, setModo] = useState<'COMPLETO' | 'INICIAL'>('COMPLETO');
@@ -111,13 +106,11 @@ export default function PedidosPage() {
     api<Cliente[]>('/clients').then(({ status, body }) => {
       if (status === 200) {
         setClientes(body);
-        if (body.length) setClienteId(body[0].id);
       }
     });
     api<Comercial[]>('/comerciales').then(({ status, body }) => {
       if (status === 200) {
         setComerciales(body);
-        if (body.length) setComercialId(body[0].id);
       }
     });
   }, [router]);
@@ -174,71 +167,6 @@ export default function PedidosPage() {
     const body = await res.json();
     if (res.status !== 201) throw new Error(body.message ?? 'Falló el OCR');
     return body.id;
-  }
-
-  /** HU-028: crear pedido (manual con ítems, orden OCR o Excel). */
-  async function crear(e: React.FormEvent) {
-    e.preventDefault();
-    setCargando(true);
-    setError('');
-    try {
-      if (archivoExcel) {
-        const fd = new FormData();
-        fd.append('empresaId', empresaId);
-        fd.append('clienteId', clienteId);
-        if (rol !== 'COMERCIAL') fd.append('comercialId', comercialId);
-        fd.append('file', archivoExcel);
-        const s = obtenerSesion();
-        const res = await fetch(`${API_BASE}/orders/excel`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${s?.token}` },
-          body: fd,
-        });
-        const body = await res.json();
-        if (res.status !== 201) throw new Error(body.message ?? 'Error al crear desde Excel');
-        setMensaje(`Pedido ${body.numero} creado desde Excel.`);
-        setMostrarCrear(false);
-        cargarLista();
-        abrir(body.id);
-        return;
-      }
-      const payload: Record<string, unknown> = {
-        empresaId,
-        clienteId,
-        ciudad: ciudad || undefined,
-        notas: notas || undefined,
-      };
-      if (rol !== 'COMERCIAL') payload.comercialId = comercialId;
-      if (archivoOrden) {
-        payload.ocrDocumentId = await uploadOcr('ORDEN_PEDIDO', archivoOrden);
-      } else {
-        const items = itemsNuevos
-          .filter((i) => i.referencia.trim())
-          .map((i) => ({
-            referencia: i.referencia.trim(),
-            cantidad: Number(i.cantidad) || 0,
-            valorUnidad: i.valorUnidad ? Number(i.valorUnidad) : undefined,
-          }));
-        if (!items.length) throw new Error('Agregue al menos un producto');
-        payload.items = items;
-      }
-      const { status, body } = await api<Pedido>('/orders', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      });
-      if (status !== 201) throw new Error((body as { message?: string }).message ?? 'Error al crear');
-      setMensaje(`Pedido ${(body as Pedido).numero} creado en estado Abierto.`);
-      setMostrarCrear(false);
-      setArchivoOrden(null);
-      setArchivoExcel(null);
-      setItemsNuevos([{ referencia: '', cantidad: '1', valorUnidad: '' }]);
-      cargarLista();
-      abrir((body as Pedido).id);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setCargando(false);
-    }
   }
 
   async function accion(fn: () => Promise<{ status: number; body: any }>, ok: string) {
@@ -362,82 +290,23 @@ export default function PedidosPage() {
             )}
           </div>
 
+          {/* QA Func. 3.2/3.3: creación en formato Orden de Pedido con las
+              3 vías (manual, OCR con revisión previa, Excel) unificadas. */}
           {mostrarCrear && (
-            <form onSubmit={crear} className="mb-4 rounded bg-slate-50 p-4">
-              <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-4">
-                <label className="text-sm">
-                  Cliente
-                  <select value={clienteId} onChange={(e) => setClienteId(e.target.value)} className="mt-1 block w-full rounded border px-2 py-1.5">
-                    {clientes.map((c) => (
-                      <option key={c.id} value={c.id}>{c.nombre}</option>
-                    ))}
-                  </select>
-                </label>
-                {rol !== 'COMERCIAL' && (
-                  <label className="text-sm">
-                    Comercial
-                    <select value={comercialId} onChange={(e) => setComercialId(e.target.value)} className="mt-1 block w-full rounded border px-2 py-1.5">
-                      {comerciales.map((c) => (
-                        <option key={c.id} value={c.id}>{c.nombre}</option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-                <label className="text-sm">
-                  Ciudad
-                  <input type="text" value={ciudad} onChange={(e) => setCiudad(e.target.value)} className="mt-1 block w-full rounded border px-2 py-1.5" />
-                </label>
-                <label className="text-sm">
-                  Notas (descuentos)
-                  <input type="text" value={notas} onChange={(e) => setNotas(e.target.value)} className="mt-1 block w-full rounded border px-2 py-1.5" />
-                </label>
-              </div>
-
-              <div className="mb-3 flex flex-wrap items-end gap-4 rounded border border-dashed p-3">
-                <label className="text-sm">
-                  Orden de pedido (PDF/imagen → OCR)
-                  <input type="file" accept=".pdf,.png,.jpg,.jpeg,.tiff" onChange={(e) => { setArchivoOrden(e.target.files?.[0] ?? null); if (e.target.files?.[0]) setArchivoExcel(null); }} className="mt-1 block text-sm" />
-                </label>
-                <label className="text-sm">
-                  …o archivo Excel (Referencia/Cantidad)
-                  <input type="file" accept=".xlsx,.xls,.csv" onChange={(e) => { setArchivoExcel(e.target.files?.[0] ?? null); if (e.target.files?.[0]) setArchivoOrden(null); }} className="mt-1 block text-sm" />
-                </label>
-              </div>
-
-              {!archivoOrden && !archivoExcel && (
-                <>
-                  {itemsNuevos.map((it, idx) => (
-                    <div key={idx} className="mb-1 flex gap-2">
-                      <input
-                        type="text"
-                        placeholder="Código / OE / ref. cruzada"
-                        value={it.referencia}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          setItemsNuevos(itemsNuevos.map((x, i) => {
-                            if (i !== idx) return x;
-                            const prod = productos.find((p) => p.codigo.toUpperCase() === v.trim().toUpperCase());
-                            return { ...x, referencia: v, valorUnidad: x.valorUnidad || (prod ? String(Number(prod.precio)) : '') };
-                          }));
-                        }}
-                        className="w-48 rounded border px-2 py-1 text-sm"
-                      />
-                      <input type="number" min={1} value={it.cantidad} onChange={(e) => setItemsNuevos(itemsNuevos.map((x, i) => (i === idx ? { ...x, cantidad: e.target.value } : x)))} className="w-24 rounded border px-2 py-1 text-sm" />
-                      <input type="number" min={0} step="0.01" placeholder="Valor unidad" value={it.valorUnidad} onChange={(e) => setItemsNuevos(itemsNuevos.map((x, i) => (i === idx ? { ...x, valorUnidad: e.target.value } : x)))} className="w-32 rounded border px-2 py-1 text-sm" />
-                      <button type="button" onClick={() => setItemsNuevos(itemsNuevos.filter((_, i) => i !== idx))} className="text-red-700 hover:underline">✕</button>
-                    </div>
-                  ))}
-                  <button type="button" onClick={() => setItemsNuevos([...itemsNuevos, { referencia: '', cantidad: '1', valorUnidad: '' }])} className="mb-2 text-sm text-sofia-700 hover:underline">
-                    + Agregar producto
-                  </button>
-                </>
-              )}
-              <div>
-                <button type="submit" disabled={cargando} className="rounded bg-sofia-600 px-4 py-2 text-sm text-white hover:bg-sofia-700 disabled:opacity-50">
-                  {cargando ? 'Procesando…' : 'Crear pedido'}
-                </button>
-              </div>
-            </form>
+            <NuevoPedido
+              empresaId={empresaId}
+              clientes={clientes as any}
+              comerciales={comerciales}
+              productos={productos}
+              rol={rol ?? ''}
+              onCreado={(id, numero, origen) => {
+                setMensaje(`Pedido ${numero} creado (${origen}) en estado Abierto.`);
+                setMostrarCrear(false);
+                cargarLista();
+                abrir(id);
+              }}
+              onCancelar={() => setMostrarCrear(false)}
+            />
           )}
 
           <table className="w-full text-sm">

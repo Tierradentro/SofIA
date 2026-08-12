@@ -23,7 +23,7 @@ import { UploadedFilePayload } from '../documents/documents.service';
 
 /**
  * M18 / EP-04: importación desde la maestra contable.
- * Carga: Generador (y Administrador). Aprobación de CANTIDADES: Administrador.
+ * Carga, aprobación y rechazo: solo Administrador (decisión QA Func. 3.5).
  */
 @Controller('imports')
 export class ImportsController {
@@ -36,7 +36,7 @@ export class ImportsController {
   }
 
   @Post()
-  @Roles(Role.GENERADOR, Role.ADMINISTRADOR)
+  @Roles(Role.ADMINISTRADOR)
   @UseInterceptors(FileInterceptor('file'))
   upload(
     @Body() dto: CreateImportDto,
@@ -57,15 +57,15 @@ export class ImportsController {
     return this.imports.getResumen(id);
   }
 
-  /** Aprobación: CANTIDADES requiere Administrador (M18). */
+  /** Aprobación: solo Administrador (M18 y decisión QA Func. 3.5). */
   @Post(':id/approve')
-  @Roles(Role.GENERADOR, Role.ADMINISTRADOR)
+  @Roles(Role.ADMINISTRADOR)
   approve(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.imports.approve(id, user);
   }
 
   @Post(':id/reject')
-  @Roles(Role.GENERADOR, Role.ADMINISTRADOR)
+  @Roles(Role.ADMINISTRADOR)
   reject(
     @Param('id', ParseUUIDPipe) id: string,
     @Body('motivo') motivo: string,
