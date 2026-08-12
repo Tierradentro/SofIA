@@ -50,6 +50,11 @@ export class CreateOrderDto {
   @MaxLength(120)
   ciudad?: string;
 
+  /** QA Func. 4.1: dirección del cliente a la que va el despacho. */
+  @IsOptional()
+  @IsUUID()
+  direccionId?: string;
+
   @IsOptional()
   @IsString()
   @MaxLength(60)
@@ -81,6 +86,11 @@ export class CorrectOrderDto {
   @IsString()
   @MaxLength(120)
   ciudad?: string;
+
+  /** QA Func. 4.1: dirección del cliente a la que va el despacho. */
+  @IsOptional()
+  @IsUUID()
+  direccionId?: string;
 
   @IsOptional()
   @IsString()

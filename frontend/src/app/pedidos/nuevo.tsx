@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, obtenerSesion, mensajeError } from '@/lib/api';
 
 /**
@@ -25,6 +25,14 @@ interface Cliente {
 interface Comercial {
   id: string;
   nombre: string;
+}
+
+/** QA Func. 4.1: dirección de despacho del cliente. */
+interface DireccionCliente {
+  id: string;
+  direccion: string;
+  ciudad: string | null;
+  esPrincipal: boolean;
 }
 
 export interface ItemForm {
@@ -71,6 +79,9 @@ export function NuevoPedido({
   onCancelar: () => void;
 }) {
   const [clienteId, setClienteId] = useState(clientes[0]?.id ?? '');
+  // QA Func. 4.1: dirección a la que va el despacho (se escoge en el Pedido)
+  const [direcciones, setDirecciones] = useState<DireccionCliente[]>([]);
+  const [direccionId, setDireccionId] = useState('');
   const [comercialId, setComercialId] = useState(comerciales[0]?.id ?? '');
   const [ciudad, setCiudad] = useState('');
   const [notas, setNotas] = useState('');
@@ -85,6 +96,20 @@ export function NuevoPedido({
   const [cargando, setCargando] = useState(false);
 
   const cliente = clientes.find((c) => c.id === clienteId) ?? null;
+
+  // QA Func. 4.1: cargar las direcciones del cliente y preseleccionar la principal
+  useEffect(() => {
+    setDireccionId('');
+    setDirecciones([]);
+    if (!clienteId) return;
+    api<DireccionCliente[]>(`/clients/${clienteId}/direcciones`).then(({ status, body }) => {
+      if (status === 200) {
+        setDirecciones(body);
+        const principal = body.find((d) => d.esPrincipal) ?? body[0];
+        if (principal) setDireccionId(principal.id);
+      }
+    });
+  }, [clienteId]);
 
   function totalPie(): number {
     return items.reduce((acc, i) => {
@@ -215,6 +240,7 @@ export function NuevoPedido({
         ciudad: ciudad || undefined,
         notas: notas || undefined,
       };
+      if (direccionId) payload.direccionId = direccionId;
       if (rol !== 'COMERCIAL') payload.comercialId = comercialId;
       if (via === 'OCR') {
         payload.ocrDocumentId = ocrDocId;
@@ -333,10 +359,23 @@ export function NuevoPedido({
             <input value={cliente?.identificacion ?? ''} disabled
               className="mt-1 block w-full rounded border bg-slate-50 px-2 py-1.5" />
           </label>
-          <label className="text-sm">
-            Dirección
-            <input value={cliente?.direccion ?? ''} disabled
-              className="mt-1 block w-full rounded border bg-slate-50 px-2 py-1.5" />
+          <label className="text-sm sm:col-span-2">
+            Dirección de despacho
+            {direcciones.length > 1 ? (
+              <select value={direccionId} onChange={(e) => setDireccionId(e.target.value)}
+                className="mt-1 block w-full rounded border px-2 py-1.5">
+                {direcciones.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.direccion}{d.ciudad ? ` — ${d.ciudad}` : ''}{d.esPrincipal ? ' (principal)' : ''}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                value={direcciones[0]?.direccion ?? cliente?.direccion ?? ''}
+                disabled
+                className="mt-1 block w-full rounded border bg-slate-50 px-2 py-1.5" />
+            )}
           </label>
           <label className="text-sm">
             Teléfono

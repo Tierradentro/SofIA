@@ -42,6 +42,10 @@ export class Order {
   @Column({ length: 120, nullable: true })
   ciudad: string | null;
 
+  /** QA Func. 4.1: dirección a la que va el despacho (foto al crear el pedido). */
+  @Column({ name: 'direccion_despacho', length: 250, nullable: true })
+  direccionDespacho: string | null;
+
   @Column({ name: 'cliente_id', type: 'uuid' })
   clienteId: string;
 

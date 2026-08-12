@@ -38,6 +38,10 @@ interface Despacho {
   guia: string | null;
   fechaSalida: string | null;
   despachoOrigenId: string | null;
+  /** QA Func. 4.1: dirección de entrega (heredada del pedido, ajustable). */
+  direccionDespacho?: string | null;
+  /** QA Func. 4.3: empresas como etiqueta dentro del despacho (no filtro). */
+  empresas?: string[];
   cliente?: { id: string; nombre: string } | null;
   pedidos: {
     id: string;
@@ -70,14 +74,13 @@ export default function DespachosPage() {
   const [sesion, setSesion] = useState<Sesion | null>(null);
   const [lista, setLista] = useState<Despacho[]>([]);
   const [filtroEstado, setFiltroEstado] = useState('');
-  // HU-054: filtros por empresa, fecha, documento, caja y guía
-  const [filtroEmpresa, setFiltroEmpresa] = useState('');
+  // HU-054: filtros por fecha, documento, caja y guía
+  // (QA Func. 4.3: ya no se filtra por empresa; las empresas son una etiqueta)
   const [filtroDesde, setFiltroDesde] = useState('');
   const [filtroHasta, setFiltroHasta] = useState('');
   const [filtroDocumento, setFiltroDocumento] = useState('');
   const [filtroBox, setFiltroBox] = useState('');
   const [filtroGuia, setFiltroGuia] = useState('');
-  const [empresas, setEmpresas] = useState<{ id: string; nombre: string }[]>([]);
   const [despacho, setDespacho] = useState<Despacho | null>(null);
 
   // Creación / asociación
@@ -91,6 +94,10 @@ export default function DespachosPage() {
   const [cantidadScan, setCantidadScan] = useState('1');
   const [cajaSel, setCajaSel] = useState('');
   const [etiqueta, setEtiqueta] = useState<{ boxId: string; qrDataUrl: string; despachoNumero: string } | null>(null);
+
+  // QA Func. 4.1: ajuste de dirección de entrega
+  const [editandoDireccion, setEditandoDireccion] = useState(false);
+  const [direccionEdit, setDireccionEdit] = useState('');
 
   // Transporte / parcial / cancelación
   const [carriers, setCarriers] = useState<Carrier[]>([]);
@@ -125,9 +132,6 @@ export default function DespachosPage() {
     api<Carrier[]>('/carriers/activas').then(({ status, body }) => {
       if (status === 200) setCarriers(body);
     });
-    api<{ id: string; nombre: string }[]>('/companies').then(({ status, body }) => {
-      if (status === 200) setEmpresas(body);
-    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -139,7 +143,6 @@ export default function DespachosPage() {
   async function cargarLista() {
     const params = new URLSearchParams();
     if (filtroEstado) params.set('estado', filtroEstado);
-    if (filtroEmpresa) params.set('empresaId', filtroEmpresa);
     if (filtroDesde) params.set('fechaDesde', filtroDesde);
     if (filtroHasta) params.set('fechaHasta', filtroHasta);
     if (filtroDocumento.trim()) params.set('documento', filtroDocumento.trim());
@@ -210,6 +213,21 @@ export default function DespachosPage() {
       cargarDetalle(despacho.id);
       cargarLista();
     } else setError(mensajeError(resp, 'Operación rechazada'));
+  }
+
+  /** QA Func. 4.1: ajustar la dirección de entrega del despacho. */
+  async function guardarDireccion() {
+    limpiarAvisos();
+    if (!despacho || !direccionEdit.trim()) return;
+    const { status, body } = await api<any>(`/dispatches/${despacho.id}/direccion`, {
+      method: 'PATCH',
+      body: JSON.stringify({ direccion: direccionEdit.trim() }),
+    });
+    if (status === 200) {
+      setMensaje('Dirección de entrega actualizada');
+      setEditandoDireccion(false);
+      cargarDetalle(despacho.id);
+    } else setError(mensajeError(body, 'No se pudo ajustar la dirección'));
   }
 
   async function crearCaja() {
@@ -285,6 +303,32 @@ export default function DespachosPage() {
               {despacho.cliente?.nombre} · <span className="font-medium">{ESTADOS[despacho.estado]}</span>
               {despacho.despachoOrigenId && ' · Despacho adicional'}
             </p>
+            {/* QA Func. 4.1: dirección de entrega (se escoge en el Pedido, se ajusta aquí) */}
+            {!editandoDireccion ? (
+              <p className="mt-1 text-sm text-slate-500">
+                Entrega: {despacho.direccionDespacho ?? 'sin dirección definida'}
+                {esGenerador && ['CREADO', 'ABIERTO', 'PENDIENTE_CORRECCION', 'PARCIAL'].includes(despacho.estado) && (
+                  <button
+                    onClick={() => { setDireccionEdit(despacho.direccionDespacho ?? ''); setEditandoDireccion(true); }}
+                    className="ml-2 text-sofia-700 hover:underline"
+                  >
+                    Ajustar
+                  </button>
+                )}
+              </p>
+            ) : (
+              <div className="mt-1 flex gap-2 text-sm">
+                <input
+                  value={direccionEdit}
+                  onChange={(e) => setDireccionEdit(e.target.value)}
+                  maxLength={250}
+                  placeholder="Dirección de entrega"
+                  className="w-96 rounded border px-2 py-1"
+                />
+                <button onClick={guardarDireccion} className="rounded bg-sofia-600 px-3 py-1 text-white">Guardar</button>
+                <button onClick={() => setEditandoDireccion(false)} className="text-slate-500">Cancelar</button>
+              </div>
+            )}
           </div>
           <button onClick={() => { setDespacho(null); setEtiqueta(null); cargarLista(); }} className="rounded bg-slate-200 px-3 py-1 text-sm">
             ← Volver
@@ -563,10 +607,6 @@ export default function DespachosPage() {
           <option value="">Estado</option>
           {Object.entries(ESTADOS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
-        <select value={filtroEmpresa} onChange={(e) => setFiltroEmpresa(e.target.value)} className="rounded border px-2 py-1">
-          <option value="">Empresa</option>
-          {empresas.map((e) => <option key={e.id} value={e.id}>{e.nombre}</option>)}
-        </select>
         <input type="date" value={filtroDesde} onChange={(e) => setFiltroDesde(e.target.value)} className="rounded border px-2 py-1" title="Desde" />
         <input type="date" value={filtroHasta} onChange={(e) => setFiltroHasta(e.target.value)} className="rounded border px-2 py-1" title="Hasta" />
         <input value={filtroDocumento} onChange={(e) => setFiltroDocumento(e.target.value)} placeholder="Documento (factura)" className="w-36 rounded border px-2 py-1" />
@@ -583,6 +623,7 @@ export default function DespachosPage() {
             <thead>
               <tr className="border-b text-left text-slate-500">
                 <th className="py-1">Número</th>
+                <th>Empresas</th>
                 <th>Estado</th>
                 <th>Pedidos</th>
                 <th>Cajas</th>
@@ -594,6 +635,13 @@ export default function DespachosPage() {
               {lista.map((d) => (
                 <tr key={d.id} className="border-b last:border-0">
                   <td className="py-2 font-medium">{d.numero}</td>
+                  <td>
+                    {d.empresas?.map((sig) => (
+                      <span key={sig} className="mr-1 rounded bg-sofia-100 px-1.5 py-0.5 text-xs font-medium text-sofia-800">
+                        {sig}
+                      </span>
+                    ))}
+                  </td>
                   <td>{ESTADOS[d.estado]}</td>
                   <td>{d.totalPedidos}</td>
                   <td>{d.totalCajas}</td>

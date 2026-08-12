@@ -23,6 +23,7 @@ import { Product } from '../products/entities/product.entity';
 import { ProductBarcode } from '../products/entities/product-barcode.entity';
 import { ProductsService } from '../products/products.service';
 import { OcrDocument } from '../ocr/entities/ocr-document.entity';
+import { ClientAddress } from '../clients/entities/client-address.entity';
 import { DocumentType } from '../../common/enums/document-type.enum';
 import { MovementsService } from '../movements/movements.service';
 import { MovementType } from '../../common/enums/movement-type.enum';
@@ -113,6 +114,25 @@ export class OrdersService {
       throw new BadRequestException('El pedido requiere al menos un producto');
     }
 
+    // QA Func. 4.1: dirección de despacho elegida en el pedido (foto)
+    let direccionDespacho: string | null = null;
+    if (dto.direccionId) {
+      const direccion = await this.dataSource
+        .getRepository(ClientAddress)
+        .findOne({ where: { id: dto.direccionId, activo: true } });
+      if (!direccion) throw new NotFoundException('Dirección no encontrada');
+      if (direccion.clientId !== dto.clienteId) {
+        throw new BadRequestException('La dirección no pertenece al cliente del pedido');
+      }
+      direccionDespacho = direccion.direccion;
+    } else {
+      // Sin selección explícita: la principal del cliente (si existe)
+      const principal = await this.dataSource
+        .getRepository(ClientAddress)
+        .findOne({ where: { clientId: dto.clienteId, esPrincipal: true, activo: true } });
+      direccionDespacho = principal?.direccion ?? null;
+    }
+
     const resueltos = await this.resolverItems(dto.empresaId, itemsDto);
     const numero = await this.dataSource.transaction(async (em) => {
       const numero = await this.siguienteConsecutivo(em, dto.empresaId);
@@ -122,6 +142,7 @@ export class OrdersService {
           numero,
           ordenPedido,
           ciudad: dto.ciudad?.trim() || null,
+          direccionDespacho,
           clienteId: dto.clienteId,
           comercialId,
           notas: dto.notas?.trim() || null,

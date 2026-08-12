@@ -71,6 +71,67 @@ describe('Clientes y Comerciales (e2e)', () => {
     expect(logs.length).toBe(1);
   });
 
+  it('QA Func. 4.1: la dirección del alta migra como principal; CRUD de direcciones con máximo 10', async () => {
+    // La dirección del formulario de creación quedó registrada como principal
+    const lista = await t.http
+      .get(`/api/v1/clients/${clienteId}/direcciones`)
+      .set('Authorization', `Bearer ${operadorToken}`);
+    expect(lista.status).toBe(200);
+    expect(lista.body.length).toBe(1);
+    expect(lista.body[0].direccion).toBe('Cra 45 #12-30');
+    expect(lista.body[0].esPrincipal).toBe(true);
+
+    // Agregar una segunda dirección (no desplaza la principal)
+    const segunda = await t.http
+      .post(`/api/v1/clients/${clienteId}/direcciones`)
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ direccion: 'Calle 80 #20-15', ciudad: 'Medellín' });
+    expect(segunda.status).toBe(201);
+    expect(segunda.body.esPrincipal).toBe(false);
+
+    // Marcarla como principal: la anterior deja de serlo (una sola principal)
+    const marca = await t.http
+      .patch(`/api/v1/clients/${clienteId}/direcciones/${segunda.body.id}`)
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ esPrincipal: true });
+    expect(marca.status).toBe(200);
+    const despues = await t.http
+      .get(`/api/v1/clients/${clienteId}/direcciones`)
+      .set('Authorization', `Bearer ${generadorToken}`);
+    expect(despues.body.filter((d: any) => d.esPrincipal).length).toBe(1);
+    expect(despues.body[0].id).toBe(segunda.body.id);
+
+    // No se puede eliminar la principal
+    const borrarPrincipal = await t.http
+      .post(`/api/v1/clients/${clienteId}/direcciones/${segunda.body.id}/eliminar`)
+      .set('Authorization', `Bearer ${generadorToken}`);
+    expect(borrarPrincipal.status).toBe(400);
+
+    // RBAC: Operador no administra direcciones
+    const porOperador = await t.http
+      .post(`/api/v1/clients/${clienteId}/direcciones`)
+      .set('Authorization', `Bearer ${operadorToken}`)
+      .send({ direccion: 'No debe crearse' });
+    expect(porOperador.status).toBe(403);
+  });
+
+  it('QA Func. 4.1: máximo 10 direcciones por cliente', async () => {
+    // Ya hay 2; agregar hasta el límite
+    for (let i = 3; i <= 10; i++) {
+      const r = await t.http
+        .post(`/api/v1/clients/${clienteId}/direcciones`)
+        .set('Authorization', `Bearer ${generadorToken}`)
+        .send({ direccion: `Dirección ${i}` });
+      expect(r.status).toBe(201);
+    }
+    const once = await t.http
+      .post(`/api/v1/clients/${clienteId}/direcciones`)
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ direccion: 'La onceava no entra' });
+    expect(once.status).toBe(400);
+    expect(once.body.message).toContain('10');
+  });
+
   it('M15: la lectura del detalle de cliente queda auditada (LECTURA); el listado no', async () => {
     const antes = await t.dataSource.query(
       `SELECT count(*)::int AS n FROM audit_logs WHERE accion='LECTURA'`,

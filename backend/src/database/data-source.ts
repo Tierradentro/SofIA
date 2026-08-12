@@ -9,6 +9,7 @@ import { Carrier } from '../modules/carriers/entities/carrier.entity';
 import { ApiKey } from '../modules/api-keys/entities/api-key.entity';
 import { Document } from '../modules/documents/entities/document.entity';
 import { Client } from '../modules/clients/entities/client.entity';
+import { ClientAddress } from '../modules/clients/entities/client-address.entity';
 import { Comercial } from '../modules/comerciales/entities/comercial.entity';
 import { Product } from '../modules/products/entities/product.entity';
 import { ProductBarcode } from '../modules/products/entities/product-barcode.entity';
@@ -43,6 +44,7 @@ import { InventoriesI101753000009000 } from './migrations/1753000009000-inventor
 import { SeguridadI131753000010000 } from './migrations/1753000010000-seguridad-i13';
 import { DespachoGlobalI131753000011000 } from './migrations/1753000011000-despacho-global-i13';
 import { ApiExternaI131753000012000 } from './migrations/1753000012000-api-externa-i13';
+import { DireccionesI151753000013000 } from './migrations/1753000013000-direcciones-i15';
 
 export function buildDataSourceOptions(): DataSourceOptions {
   const isTest = process.env.NODE_ENV === 'test';
@@ -63,6 +65,7 @@ export function buildDataSourceOptions(): DataSourceOptions {
       ApiKey,
       Document,
       Client,
+      ClientAddress,
       Comercial,
       Product,
       ProductBarcode,
@@ -100,6 +103,7 @@ export function buildDataSourceOptions(): DataSourceOptions {
       SeguridadI131753000010000,
       DespachoGlobalI131753000011000,
       ApiExternaI131753000012000,
+      DireccionesI151753000013000,
     ],
     synchronize: false,
     logging: false,

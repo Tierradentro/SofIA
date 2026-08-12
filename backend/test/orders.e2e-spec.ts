@@ -182,6 +182,45 @@ describe('Pedidos y alistamiento (e2e)', () => {
     expect(sinDisp.body.message).toContain('Sin disponibilidad');
   });
 
+  it('QA Func. 4.1: el pedido escoge la dirección del despacho (principal por defecto, foto al crear)', async () => {
+    // El cliente quedó con su dirección principal migrada del alta
+    const direcciones = await t.http
+      .get(`/api/v1/clients/${clienteId}/direcciones`)
+      .set('Authorization', `Bearer ${generadorToken}`);
+    expect(direcciones.status).toBe(200);
+    const principal = direcciones.body.find((d: any) => d.esPrincipal);
+    expect(principal.direccion).toBe('Calle 1 # 2-3');
+
+    // Sin selección: toma la principal
+    const pDefecto = await crearPedido([{ referencia: 'ORD-001', cantidad: 1 }]);
+    expect(pDefecto.status).toBe(201);
+    expect(pDefecto.body.direccionDespacho).toBe('Calle 1 # 2-3');
+
+    // Con selección explícita: toma la elegida
+    const otra = await t.http
+      .post(`/api/v1/clients/${clienteId}/direcciones`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ direccion: 'Bodega Sur Km 4', ciudad: 'Soacha' });
+    expect(otra.status).toBe(201);
+    const pElegida = await crearPedido([{ referencia: 'ORD-001', cantidad: 1 }], generadorToken, { direccionId: otra.body.id });
+    expect(pElegida.status).toBe(201);
+    expect(pElegida.body.direccionDespacho).toBe('Bodega Sur Km 4');
+
+    // Una dirección de otro cliente → 400
+    const cli2 = await t.http
+      .post('/api/v1/clients')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'Cliente Ajeno', direccion: 'Av 9 # 9-9' });
+    const dirAjena = await t.http
+      .get(`/api/v1/clients/${cli2.body.id}/direcciones`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const pAjena = await crearPedido([{ referencia: 'ORD-001', cantidad: 1 }], generadorToken, {
+      direccionId: dirAjena.body[0].id,
+    });
+    expect(pAjena.status).toBe(400);
+    expect(pAjena.body.message).toContain('no pertenece al cliente');
+  });
+
   it('HU-029/030: alistamiento modo COMPLETO con bloqueo por lectura y excedentes', async () => {
     const pedido = await crearPedido([{ referencia: 'ORD-001', cantidad: 2 }]);
     const id = pedido.body.id;

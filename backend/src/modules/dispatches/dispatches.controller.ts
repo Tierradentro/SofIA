@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Patch,
   Param,
   ParseUUIDPipe,
   Post,
@@ -163,6 +164,17 @@ export class DispatchesController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.dispatches.cancel(id, dto, user);
+  }
+
+  /** QA Func. 4.1: ajustar la dirección de entrega del despacho. */
+  @Patch(':id/direccion')
+  @Roles(Role.GENERADOR, Role.ADMINISTRADOR)
+  updateDireccion(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body('direccion') direccion: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.dispatches.updateDireccion(id, direccion, user);
   }
 
   /** HU-054: consulta con filtros por cliente, empresa, fecha, documento, caja y guía. */

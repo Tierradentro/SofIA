@@ -239,6 +239,43 @@ describe('Despachos y cajas (e2e)', () => {
     (global as any).__dispatch1 = res.body;
   });
 
+  it('QA Func. 4.1/4.3: el despacho hereda la dirección del pedido, la ajusta y lista empresas como etiqueta', async () => {
+    // Reutiliza DES-000001 (creado en el test anterior) para no consumir
+    // otro consecutivo de la serie global (los tests siguientes la verifican)
+    const dispatch1 = (global as any).__dispatch1;
+    // Heredó la dirección principal del cliente (migrada del alta)
+    expect(dispatch1.direccionDespacho).toBe('Av 1 # 2-3');
+
+    // El Generador ajusta la dirección en el despacho (estado CREADO)
+    const ajuste = await t.http
+      .patch(`/api/v1/dispatches/${dispatch1.id}/direccion`)
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ direccion: 'Bodega Occidente Bod 12' });
+    expect(ajuste.status).toBe(200);
+    expect(ajuste.body.direccionDespacho).toBe('Bodega Occidente Bod 12');
+
+    // Queda auditado
+    const logs = await t.dataSource.query(
+      `SELECT accion FROM audit_logs WHERE accion='AJUSTAR_DIRECCION' AND registro_id=$1`,
+      [dispatch1.id],
+    );
+    expect(logs.length).toBe(1);
+
+    // RBAC: Operador no ajusta direcciones
+    const porOperador = await t.http
+      .patch(`/api/v1/dispatches/${dispatch1.id}/direccion`)
+      .set('Authorization', `Bearer ${operadorToken}`)
+      .send({ direccion: 'No debe quedar' });
+    expect(porOperador.status).toBe(403);
+
+    // QA Func. 4.3: el listado trae las empresas como etiqueta
+    const lista = await t.http
+      .get('/api/v1/dispatches')
+      .set('Authorization', `Bearer ${generadorToken}`);
+    const fila1 = lista.body.find((d: any) => d.id === dispatch1.id);
+    expect(fila1.empresas).toEqual(['IRE']);
+  });
+
   it('HU-034: asocia pedido ICV del mismo cliente (multiempresa); rechaza otro cliente', async () => {
     const d1 = (global as any).__dispatch1;
     const pedidoIcv = await crearPedidoAprobado(icvId, [

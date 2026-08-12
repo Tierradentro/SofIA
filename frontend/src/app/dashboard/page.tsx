@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
 import { api, cerrarSesionLocal, obtenerSesion, Sesion } from '@/lib/api';
+import { LogoSofia } from '@/components/logo';
 
 interface Empresa {
   id: string;
@@ -95,7 +95,7 @@ export default function DashboardPage() {
     <main className="min-h-screen">
       <header className="flex items-center justify-between bg-sofia-900 px-6 py-3 text-white">
         <div className="flex items-center gap-3">
-          <Image src="/logo-sofia.png" alt="SofIA" width={40} height={40} />
+          <LogoSofia width={40} height={40} />
           <span className="font-semibold">SofIA Logística Inteligente</span>
         </div>
         <div className="flex items-center gap-4 text-sm">
