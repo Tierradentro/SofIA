@@ -1,14 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
-import { NuevoPedido } from './nuevo';
+
 
 interface Empresa { id: string; nombre: string; siglas: string }
-interface Cliente { id: string; nombre: string; identificacion: string | null; ciudad: string | null }
-interface Comercial { id: string; nombre: string }
-interface Producto { id: string; codigo: string; descripcion: string; precio: string; cantidad: number; cantidadBloqueada: number }
 
 interface OrderItem {
   id: string;
@@ -61,15 +58,12 @@ export default function PedidosPage() {
   const [sesion, setSesion] = useState<Sesion | null>(null);
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
   const [empresaId, setEmpresaId] = useState('');
-  const [clientes, setClientes] = useState<Cliente[]>([]);
-  const [comerciales, setComerciales] = useState<Comercial[]>([]);
-  const [productos, setProductos] = useState<Producto[]>([]);
   const [lista, setLista] = useState<Pedido[]>([]);
+  // QA Func. 3.1: pestañas principales (ciclo activo) + "Otros estados" secundario
+  const [pestana, setPestana] = useState<'ABIERTO' | 'ALISTADO' | 'APROBADO' | 'OTROS'>('ABIERTO');
   const [filtroEstado, setFiltroEstado] = useState('');
   const [pedido, setPedido] = useState<Pedido | null>(null);
 
-  // Creación
-  const [mostrarCrear, setMostrarCrear] = useState(false);
   const [itemsNuevos, setItemsNuevos] = useState<{ referencia: string; cantidad: string; valorUnidad: string }[]>([
     { referencia: '', cantidad: '1', valorUnidad: '' },
   ]);
@@ -92,25 +86,19 @@ export default function PedidosPage() {
   const esOperador = rol === 'OPERADOR' || rol === 'ADMINISTRADOR';
   const puedeCrear = esGenerador || esOperador || rol === 'COMERCIAL';
 
+  const searchParams = useSearchParams();
+
   useEffect(() => {
     const s = obtenerSesion();
     if (!s) return router.replace('/login');
     if (s.usuario.rol === 'API') return router.replace('/dashboard');
     setSesion(s);
+    const abrirId = searchParams.get('abrir');
+    if (abrirId) abrir(abrirId);
     api<Empresa[]>('/companies').then(({ status, body }) => {
       if (status === 200 && body.length) {
         setEmpresas(body);
         setEmpresaId(body[0].id);
-      }
-    });
-    api<Cliente[]>('/clients').then(({ status, body }) => {
-      if (status === 200) {
-        setClientes(body);
-      }
-    });
-    api<Comercial[]>('/comerciales').then(({ status, body }) => {
-      if (status === 200) {
-        setComerciales(body);
       }
     });
   }, [router]);
@@ -118,15 +106,15 @@ export default function PedidosPage() {
   useEffect(() => {
     if (empresaId) {
       cargarLista();
-      api<Producto[]>(`/products?empresaId=${empresaId}`).then(({ status, body }) => {
-        if (status === 200) setProductos(body);
-      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [empresaId, filtroEstado]);
+  }, [empresaId, pestana, filtroEstado]);
 
   async function cargarLista() {
-    const q = filtroEstado ? `&estado=${filtroEstado}` : '';
+    let estado = '';
+    if (pestana !== 'OTROS') estado = pestana;
+    else if (filtroEstado) estado = filtroEstado;
+    const q = estado ? `&estado=${estado}` : '';
     const { status, body } = await api<Pedido[]>(`/orders?empresaId=${empresaId}${q}`);
     if (status === 200) setLista(body);
   }
@@ -165,7 +153,7 @@ export default function PedidosPage() {
       body: fd,
     });
     const body = await res.json();
-    if (res.status !== 201) throw new Error(body.message ?? 'Falló el OCR');
+    if (res.status !== 201) throw new Error(mensajeError(body, 'Falló el OCR'));
     return body.id;
   }
 
@@ -276,38 +264,39 @@ export default function PedidosPage() {
                   <option key={e.id} value={e.id}>{e.siglas} — {e.nombre}</option>
                 ))}
               </select>
-              <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)} className="rounded border px-2 py-1 text-sm">
-                <option value="">Todos los estados</option>
-                {Object.entries(ESTADOS).map(([v, l]) => (
-                  <option key={v} value={v}>{l}</option>
+              {/* QA Func. 3.1: secciones por estado (ciclo activo) + "Otros" */}
+              <div className="flex rounded border text-sm">
+                {(['ABIERTO', 'ALISTADO', 'APROBADO'] as const).map((v) => (
+                  <button
+                    key={v}
+                    onClick={() => setPestana(v)}
+                    className={`px-3 py-1 ${pestana === v ? 'bg-sofia-600 text-white' : 'bg-white hover:bg-slate-50'}`}
+                  >
+                    {ESTADOS[v]}s
+                  </button>
                 ))}
-              </select>
+                <button
+                  onClick={() => setPestana('OTROS')}
+                  className={`px-3 py-1 ${pestana === 'OTROS' ? 'bg-sofia-600 text-white' : 'bg-white hover:bg-slate-50'}`}
+                >
+                  Otros estados
+                </button>
+              </div>
+              {pestana === 'OTROS' && (
+                <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)} className="rounded border px-2 py-1 text-sm">
+                  <option value="">Todos (otros)</option>
+                  <option value="PENDIENTE_CORRECCION">Pendiente corrección</option>
+                  <option value="CANCELADO">Cancelado</option>
+                </select>
+              )}
             </div>
             {puedeCrear && (
-              <button onClick={() => setMostrarCrear(!mostrarCrear)} className="rounded bg-sofia-600 px-3 py-1.5 text-sm text-white hover:bg-sofia-700">
-                {mostrarCrear ? 'Cancelar' : '+ Nuevo pedido'}
+              <button onClick={() => router.push('/pedidos/nuevo')} className="rounded bg-sofia-600 px-3 py-1.5 text-sm text-white hover:bg-sofia-700">
+                + Nuevo pedido
               </button>
             )}
           </div>
 
-          {/* QA Func. 3.2/3.3: creación en formato Orden de Pedido con las
-              3 vías (manual, OCR con revisión previa, Excel) unificadas. */}
-          {mostrarCrear && (
-            <NuevoPedido
-              empresaId={empresaId}
-              clientes={clientes as any}
-              comerciales={comerciales}
-              productos={productos}
-              rol={rol ?? ''}
-              onCreado={(id, numero, origen) => {
-                setMensaje(`Pedido ${numero} creado (${origen}) en estado Abierto.`);
-                setMostrarCrear(false);
-                cargarLista();
-                abrir(id);
-              }}
-              onCancelar={() => setMostrarCrear(false)}
-            />
-          )}
 
           <table className="w-full text-sm">
             <thead>

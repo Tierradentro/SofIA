@@ -22,7 +22,7 @@ export function resolverFacturaCaso(params: {
   }
   if (!params.observacion?.trim()) {
     throw new BadRequestException(
-      'Sin factura ni pedido asociado, la observación de la factura es obligatoria (CU-007)',
+      'Sin factura ni pedido asociado, la observación de la factura es obligatoria',
     );
   }
   return { factura: null, facturaManual: false };

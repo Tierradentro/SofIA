@@ -622,7 +622,7 @@ describe('Despachos y cajas (e2e)', () => {
       .set('Authorization', `Bearer ${generadorToken}`)
       .send({ tipo: 'INTERNA', nombreTransporte: 'Flota Propia' });
     expect(sinAprob.status).toBe(400);
-    expect(sinAprob.body.message).toContain('HU-041');
+    expect(sinAprob.body.message).toContain('requiere aprobación del Generador');
 
     // Aprobación sin motivo → 400 (validación)
     const sinMotivo = await t.http

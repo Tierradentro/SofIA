@@ -102,7 +102,8 @@ export default function ImportacionesPage() {
   useEffect(() => {
     const s = obtenerSesion();
     if (!s) return router.replace('/login');
-    if (!['GENERADOR', 'ADMINISTRADOR'].includes(s.usuario.rol)) {
+    // QA Func. 3.4: solo Administrador (menú y URL directa)
+    if (s.usuario.rol !== 'ADMINISTRADOR') {
       return router.replace('/dashboard');
     }
     setSesion(s);

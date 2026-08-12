@@ -95,7 +95,7 @@ export class OcrLlmStrategy {
       // CU-009 (falla LLM): error explícito para que el admin cambie a OCR local
       throw new ServiceUnavailableException(
         `El proveedor LLM (${provider.nombre}) no respondió: ${e.message}. ` +
-          'Puede cambiar el motor activo a OCR_LOCAL como contingencia (M13).',
+          'Puede cambiar el motor activo a OCR_LOCAL como contingencia.',
       );
     }
 

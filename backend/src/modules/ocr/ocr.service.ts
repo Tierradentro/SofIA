@@ -74,14 +74,14 @@ export class OcrService {
       const activo = await this.providers.getActive();
       if (!activo) {
         throw new BadRequestException(
-          'No hay un proveedor LLM activo; configure y active uno antes de seleccionar OCR_LLM (HU-019)',
+          'No hay un proveedor LLM activo; configure y active uno antes de seleccionar OCR_LLM',
         );
       }
     }
     await this.params.update(
       PARAM_KEYS.OCR_ACTIVE_ENGINE,
       { engine },
-      motivo ?? 'Selección de motor OCR activo (HU-020)',
+      motivo ?? 'Selección de motor OCR activo',
       admin,
       this.audit,
     );
@@ -100,7 +100,7 @@ export class OcrService {
     const provider = await this.providers.getActive();
     if (!provider) {
       throw new BadRequestException(
-        'El motor activo es OCR_LLM pero no hay proveedor activo (M13)',
+        'El motor activo es OCR_LLM pero no hay proveedor activo',
       );
     }
     // C-4: la clave se descifra solo en memoria, al construir la petición LLM
@@ -246,12 +246,12 @@ export class OcrService {
     const ocrDoc = await this.findOne(id);
     if (PERMANENT_DOCUMENT_TYPES.includes(ocrDoc.tipoDocumento)) {
       throw new BadRequestException(
-        `Los documentos ${ocrDoc.tipoDocumento} son permanentes (soporte de aprobación) y no se eliminan (M13)`,
+        `Los documentos ${ocrDoc.tipoDocumento} son permanentes (soporte de aprobación) y no se eliminan`,
       );
     }
     if (ocrDoc.estado !== OcrDocumentStatus.CONFIRMADO) {
       throw new BadRequestException(
-        'Un documento temporal solo puede eliminarse una vez confirmada la extracción (M13)',
+        'Un documento temporal solo puede eliminarse una vez confirmada la extracción',
       );
     }
     const doc = ocrDoc.document;

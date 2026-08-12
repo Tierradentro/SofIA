@@ -74,13 +74,16 @@ export default function DespachosPage() {
   const [sesion, setSesion] = useState<Sesion | null>(null);
   const [lista, setLista] = useState<Despacho[]>([]);
   const [filtroEstado, setFiltroEstado] = useState('');
-  // HU-054: filtros por fecha, documento, caja y guía
-  // (QA Func. 4.3: ya no se filtra por empresa; las empresas son una etiqueta)
+  // HU-054: filtros por empresa, fecha, documento, caja y guía
+  // (QA Func. 4.3: label aclarado para que no se lea como atributo del despacho;
+  // las empresas también se muestran como etiqueta en cada fila)
+  const [filtroEmpresa, setFiltroEmpresa] = useState('');
   const [filtroDesde, setFiltroDesde] = useState('');
   const [filtroHasta, setFiltroHasta] = useState('');
   const [filtroDocumento, setFiltroDocumento] = useState('');
   const [filtroBox, setFiltroBox] = useState('');
   const [filtroGuia, setFiltroGuia] = useState('');
+  const [empresasFiltro, setEmpresasFiltro] = useState<{ id: string; nombre: string }[]>([]);
   const [despacho, setDespacho] = useState<Despacho | null>(null);
 
   // Creación / asociación
@@ -132,6 +135,9 @@ export default function DespachosPage() {
     api<Carrier[]>('/carriers/activas').then(({ status, body }) => {
       if (status === 200) setCarriers(body);
     });
+    api<{ id: string; nombre: string }[]>('/companies').then(({ status, body }) => {
+      if (status === 200) setEmpresasFiltro(body);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -143,6 +149,7 @@ export default function DespachosPage() {
   async function cargarLista() {
     const params = new URLSearchParams();
     if (filtroEstado) params.set('estado', filtroEstado);
+    if (filtroEmpresa) params.set('empresaId', filtroEmpresa);
     if (filtroDesde) params.set('fechaDesde', filtroDesde);
     if (filtroHasta) params.set('fechaHasta', filtroHasta);
     if (filtroDocumento.trim()) params.set('documento', filtroDocumento.trim());
@@ -606,6 +613,10 @@ export default function DespachosPage() {
         <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)} className="rounded border px-2 py-1">
           <option value="">Estado</option>
           {Object.entries(ESTADOS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+        <select value={filtroEmpresa} onChange={(e) => setFiltroEmpresa(e.target.value)} className="rounded border px-2 py-1" title="Empresa de los pedidos incluidos en el despacho">
+          <option value="">Empresa (pedidos incluidos)</option>
+          {empresasFiltro.map((e) => <option key={e.id} value={e.id}>{e.nombre}</option>)}
         </select>
         <input type="date" value={filtroDesde} onChange={(e) => setFiltroDesde(e.target.value)} className="rounded border px-2 py-1" title="Desde" />
         <input type="date" value={filtroHasta} onChange={(e) => setFiltroHasta(e.target.value)} className="rounded border px-2 py-1" title="Hasta" />

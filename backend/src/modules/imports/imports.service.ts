@@ -159,7 +159,7 @@ export class ImportsService {
     }
     if (job.tipo === ImportType.CANTIDADES && user.rol !== 'ADMINISTRADOR') {
       throw new BadRequestException(
-        'La importación de cantidades requiere aprobación del Administrador (M18)',
+        'La importación de cantidades requiere aprobación del Administrador',
       );
     }
     const filas = (job.resumen as any)?.filasValidas as FilaValidada[];

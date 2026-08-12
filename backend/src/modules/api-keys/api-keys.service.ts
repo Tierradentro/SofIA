@@ -49,7 +49,7 @@ export class ApiKeysService {
     if (!user) throw new NotFoundException('Usuario no encontrado');
     if (user.rol !== Role.API) {
       throw new BadRequestException(
-        'Las API keys solo pueden asociarse a un usuario con rol API (M14/M17)',
+        'Las API keys solo pueden asociarse a un usuario con rol API',
       );
     }
     const rawKey = `sk_${randomBytes(24).toString('hex')}`; // 51 chars

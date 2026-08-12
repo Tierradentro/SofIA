@@ -56,7 +56,7 @@ export default function UsuariosPage() {
       cargar();
     } else {
       const detalle = Array.isArray(body.detalles) ? `: ${body.detalles.join(', ')}` : '';
-      setError((body.message || 'No se pudo crear el usuario') + detalle);
+      setError(mensajeError(body, 'No se pudo crear el usuario') + detalle);
     }
   }
 

@@ -98,7 +98,7 @@ export class OrdersService {
         ocrDoc.tipoDocumento !== DocumentType.COTIZACION
       ) {
         throw new BadRequestException(
-          'El documento OCR debe ser ORDEN_PEDIDO o COTIZACION (HU-028)',
+          'El documento OCR debe ser ORDEN_PEDIDO o COTIZACION',
         );
       }
       const d = ocrDoc.datosExtraidos as any;
@@ -767,14 +767,14 @@ export class OrdersService {
     if (user.rol === Role.COMERCIAL) {
       if (!user.comercialId) {
         throw new BadRequestException(
-          'El usuario Comercial no tiene un comercial asociado (M06)',
+          'El usuario Comercial no tiene un comercial asociado',
         );
       }
       return user.comercialId;
     }
     if (!dto.comercialId) {
       throw new BadRequestException(
-        'Debe indicar el comercial del pedido (M08: lo ingresa quien crea el pedido)',
+        'Debe indicar el comercial del pedido',
       );
     }
     return dto.comercialId;

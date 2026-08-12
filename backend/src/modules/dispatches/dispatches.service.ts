@@ -176,7 +176,7 @@ export class DispatchesService {
       if (order.clienteId !== dispatch.clienteId) {
         // M-3: conflicto de regla de negocio → 409 (no 400)
         throw new ConflictException(
-          `El pedido ${order.numero} es de otro cliente; el despacho consolida pedidos del mismo cliente (HU-034)`,
+          `El pedido ${order.numero} es de otro cliente; el despacho consolida pedidos del mismo cliente`,
         );
       }
       const ya = await linksRepo.findOne({ where: { dispatchId: id, orderId } });
@@ -747,7 +747,7 @@ export class DispatchesService {
     }
     if (dispatch.estado === DispatchStatus.PARCIAL && !dispatch.parcialAprobadoAt) {
       throw new BadRequestException(
-        'El despacho parcial requiere aprobación del Generador con motivo (HU-041)',
+        'El despacho parcial requiere aprobación del Generador con motivo',
       );
     }
     if (

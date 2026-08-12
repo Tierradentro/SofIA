@@ -63,7 +63,7 @@ export class InventoriesService {
       if (!p) throw new NotFoundException(`Producto ${pid} no encontrado`);
       if (p.empresaId !== dto.empresaId) {
         throw new BadRequestException(
-          `El producto ${p.codigo} no pertenece a ${empresa.nombre}: un inventario nunca mezcla empresas (HU-048/CU-008)`,
+          `El producto ${p.codigo} no pertenece a ${empresa.nombre}: un inventario nunca mezcla empresas`,
         );
       }
       productos.push(p);
