@@ -43,14 +43,29 @@ export class ImportParserService {
         'El archivo debe tener una fila de encabezados y al menos una fila de datos',
       );
     }
-    const columnas = matriz[0].map((c) => String(c).trim()).filter((c) => c !== '');
+    // Encabezados literales conservando el ÍNDICE original (QA Func. 1.2):
+    // filtrar las celdas vacías sin conservar su posición desplazaba todas
+    // las columnas siguientes. Los duplicados se sufijan " (2)", " (3)"…
+    const encabezados = matriz[0].map((c) => String(c).trim());
+    const vistos = new Map<string, number>();
+    const columnasConIndice: { nombre: string; indice: number }[] = [];
+    encabezados.forEach((nombre, indice) => {
+      if (nombre === '') return; // columna sin encabezado: no mapeable
+      const n = (vistos.get(nombre) ?? 0) + 1;
+      vistos.set(nombre, n);
+      columnasConIndice.push({
+        nombre: n > 1 ? `${nombre} (${n})` : nombre,
+        indice,
+      });
+    });
+    const columnas = columnasConIndice.map((c) => c.nombre);
     const filas: ParsedRow[] = matriz
       .slice(1)
       .filter((fila) => fila.some((c) => String(c).trim() !== ''))
       .map((fila) => {
         const row: ParsedRow = {};
-        columnas.forEach((col, i) => {
-          row[col] = String(fila[i] ?? '').trim();
+        columnasConIndice.forEach(({ nombre, indice }) => {
+          row[nombre] = String(fila[indice] ?? '').trim();
         });
         return row;
       });

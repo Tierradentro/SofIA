@@ -69,7 +69,7 @@ export class InboundService {
       if (!ocrDoc) throw new NotFoundException('Documento OCR no encontrado');
       if (ocrDoc.tipoDocumento !== DocumentType.FACTURA_IMPORTACION) {
         throw new BadRequestException(
-          'El documento OCR debe ser de tipo FACTURA_IMPORTACION (HU-022)',
+          'El documento OCR debe ser de tipo FACTURA_IMPORTACION',
         );
       }
       ocrDocumentId = ocrDoc.id;
@@ -325,7 +325,7 @@ export class InboundService {
     }
     if (!receipt.cajaPrincipal) {
       throw new BadRequestException(
-        'Debe registrar la caja principal o contenedor antes de aprobar (HU-023)',
+        'Debe registrar la caja principal o contenedor antes de aprobar',
       );
     }
     if (!receipt.conteoCerrado) {
@@ -340,7 +340,7 @@ export class InboundService {
     ).length;
     if (conNovedad > 0 && !dto.observacion?.trim()) {
       throw new BadRequestException(
-        'La observación es obligatoria para aprobar un ingreso con diferencias o productos nuevos (HU-026)',
+        'La observación es obligatoria para aprobar un ingreso con diferencias o productos nuevos',
       );
     }
 
@@ -510,7 +510,7 @@ export class InboundService {
         cantidadBloqueada: 0,
         precio: 0,
         estado: ProductStatus.ACTIVO,
-        observaciones: `Creado automáticamente por ingreso ${receipt.numeroFactura ?? receipt.id}. Completar atributos (CU-001).`,
+        observaciones: `Creado automáticamente por ingreso ${receipt.numeroFactura ?? receipt.id}. Completar atributos.`,
       }),
     );
     // Auditoría con la MISMA conexión de la transacción (pool max=1 en test)

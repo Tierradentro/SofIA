@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, obtenerSesion } from '@/lib/api';
+import { api, obtenerSesion, mensajeError } from '@/lib/api';
 
 interface Param {
   clave: string;
@@ -68,7 +68,7 @@ export default function ParametrosPage() {
       setEditando(null);
       cargar();
     } else {
-      setError(body.message || 'No se pudo actualizar');
+      setError(mensajeError(body, 'No se pudo actualizar'));
     }
   }
 

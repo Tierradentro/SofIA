@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, obtenerSesion, Sesion } from '@/lib/api';
+import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 
 interface Empresa {
   id: string;
@@ -204,7 +204,7 @@ export default function IngresosPage() {
       if (ingreso) abrir(ingreso.id);
       cargarLista();
     } else {
-      setError(body.message ?? 'La acción falló');
+      setError(mensajeError(body, 'La acción falló'));
     }
   }
 
@@ -218,7 +218,7 @@ export default function IngresosPage() {
         { method: 'PUT', body: JSON.stringify({ cantidadRecibida: Number(cantidades[it.id]) || 0 }) },
       );
       if (status !== 200) {
-        setError((body as { message?: string }).message ?? 'Error al registrar cantidad');
+        setError(mensajeError(body, 'Error al registrar cantidad'));
         setCargando(false);
         return;
       }
@@ -284,7 +284,7 @@ export default function IngresosPage() {
 
           {mostrarCrear && (
             <form onSubmit={crear} className="mb-4 rounded bg-slate-50 p-4">
-              <p className="mb-2 text-sm font-medium">Cargar factura de importación (HU-022)</p>
+              <p className="mb-2 text-sm font-medium">Cargar factura de importación</p>
               <div className="mb-3 flex flex-wrap items-end gap-3">
                 <label className="text-sm">
                   Factura (PDF o imagen, se procesa por OCR)
@@ -439,7 +439,7 @@ export default function IngresosPage() {
             {ingreso.estado === 'PENDIENTE_CORRECCION' && (
               <p className="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-800">
                 Hay diferencias o productos nuevos: el cierre definitivo está bloqueado y requiere
-                aprobación del Generador con observación (HU-025/026).
+                aprobación del Generador con observación.
               </p>
             )}
 
@@ -457,7 +457,7 @@ export default function IngresosPage() {
             {esOperador && enRecepcion && (
               <div className="mb-3 flex flex-wrap items-center gap-2 rounded bg-slate-50 p-3">
                 <label className="text-sm font-medium">
-                  Caja principal / contenedor (HU-023)
+                  Caja principal / contenedor
                   <input
                     type="text"
                     value={caja}

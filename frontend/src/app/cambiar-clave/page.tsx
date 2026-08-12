@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, obtenerSesion, guardarSesion } from '@/lib/api';
+import { api, obtenerSesion, guardarSesion, mensajeError } from '@/lib/api';
 
 /** HU-003 / M02: cambio de clave (obligatorio en primer login o tras reseteo). */
 export default function CambiarClavePage() {
@@ -31,7 +31,7 @@ export default function CambiarClavePage() {
       setTimeout(() => router.replace('/dashboard'), 800);
     } else {
       const detalle = Array.isArray(body.detalles) ? `: ${body.detalles.join(', ')}` : '';
-      setError((body.message || 'No se pudo cambiar la contraseña') + detalle);
+      setError(mensajeError(body, 'No se pudo cambiar la contraseña') + detalle);
     }
   }
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, obtenerSesion, Sesion } from '@/lib/api';
+import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 
 interface Cliente {
   id: string;
@@ -15,6 +15,14 @@ interface Cliente {
 
 const VACIO = { nombre: '', identificacion: '', direccion: '', telefonos: '', ciudad: '' };
 
+/** QA Func. 4.1: dirección de despacho del cliente (máx. 10, una principal). */
+interface Direccion {
+  id: string;
+  direccion: string;
+  ciudad: string | null;
+  esPrincipal: boolean;
+}
+
 /** M04: clientes (catálogo global). Crear/editar: Generador y Administrador. */
 export default function ClientesPage() {
   const router = useRouter();
@@ -23,6 +31,10 @@ export default function ClientesPage() {
   const [q, setQ] = useState('');
   const [form, setForm] = useState(VACIO);
   const [editando, setEditando] = useState<string | null>(null);
+  // QA Func. 4.1: panel de direcciones del cliente seleccionado
+  const [clienteDirecciones, setClienteDirecciones] = useState<Cliente | null>(null);
+  const [direcciones, setDirecciones] = useState<Direccion[]>([]);
+  const [nuevaDireccion, setNuevaDireccion] = useState({ direccion: '', ciudad: '' });
   const [error, setError] = useState('');
   const [mensaje, setMensaje] = useState('');
 
@@ -54,8 +66,56 @@ export default function ClientesPage() {
       setEditando(null);
       cargar();
     } else {
-      setError(body.message || 'No se pudo guardar');
+      setError(mensajeError(body, 'No se pudo guardar'));
     }
+  }
+
+  async function abrirDirecciones(c: Cliente) {
+    setClienteDirecciones(c);
+    setError('');
+    setMensaje('');
+    const { status, body } = await api<Direccion[]>(`/clients/${c.id}/direcciones`);
+    if (status === 200) setDirecciones(body);
+  }
+
+  async function agregarDireccion(e: React.FormEvent) {
+    e.preventDefault();
+    if (!clienteDirecciones) return;
+    setError('');
+    const { status, body } = await api(`/clients/${clienteDirecciones.id}/direcciones`, {
+      method: 'POST',
+      body: JSON.stringify({
+        direccion: nuevaDireccion.direccion,
+        ciudad: nuevaDireccion.ciudad || undefined,
+      }),
+    });
+    if (status === 201) {
+      setNuevaDireccion({ direccion: '', ciudad: '' });
+      abrirDirecciones(clienteDirecciones);
+      setMensaje('Dirección agregada');
+    } else {
+      setError(mensajeError(body, 'No se pudo agregar la dirección'));
+    }
+  }
+
+  async function marcarPrincipal(d: Direccion) {
+    if (!clienteDirecciones) return;
+    const { status, body } = await api(
+      `/clients/${clienteDirecciones.id}/direcciones/${d.id}`,
+      { method: 'PATCH', body: JSON.stringify({ esPrincipal: true }) },
+    );
+    if (status === 200) abrirDirecciones(clienteDirecciones);
+    else setError(mensajeError(body, 'No se pudo marcar como principal'));
+  }
+
+  async function eliminarDireccion(d: Direccion) {
+    if (!clienteDirecciones) return;
+    const { status, body } = await api(
+      `/clients/${clienteDirecciones.id}/direcciones/${d.id}/eliminar`,
+      { method: 'POST' },
+    );
+    if (status === 200 || status === 201) abrirDirecciones(clienteDirecciones);
+    else setError(mensajeError(body, 'No se pudo eliminar'));
   }
 
   if (!sesion) return null;
@@ -106,6 +166,70 @@ export default function ClientesPage() {
         </form>
       )}
 
+      {/* QA Func. 4.1: direcciones de despacho del cliente (máx. 10) */}
+      {clienteDirecciones && puedeEditar && (
+        <section className="mb-6 max-w-3xl rounded-lg bg-white p-5 shadow">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-semibold">
+              Direcciones de {clienteDirecciones.nombre} ({direcciones.length}/10)
+            </h2>
+            <button onClick={() => setClienteDirecciones(null)} className="text-sm text-slate-500">
+              Cerrar
+            </button>
+          </div>
+          <ul className="mb-4 space-y-2 text-sm">
+            {direcciones.map((d) => (
+              <li key={d.id} className="flex items-center justify-between rounded border px-3 py-2">
+                <span>
+                  {d.direccion}
+                  {d.ciudad ? ` — ${d.ciudad}` : ''}
+                  {d.esPrincipal && (
+                    <span className="ml-2 rounded bg-sofia-100 px-1.5 py-0.5 text-xs font-medium text-sofia-800">
+                      Principal
+                    </span>
+                  )}
+                </span>
+                <span className="flex gap-2">
+                  {!d.esPrincipal && (
+                    <>
+                      <button onClick={() => marcarPrincipal(d)} className="text-sofia-700 hover:underline">
+                        Marcar principal
+                      </button>
+                      <button onClick={() => eliminarDireccion(d)} className="text-red-700 hover:underline">
+                        Eliminar
+                      </button>
+                    </>
+                  )}
+                </span>
+              </li>
+            ))}
+            {!direcciones.length && (
+              <li className="text-slate-500">Este cliente aún no tiene direcciones registradas.</li>
+            )}
+          </ul>
+          {direcciones.length < 10 && (
+            <form onSubmit={agregarDireccion} className="flex gap-2">
+              <input
+                placeholder="Nueva dirección *"
+                className="flex-1 rounded border px-3 py-2"
+                value={nuevaDireccion.direccion}
+                onChange={(e) => setNuevaDireccion({ ...nuevaDireccion, direccion: e.target.value })}
+                maxLength={250}
+                required
+              />
+              <input
+                placeholder="Ciudad"
+                className="w-40 rounded border px-3 py-2"
+                value={nuevaDireccion.ciudad}
+                onChange={(e) => setNuevaDireccion({ ...nuevaDireccion, ciudad: e.target.value })}
+                maxLength={120}
+              />
+              <button className="rounded bg-sofia-600 px-4 py-2 text-white">Agregar</button>
+            </form>
+          )}
+        </section>
+      )}
+
       <table className="w-full max-w-4xl rounded-lg bg-white text-sm shadow">
         <thead>
           <tr className="border-b text-left">
@@ -139,6 +263,12 @@ export default function ClientesPage() {
                     className="rounded bg-sofia-100 px-2 py-1 text-sofia-700"
                   >
                     Editar
+                  </button>
+                  <button
+                    onClick={() => abrirDirecciones(c)}
+                    className="ml-2 rounded bg-slate-100 px-2 py-1 text-slate-700"
+                  >
+                    Direcciones
                   </button>
                 </td>
               )}

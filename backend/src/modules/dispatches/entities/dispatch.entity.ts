@@ -102,6 +102,10 @@ export class Dispatch {
   @Column({ name: 'fecha_salida', type: 'timestamptz', nullable: true })
   fechaSalida: Date | null;
 
+  /** QA Func. 4.1: dirección de entrega (heredada del pedido, ajustable aquí). */
+  @Column({ name: 'direccion_despacho', length: 250, nullable: true })
+  direccionDespacho: string | null;
+
   /** D-06/HU-042: despacho adicional creado para completar un parcial. */
   @Column({ name: 'despacho_origen_id', type: 'uuid', nullable: true })
   despachoOrigenId: string | null;

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, obtenerSesion } from '@/lib/api';
+import { api, obtenerSesion, mensajeError } from '@/lib/api';
 
 interface ApiKeyItem {
   id: string;
@@ -60,7 +60,7 @@ export default function ApiKeysPage() {
       setForm({ userId: '', nombre: '' });
       cargar();
     } else {
-      setError(body.message || 'No se pudo crear la API key');
+      setError(mensajeError(body, 'No se pudo crear la API key'));
     }
   }
 
@@ -88,7 +88,7 @@ export default function ApiKeysPage() {
       {usuariosApi.length === 0 && (
         <p className="mb-4 max-w-2xl rounded bg-amber-50 px-4 py-3 text-sm text-amber-800">
           No hay usuarios con rol API. Cree primero un usuario con rol API en la
-          sección Usuarios (M14) para poder asociarle claves.
+          sección Usuarios para poder asociarle claves.
         </p>
       )}
 

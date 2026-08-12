@@ -61,6 +61,43 @@ describe('ImportValidatorService (HU-016)', () => {
     expect(r.invalidas.some((f) => f.errores.some((e) => e.includes('Duplicado')))).toBe(true);
   });
 
+  it('QA Func. 1.1: texto que excede el varchar de la columna → fila inválida, nunca llega al INSERT', () => {
+    const larga = 'x'.repeat(300); // descripcion es varchar(250)
+    const r = service.validar(
+      ImportType.PRODUCTOS,
+      columnas,
+      [
+        { Referencia: 'A-001', Descripción: larga, Cantidad: '10' },
+        { Referencia: 'A-002', Descripción: 'Pastilla', Cantidad: '5' },
+      ],
+      { Referencia: 'codigo', Descripción: 'descripcion' },
+    );
+    expect(r.validas.length).toBe(1);
+    expect(r.invalidas.length).toBe(1);
+    const err = r.invalidas[0].errores[0];
+    expect(err).toContain('descripcion');
+    expect(err).toContain('250');
+    expect(err).toContain('300');
+  });
+
+  it('QA Func. 1.1: aplica el límite de cada campo (código 60, aplicación 250, nombre cliente 200)', () => {
+    const r = service.validar(
+      ImportType.PRODUCTOS,
+      columnas,
+      [{ Referencia: 'C'.repeat(61), Descripción: 'OK', Cantidad: '1' }],
+      { Referencia: 'codigo', Descripción: 'descripcion' },
+    );
+    expect(r.invalidas[0].errores[0]).toContain("'codigo' excede el máximo de 60");
+
+    const rc = service.validar(
+      ImportType.CLIENTES,
+      ['Nombre'],
+      [{ Nombre: 'N'.repeat(201) }],
+      { Nombre: 'nombre' },
+    );
+    expect(rc.invalidas[0].errores[0]).toContain("'nombre' excede el máximo de 200");
+  });
+
   it('CANTIDADES: valida entero ≥ 0 y reporta filas inválidas', () => {
     const r = service.validar(
       ImportType.CANTIDADES,

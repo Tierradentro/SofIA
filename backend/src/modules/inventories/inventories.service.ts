@@ -63,7 +63,7 @@ export class InventoriesService {
       if (!p) throw new NotFoundException(`Producto ${pid} no encontrado`);
       if (p.empresaId !== dto.empresaId) {
         throw new BadRequestException(
-          `El producto ${p.codigo} no pertenece a ${empresa.nombre}: un inventario nunca mezcla empresas (HU-048/CU-008)`,
+          `El producto ${p.codigo} no pertenece a ${empresa.nombre}: un inventario nunca mezcla empresas`,
         );
       }
       productos.push(p);
@@ -233,7 +233,7 @@ export class InventoriesService {
     const sinDocumentar = diferencias.filter((i) => !i.notaDiferencia?.trim());
     if (sinDocumentar.length > 0) {
       throw new BadRequestException(
-        `Documente la diferencia de: ${sinDocumentar.map((i) => i.codigo).join(', ')} (M12 Aprobación)`,
+        `Documente la diferencia de: ${sinDocumentar.map((i) => i.codigo).join(', ')}`,
       );
     }
 
@@ -328,7 +328,7 @@ export class InventoriesService {
       throw new ConflictException({
         statusCode: 409,
         code: 'BLOQUEADO_POR_INVENTARIO',
-        message: `${operacion} bloqueada: el producto está incluido en la jornada de inventario ${numero} (EN_CONTEO). Espere a que se apruebe o cancele (M12)`,
+        message: `${operacion} bloqueada: el producto está incluido en la jornada de inventario ${numero} (EN_CONTEO). Espere a que se apruebe o cancele`,
       });
     }
   }

@@ -1,13 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { api, obtenerSesion, Sesion } from '@/lib/api';
+import { Suspense, useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
+
 
 interface Empresa { id: string; nombre: string; siglas: string }
-interface Cliente { id: string; nombre: string; identificacion: string | null; ciudad: string | null }
-interface Comercial { id: string; nombre: string }
-interface Producto { id: string; codigo: string; descripcion: string; precio: string; cantidad: number; cantidadBloqueada: number }
 
 interface OrderItem {
   id: string;
@@ -55,29 +53,20 @@ const ESTADOS: Record<Pedido['estado'], string> = {
  * Alistamiento (Operador): escaneo modo INICIAL/COMPLETO (HU-030/031).
  * Corrección: creador en Pendiente_Corrección. Factura y cancelación: Generador.
  */
-export default function PedidosPage() {
+function PedidosContenido() {
   const router = useRouter();
   const [sesion, setSesion] = useState<Sesion | null>(null);
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
   const [empresaId, setEmpresaId] = useState('');
-  const [clientes, setClientes] = useState<Cliente[]>([]);
-  const [comerciales, setComerciales] = useState<Comercial[]>([]);
-  const [productos, setProductos] = useState<Producto[]>([]);
   const [lista, setLista] = useState<Pedido[]>([]);
+  // QA Func. 3.1: pestañas principales (ciclo activo) + "Otros estados" secundario
+  const [pestana, setPestana] = useState<'ABIERTO' | 'ALISTADO' | 'APROBADO' | 'OTROS'>('ABIERTO');
   const [filtroEstado, setFiltroEstado] = useState('');
   const [pedido, setPedido] = useState<Pedido | null>(null);
 
-  // Creación
-  const [mostrarCrear, setMostrarCrear] = useState(false);
-  const [clienteId, setClienteId] = useState('');
-  const [comercialId, setComercialId] = useState('');
-  const [ciudad, setCiudad] = useState('');
-  const [notas, setNotas] = useState('');
   const [itemsNuevos, setItemsNuevos] = useState<{ referencia: string; cantidad: string; valorUnidad: string }[]>([
     { referencia: '', cantidad: '1', valorUnidad: '' },
   ]);
-  const [archivoOrden, setArchivoOrden] = useState<File | null>(null);
-  const [archivoExcel, setArchivoExcel] = useState<File | null>(null);
 
   // Alistamiento
   const [modo, setModo] = useState<'COMPLETO' | 'INICIAL'>('COMPLETO');
@@ -97,27 +86,19 @@ export default function PedidosPage() {
   const esOperador = rol === 'OPERADOR' || rol === 'ADMINISTRADOR';
   const puedeCrear = esGenerador || esOperador || rol === 'COMERCIAL';
 
+  const searchParams = useSearchParams();
+
   useEffect(() => {
     const s = obtenerSesion();
     if (!s) return router.replace('/login');
     if (s.usuario.rol === 'API') return router.replace('/dashboard');
     setSesion(s);
+    const abrirId = searchParams.get('abrir');
+    if (abrirId) abrir(abrirId);
     api<Empresa[]>('/companies').then(({ status, body }) => {
       if (status === 200 && body.length) {
         setEmpresas(body);
         setEmpresaId(body[0].id);
-      }
-    });
-    api<Cliente[]>('/clients').then(({ status, body }) => {
-      if (status === 200) {
-        setClientes(body);
-        if (body.length) setClienteId(body[0].id);
-      }
-    });
-    api<Comercial[]>('/comerciales').then(({ status, body }) => {
-      if (status === 200) {
-        setComerciales(body);
-        if (body.length) setComercialId(body[0].id);
       }
     });
   }, [router]);
@@ -125,15 +106,15 @@ export default function PedidosPage() {
   useEffect(() => {
     if (empresaId) {
       cargarLista();
-      api<Producto[]>(`/products?empresaId=${empresaId}`).then(({ status, body }) => {
-        if (status === 200) setProductos(body);
-      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [empresaId, filtroEstado]);
+  }, [empresaId, pestana, filtroEstado]);
 
   async function cargarLista() {
-    const q = filtroEstado ? `&estado=${filtroEstado}` : '';
+    let estado = '';
+    if (pestana !== 'OTROS') estado = pestana;
+    else if (filtroEstado) estado = filtroEstado;
+    const q = estado ? `&estado=${estado}` : '';
     const { status, body } = await api<Pedido[]>(`/orders?empresaId=${empresaId}${q}`);
     if (status === 200) setLista(body);
   }
@@ -172,73 +153,8 @@ export default function PedidosPage() {
       body: fd,
     });
     const body = await res.json();
-    if (res.status !== 201) throw new Error(body.message ?? 'Falló el OCR');
+    if (res.status !== 201) throw new Error(mensajeError(body, 'Falló el OCR'));
     return body.id;
-  }
-
-  /** HU-028: crear pedido (manual con ítems, orden OCR o Excel). */
-  async function crear(e: React.FormEvent) {
-    e.preventDefault();
-    setCargando(true);
-    setError('');
-    try {
-      if (archivoExcel) {
-        const fd = new FormData();
-        fd.append('empresaId', empresaId);
-        fd.append('clienteId', clienteId);
-        if (rol !== 'COMERCIAL') fd.append('comercialId', comercialId);
-        fd.append('file', archivoExcel);
-        const s = obtenerSesion();
-        const res = await fetch(`${API_BASE}/orders/excel`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${s?.token}` },
-          body: fd,
-        });
-        const body = await res.json();
-        if (res.status !== 201) throw new Error(body.message ?? 'Error al crear desde Excel');
-        setMensaje(`Pedido ${body.numero} creado desde Excel.`);
-        setMostrarCrear(false);
-        cargarLista();
-        abrir(body.id);
-        return;
-      }
-      const payload: Record<string, unknown> = {
-        empresaId,
-        clienteId,
-        ciudad: ciudad || undefined,
-        notas: notas || undefined,
-      };
-      if (rol !== 'COMERCIAL') payload.comercialId = comercialId;
-      if (archivoOrden) {
-        payload.ocrDocumentId = await uploadOcr('ORDEN_PEDIDO', archivoOrden);
-      } else {
-        const items = itemsNuevos
-          .filter((i) => i.referencia.trim())
-          .map((i) => ({
-            referencia: i.referencia.trim(),
-            cantidad: Number(i.cantidad) || 0,
-            valorUnidad: i.valorUnidad ? Number(i.valorUnidad) : undefined,
-          }));
-        if (!items.length) throw new Error('Agregue al menos un producto');
-        payload.items = items;
-      }
-      const { status, body } = await api<Pedido>('/orders', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      });
-      if (status !== 201) throw new Error((body as { message?: string }).message ?? 'Error al crear');
-      setMensaje(`Pedido ${(body as Pedido).numero} creado en estado Abierto.`);
-      setMostrarCrear(false);
-      setArchivoOrden(null);
-      setArchivoExcel(null);
-      setItemsNuevos([{ referencia: '', cantidad: '1', valorUnidad: '' }]);
-      cargarLista();
-      abrir((body as Pedido).id);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setCargando(false);
-    }
   }
 
   async function accion(fn: () => Promise<{ status: number; body: any }>, ok: string) {
@@ -252,7 +168,7 @@ export default function PedidosPage() {
       cargarLista();
       return true;
     }
-    setError(body.message ?? 'La acción falló');
+    setError(mensajeError(body, 'La acción falló'));
     return false;
   }
 
@@ -290,7 +206,7 @@ export default function PedidosPage() {
           .join(' · ');
         setError(`La factura tiene diferencias y no se puede aprobar: ${detalle}`);
       } else {
-        setError(body.message ?? 'Error al cargar la factura');
+        setError(mensajeError(body, 'Error al cargar la factura'));
       }
     } catch (err: any) {
       setError(err.message);
@@ -348,97 +264,43 @@ export default function PedidosPage() {
                   <option key={e.id} value={e.id}>{e.siglas} — {e.nombre}</option>
                 ))}
               </select>
-              <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)} className="rounded border px-2 py-1 text-sm">
-                <option value="">Todos los estados</option>
-                {Object.entries(ESTADOS).map(([v, l]) => (
-                  <option key={v} value={v}>{l}</option>
+              {/* QA Func. 3.1: secciones por estado (ciclo activo) + "Otros" */}
+              <div className="flex rounded border text-sm">
+                {(['ABIERTO', 'ALISTADO', 'APROBADO'] as const).map((v) => (
+                  <button
+                    key={v}
+                    onClick={() => setPestana(v)}
+                    className={`px-3 py-1 ${pestana === v ? 'bg-sofia-600 text-white' : 'bg-white hover:bg-slate-50'}`}
+                  >
+                    {ESTADOS[v]}s
+                  </button>
                 ))}
-              </select>
+                <button
+                  onClick={() => {
+                    setPestana('OTROS');
+                    // Al entrar a "Otros" siempre hay un estado concreto
+                    // preseleccionado: nunca muestra todos los pedidos
+                    if (!filtroEstado) setFiltroEstado('PENDIENTE_CORRECCION');
+                  }}
+                  className={`px-3 py-1 ${pestana === 'OTROS' ? 'bg-sofia-600 text-white' : 'bg-white hover:bg-slate-50'}`}
+                >
+                  Otros estados
+                </button>
+              </div>
+              {pestana === 'OTROS' && (
+                <select value={filtroEstado || 'PENDIENTE_CORRECCION'} onChange={(e) => setFiltroEstado(e.target.value)} className="rounded border px-2 py-1 text-sm">
+                  <option value="PENDIENTE_CORRECCION">Pendiente corrección</option>
+                  <option value="CANCELADO">Cancelado</option>
+                </select>
+              )}
             </div>
             {puedeCrear && (
-              <button onClick={() => setMostrarCrear(!mostrarCrear)} className="rounded bg-sofia-600 px-3 py-1.5 text-sm text-white hover:bg-sofia-700">
-                {mostrarCrear ? 'Cancelar' : '+ Nuevo pedido'}
+              <button onClick={() => router.push('/pedidos/nuevo')} className="rounded bg-sofia-600 px-3 py-1.5 text-sm text-white hover:bg-sofia-700">
+                + Nuevo pedido
               </button>
             )}
           </div>
 
-          {mostrarCrear && (
-            <form onSubmit={crear} className="mb-4 rounded bg-slate-50 p-4">
-              <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-4">
-                <label className="text-sm">
-                  Cliente
-                  <select value={clienteId} onChange={(e) => setClienteId(e.target.value)} className="mt-1 block w-full rounded border px-2 py-1.5">
-                    {clientes.map((c) => (
-                      <option key={c.id} value={c.id}>{c.nombre}</option>
-                    ))}
-                  </select>
-                </label>
-                {rol !== 'COMERCIAL' && (
-                  <label className="text-sm">
-                    Comercial
-                    <select value={comercialId} onChange={(e) => setComercialId(e.target.value)} className="mt-1 block w-full rounded border px-2 py-1.5">
-                      {comerciales.map((c) => (
-                        <option key={c.id} value={c.id}>{c.nombre}</option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-                <label className="text-sm">
-                  Ciudad
-                  <input type="text" value={ciudad} onChange={(e) => setCiudad(e.target.value)} className="mt-1 block w-full rounded border px-2 py-1.5" />
-                </label>
-                <label className="text-sm">
-                  Notas (descuentos)
-                  <input type="text" value={notas} onChange={(e) => setNotas(e.target.value)} className="mt-1 block w-full rounded border px-2 py-1.5" />
-                </label>
-              </div>
-
-              <div className="mb-3 flex flex-wrap items-end gap-4 rounded border border-dashed p-3">
-                <label className="text-sm">
-                  Orden de pedido (PDF/imagen → OCR)
-                  <input type="file" accept=".pdf,.png,.jpg,.jpeg,.tiff" onChange={(e) => { setArchivoOrden(e.target.files?.[0] ?? null); if (e.target.files?.[0]) setArchivoExcel(null); }} className="mt-1 block text-sm" />
-                </label>
-                <label className="text-sm">
-                  …o archivo Excel (Referencia/Cantidad)
-                  <input type="file" accept=".xlsx,.xls,.csv" onChange={(e) => { setArchivoExcel(e.target.files?.[0] ?? null); if (e.target.files?.[0]) setArchivoOrden(null); }} className="mt-1 block text-sm" />
-                </label>
-              </div>
-
-              {!archivoOrden && !archivoExcel && (
-                <>
-                  {itemsNuevos.map((it, idx) => (
-                    <div key={idx} className="mb-1 flex gap-2">
-                      <input
-                        type="text"
-                        placeholder="Código / OE / ref. cruzada"
-                        value={it.referencia}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          setItemsNuevos(itemsNuevos.map((x, i) => {
-                            if (i !== idx) return x;
-                            const prod = productos.find((p) => p.codigo.toUpperCase() === v.trim().toUpperCase());
-                            return { ...x, referencia: v, valorUnidad: x.valorUnidad || (prod ? String(Number(prod.precio)) : '') };
-                          }));
-                        }}
-                        className="w-48 rounded border px-2 py-1 text-sm"
-                      />
-                      <input type="number" min={1} value={it.cantidad} onChange={(e) => setItemsNuevos(itemsNuevos.map((x, i) => (i === idx ? { ...x, cantidad: e.target.value } : x)))} className="w-24 rounded border px-2 py-1 text-sm" />
-                      <input type="number" min={0} step="0.01" placeholder="Valor unidad" value={it.valorUnidad} onChange={(e) => setItemsNuevos(itemsNuevos.map((x, i) => (i === idx ? { ...x, valorUnidad: e.target.value } : x)))} className="w-32 rounded border px-2 py-1 text-sm" />
-                      <button type="button" onClick={() => setItemsNuevos(itemsNuevos.filter((_, i) => i !== idx))} className="text-red-700 hover:underline">✕</button>
-                    </div>
-                  ))}
-                  <button type="button" onClick={() => setItemsNuevos([...itemsNuevos, { referencia: '', cantidad: '1', valorUnidad: '' }])} className="mb-2 text-sm text-sofia-700 hover:underline">
-                    + Agregar producto
-                  </button>
-                </>
-              )}
-              <div>
-                <button type="submit" disabled={cargando} className="rounded bg-sofia-600 px-4 py-2 text-sm text-white hover:bg-sofia-700 disabled:opacity-50">
-                  {cargando ? 'Procesando…' : 'Crear pedido'}
-                </button>
-              </div>
-            </form>
-          )}
 
           <table className="w-full text-sm">
             <thead>
@@ -615,7 +477,7 @@ export default function PedidosPage() {
             {/* HU-032: factura de venta (Generador) */}
             {esGenerador && pedido.estado === 'ALISTADO' && (
               <div className="mt-4 rounded bg-slate-50 p-3">
-                <p className="mb-2 text-sm font-medium">Cargar factura de venta para aprobar (HU-032)</p>
+                <p className="mb-2 text-sm font-medium">Cargar factura de venta para aprobar</p>
                 <div className="flex flex-wrap items-center gap-3">
                   <input type="file" accept=".pdf,.png,.jpg,.jpeg,.tiff" onChange={(e) => setArchivoFactura(e.target.files?.[0] ?? null)} className="text-sm" />
                   <button onClick={cargarFactura} disabled={cargando || !archivoFactura} className="rounded bg-green-600 px-4 py-2 text-white hover:bg-green-700 disabled:opacity-50">
@@ -641,5 +503,17 @@ export default function PedidosPage() {
         )}
       </div>
     </main>
+  );
+}
+
+/**
+ * Next.js 14: useSearchParams() exige un boundary de Suspense para el
+ * prerendering estático; sin él `next build` falla.
+ */
+export default function PedidosPage() {
+  return (
+    <Suspense>
+      <PedidosContenido />
+    </Suspense>
   );
 }

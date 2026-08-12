@@ -6,6 +6,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
 } from '@nestjs/common';
 import { ProductsService } from './products.service';
@@ -78,5 +79,20 @@ export class ProductsController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.products.assignBarcode(id, dto, user);
+  }
+
+  /**
+   * QA Func. 2.3: corregir un código mal asociado. Reemplazo transaccional
+   * (desasocia el actual y asocia el nuevo en una sola operación), con
+   * auditoría del valor anterior/nuevo. Solo Generador/Administrador.
+   */
+  @Put(':id/barcode')
+  @Roles(Role.GENERADOR, Role.ADMINISTRADOR)
+  replaceBarcode(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AssignBarcodeDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.products.replaceBarcode(id, dto, user);
   }
 }

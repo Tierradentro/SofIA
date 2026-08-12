@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, obtenerSesion, Sesion } from '@/lib/api';
+import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 
 interface Proveedor {
   id: string;
@@ -72,7 +72,7 @@ export default function AdminOcrPage() {
       setMotivo('');
       setMensaje(`Motor activo: ${nuevo} (cambio auditado)`);
     } else {
-      setError((body as { message?: string }).message ?? 'No se pudo cambiar el motor');
+      setError(mensajeError(body, 'No se pudo cambiar el motor'));
     }
   }
 
@@ -91,7 +91,7 @@ export default function AdminOcrPage() {
       setForm(FORM_VACIO);
       cargar();
     } else {
-      setError((body as { message?: string }).message ?? 'Error al guardar');
+      setError(mensajeError(body, 'Error al guardar'));
     }
   }
 
@@ -102,7 +102,7 @@ export default function AdminOcrPage() {
       setMensaje('Proveedor activado (el anterior quedó inactivo)');
       cargar();
     } else {
-      setError((body as { message?: string }).message ?? 'Error al activar');
+      setError(mensajeError(body, 'Error al activar'));
     }
   }
 
@@ -113,7 +113,7 @@ export default function AdminOcrPage() {
       setMensaje('Proveedor eliminado');
       cargar();
     } else {
-      setError((body as { message?: string }).message ?? 'Error al eliminar');
+      setError(mensajeError(body, 'Error al eliminar'));
     }
   }
 
@@ -136,7 +136,7 @@ export default function AdminOcrPage() {
     if (res.status === 201) {
       setResultadoPrueba(JSON.stringify(body, null, 2));
     } else {
-      setError(body.message ?? 'La prueba de procesamiento falló');
+      setError(mensajeError(body, 'La prueba de procesamiento falló'));
     }
   }
 
@@ -146,7 +146,7 @@ export default function AdminOcrPage() {
     <main className="min-h-screen bg-slate-100 p-6">
       <div className="mx-auto max-w-4xl">
         <div className="mb-4 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-sofia-900">Configuración OCR (M13)</h1>
+          <h1 className="text-xl font-bold text-sofia-900">Configuración OCR</h1>
           <button
             onClick={() => router.push('/dashboard')}
             className="rounded bg-white px-3 py-1 text-sm shadow hover:bg-slate-50"
@@ -164,7 +164,7 @@ export default function AdminOcrPage() {
 
         {/* HU-020: motor activo */}
         <section className="mb-4 rounded-lg bg-white p-5 shadow">
-          <h2 className="mb-3 font-semibold">Motor OCR activo (HU-020)</h2>
+          <h2 className="mb-3 font-semibold">Motor OCR activo</h2>
           <div className="flex flex-wrap items-center gap-3">
             {(['OCR_LOCAL', 'OCR_LLM'] as const).map((m) => (
               <label
@@ -192,14 +192,14 @@ export default function AdminOcrPage() {
           </div>
           <p className="mt-2 text-xs text-slate-500">
             Solo un motor queda activo y el cambio se audita. OCR_LLM exige un
-            proveedor activo; OCR local es la contingencia sin conectividad (M13).
+            proveedor activo; OCR local es la contingencia sin conectividad.
           </p>
         </section>
 
         {/* HU-019: proveedores */}
         <section className="mb-4 rounded-lg bg-white p-5 shadow">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-semibold">Proveedores LLM (HU-019)</h2>
+            <h2 className="font-semibold">Proveedores LLM</h2>
             <button
               onClick={() => {
                 setForm(FORM_VACIO);
@@ -338,7 +338,7 @@ export default function AdminOcrPage() {
 
         {/* HU-018: prueba de procesamiento */}
         <section className="rounded-lg bg-white p-5 shadow">
-          <h2 className="mb-3 font-semibold">Probar procesamiento (HU-018)</h2>
+          <h2 className="mb-3 font-semibold">Probar procesamiento</h2>
           <div className="flex flex-wrap items-end gap-3">
             <label className="text-sm">
               Documento de prueba (PDF o imagen)

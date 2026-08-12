@@ -100,6 +100,7 @@ export class DispatchesService {
           numero,
           clienteId: order.clienteId,
           estado: DispatchStatus.CREADO,
+          direccionDespacho: order.direccionDespacho ?? null,
           createdBy: user.id,
         }),
       );
@@ -126,6 +127,38 @@ export class DispatchesService {
     return this.get(dispatchId);
   }
 
+  /**
+   * QA Func. 4.1: la dirección se escoge en el Pedido, pero en el Despacho
+   * se puede ajustar mientras no haya salido (CREADO/ABIERTO/CORRECCIÓN/PARCIAL).
+   */
+  async updateDireccion(id: string, direccion: string, user: Usuario) {
+    const dispatch = await this.findDispatch(id);
+    const ajustables: DispatchStatus[] = [
+      DispatchStatus.CREADO,
+      DispatchStatus.ABIERTO,
+      DispatchStatus.PENDIENTE_CORRECCION,
+      DispatchStatus.PARCIAL,
+    ];
+    if (!ajustables.includes(dispatch.estado)) {
+      throw new BadRequestException(
+        `No se puede ajustar la dirección de un despacho en estado ${dispatch.estado}`,
+      );
+    }
+    const anterior = dispatch.direccionDespacho;
+    dispatch.direccionDespacho = direccion.trim();
+    await this.dataSource.getRepository(Dispatch).save(dispatch);
+    await this.audit.log({
+      usuarioId: user.id,
+      usuarioUsername: user.username,
+      accion: 'AJUSTAR_DIRECCION',
+      tabla: TABLA,
+      registroId: id,
+      valorAnterior: { direccionDespacho: anterior },
+      valorNuevo: { direccionDespacho: dispatch.direccionDespacho },
+    });
+    return dispatch;
+  }
+
   // ------------------------------------------------------------------
   // HU-034: asociar pedidos del mismo cliente (CREADO o PENDIENTE_CORRECCION)
   // ------------------------------------------------------------------
@@ -143,7 +176,7 @@ export class DispatchesService {
       if (order.clienteId !== dispatch.clienteId) {
         // M-3: conflicto de regla de negocio → 409 (no 400)
         throw new ConflictException(
-          `El pedido ${order.numero} es de otro cliente; el despacho consolida pedidos del mismo cliente (HU-034)`,
+          `El pedido ${order.numero} es de otro cliente; el despacho consolida pedidos del mismo cliente`,
         );
       }
       const ya = await linksRepo.findOne({ where: { dispatchId: id, orderId } });
@@ -322,7 +355,7 @@ export class DispatchesService {
       );
     }
     const rows = await qb.getMany();
-    // Resumen con conteos de pedidos y cajas
+    // Resumen con conteos de pedidos y cajas + etiqueta de empresas (QA Func. 4.3)
     const out: any[] = [];
     for (const d of rows) {
       const pedidos = await this.dataSource
@@ -331,7 +364,19 @@ export class DispatchesService {
       const cajas = await this.dataSource
         .getRepository(Box)
         .count({ where: { dispatchId: d.id } });
-      out.push({ ...d, totalPedidos: pedidos, totalCajas: cajas });
+      const empresas = await this.dataSource.query(
+        `SELECT DISTINCT c.siglas
+         FROM dispatch_orders do2 JOIN companies c ON c.id = do2.empresa_id
+         WHERE do2.dispatch_id = $1
+         ORDER BY c.siglas`,
+        [d.id],
+      );
+      out.push({
+        ...d,
+        totalPedidos: pedidos,
+        totalCajas: cajas,
+        empresas: empresas.map((e: any) => e.siglas),
+      });
     }
     return out;
   }
@@ -702,7 +747,7 @@ export class DispatchesService {
     }
     if (dispatch.estado === DispatchStatus.PARCIAL && !dispatch.parcialAprobadoAt) {
       throw new BadRequestException(
-        'El despacho parcial requiere aprobación del Generador con motivo (HU-041)',
+        'El despacho parcial requiere aprobación del Generador con motivo',
       );
     }
     if (
@@ -714,8 +759,8 @@ export class DispatchesService {
 
     let carrier: Carrier | null = null;
     if (dto.tipo === TransportType.EXTERNA) {
-      if (!dto.carrierId) throw new BadRequestException('Seleccione la transportadora (HU-039)');
-      if (!dto.guia?.trim()) throw new BadRequestException('La guía es obligatoria (HU-039)');
+      if (!dto.carrierId) throw new BadRequestException('Seleccione la transportadora');
+      if (!dto.guia?.trim()) throw new BadRequestException('La guía es obligatoria');
       carrier = await this.dataSource
         .getRepository(Carrier)
         .findOne({ where: { id: dto.carrierId } });
@@ -725,7 +770,7 @@ export class DispatchesService {
       }
     } else {
       if (!dto.nombreTransporte?.trim()) {
-        throw new BadRequestException('Indique el nombre del transporte interno (HU-040)');
+        throw new BadRequestException('Indique el nombre del transporte interno');
       }
       if (dto.carrierId) {
         carrier = await this.dataSource

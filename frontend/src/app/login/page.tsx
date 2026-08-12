@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
-import { guardarSesion, login } from '@/lib/api';
+import { guardarSesion, login, mensajeError } from '@/lib/api';
+import { LogoSofia } from '@/components/logo';
 
 /** HU-001: inicio de sesión. Error genérico sin revelar información sensible. */
 export default function LoginPage() {
@@ -23,7 +23,7 @@ export default function LoginPage() {
       guardarSesion({ token: body.access_token, usuario: body.usuario });
       router.replace(body.usuario.debeCambiarClave ? '/cambiar-clave' : '/dashboard');
     } else {
-      setError(body.message || 'Usuario o contraseña incorrectos');
+      setError(mensajeError(body, 'Usuario o contraseña incorrectos'));
     }
   }
 
@@ -34,7 +34,7 @@ export default function LoginPage() {
         className="w-full max-w-sm rounded-xl bg-white p-8 shadow-lg"
       >
         <div className="mb-6 flex flex-col items-center gap-2">
-          <Image src="/logo-sofia.png" alt="SofIA" width={120} height={120} />
+          <LogoSofia width={120} height={120} />
           <h1 className="text-xl font-semibold text-sofia-900">
             SofIA Logística Inteligente
           </h1>

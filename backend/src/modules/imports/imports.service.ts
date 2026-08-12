@@ -23,6 +23,31 @@ const TABLA = 'import_jobs';
 const TIPOS_POR_EMPRESA = [ImportType.PRODUCTOS, ImportType.CANTIDADES];
 
 /**
+ * Campo destino de importación (snake_case, M18) → propiedad de Product.
+ * Sin este mapeo, repo.create()/Object.assign() descartan en silencio las
+ * llaves que no coinciden con propiedades de la entidad (codigo_oe, etc.).
+ */
+const CAMPO_A_PROPIEDAD_PRODUCTO: Record<string, keyof Product> = {
+  descripcion: 'descripcion',
+  proveedor: 'proveedor',
+  marca: 'marca',
+  vehiculo: 'vehiculo',
+  categoria: 'categoria',
+  subcategoria: 'subcategoria',
+  observaciones: 'observaciones',
+  aplicacion: 'aplicacion',
+  codigo_oe: 'codigoOE',
+  ref_cruzada_1: 'refCruzada1',
+  ref_cruzada_2: 'refCruzada2',
+  unidad_medida: 'unidadMedida',
+  precio: 'precio',
+  link_imagen: 'linkImagen',
+  ubicacion: 'ubicacion',
+  grupo_siete: 'grupoSiete',
+  grupo_ocho: 'grupoOcho',
+};
+
+/**
  * M18: importación desde la maestra contable.
  *  - PRODUCTOS (HU-010): nuevos → crea; existentes (mismo código, misma
  *    empresa) → actualiza atributos; resumen con diferencias (HU-016).
@@ -134,7 +159,7 @@ export class ImportsService {
     }
     if (job.tipo === ImportType.CANTIDADES && user.rol !== 'ADMINISTRADOR') {
       throw new BadRequestException(
-        'La importación de cantidades requiere aprobación del Administrador (M18)',
+        'La importación de cantidades requiere aprobación del Administrador',
       );
     }
     const filas = (job.resumen as any)?.filasValidas as FilaValidada[];
@@ -236,62 +261,86 @@ export class ImportsService {
     return { nuevos: validas.length, actualizados: 0 };
   }
 
+  /**
+   * Aplica las filas válidas en una ÚNICA transacción (QA Func. 1.1): si algo
+   * falla a mitad de camino no quedan productos parcialmente aplicados.
+   * Las filas inválidas ya fueron excluidas en la validación (mejor esfuerzo)
+   * y se reportan en el resumen del job.
+   * La auditoría se escribe con el mismo EntityManager (misma conexión).
+   */
   private async aplicarProductos(
     job: ImportJob,
     filas: FilaValidada[],
     user: { id: string; username: string },
   ) {
-    const repo = this.dataSource.getRepository(Product);
-    const existentes = await repo.find({ where: { empresaId: job.empresaId! } });
-    const map = new Map(existentes.map((p) => [p.codigo, p]));
     let nuevos = 0;
     let actualizados = 0;
 
-    for (const fila of filas) {
-      const { codigo, ...datos } = fila.datos;
-      const limpio = Object.fromEntries(
-        Object.entries(datos).filter(([, v]) => v !== ''),
-      );
-      const existente = map.get(codigo);
-      if (existente) {
-        const anterior = { ...existente };
-        Object.assign(existente, limpio, { precio: limpio.precio ? Number(limpio.precio) : existente.precio });
-        await repo.save(existente);
-        actualizados++;
-        await this.audit.log({
-          usuarioId: user.id,
-          usuarioUsername: user.username,
-          accion: 'EDITAR',
-          tabla: 'Productos',
-          registroId: existente.id,
-          valorAnterior: anterior as any,
-          valorNuevo: existente as any,
-          motivo: `Importación contable ${job.nombreArchivo}`,
-        });
-      } else {
-        const producto = await repo.save(
-          repo.create({
-            ...limpio,
-            codigo,
-            empresaId: job.empresaId!,
-            precio: limpio.precio ? Number(limpio.precio) : 0,
-            cantidad: 0,
-            cantidadBloqueada: 0,
-            estado: ProductStatus.ACTIVO,
-          }),
-        );
-        nuevos++;
-        await this.audit.log({
-          usuarioId: user.id,
-          usuarioUsername: user.username,
-          accion: 'CREAR',
-          tabla: 'Productos',
-          registroId: producto.id,
-          valorNuevo: producto as any,
-          motivo: `Importación contable ${job.nombreArchivo}`,
-        });
+    await this.dataSource.transaction(async (em) => {
+      const repo = em.getRepository(Product);
+      const existentes = await repo.find({ where: { empresaId: job.empresaId! } });
+      const map = new Map(existentes.map((p) => [p.codigo, p]));
+
+      for (const fila of filas) {
+        const { codigo, ...datos } = fila.datos;
+        // Mapeo explícito snake_case (destino de importación) → propiedad de la
+        // entidad; sin esto, campos como codigo_oe se descartaban en silencio.
+        const limpio: Record<string, any> = {};
+        for (const [campo, valor] of Object.entries(datos)) {
+          if (valor === '') continue;
+          const propiedad = CAMPO_A_PROPIEDAD_PRODUCTO[campo];
+          if (propiedad) limpio[propiedad] = valor;
+        }
+        const existente = map.get(codigo);
+        if (existente) {
+          const anterior = { ...existente };
+          Object.assign(existente, limpio, {
+            precio: limpio.precio !== undefined ? Number(limpio.precio) : existente.precio,
+          });
+          await repo.save(existente);
+          actualizados++;
+          await this.audit.log(
+            {
+              usuarioId: user.id,
+              usuarioUsername: user.username,
+              accion: 'EDITAR',
+              tabla: 'Productos',
+              registroId: existente.id,
+              valorAnterior: anterior as any,
+              valorNuevo: existente as any,
+              motivo: `Importación contable ${job.nombreArchivo}`,
+            },
+            em,
+          );
+        } else {
+          const producto = await repo.save(
+            repo.create({
+              ...limpio,
+              codigo,
+              empresaId: job.empresaId!,
+              precio: limpio.precio !== undefined ? Number(limpio.precio) : 0,
+              cantidad: 0,
+              cantidadBloqueada: 0,
+              estado: ProductStatus.ACTIVO,
+            }),
+          );
+          nuevos++;
+          map.set(codigo, producto);
+          await this.audit.log(
+            {
+              usuarioId: user.id,
+              usuarioUsername: user.username,
+              accion: 'CREAR',
+              tabla: 'Productos',
+              registroId: producto.id,
+              valorNuevo: producto as any,
+              motivo: `Importación contable ${job.nombreArchivo}`,
+            },
+            em,
+          );
+        }
       }
-    }
+    });
     return { nuevos, actualizados };
   }
 
@@ -353,25 +402,28 @@ export class ImportsService {
     filas: FilaValidada[],
     entity: typeof Client | typeof Comercial,
   ) {
-    const repo = this.dataSource.getRepository(entity as any) as Repository<any>;
     let nuevos = 0;
     let actualizados = 0;
-    for (const fila of filas) {
-      const limpio = Object.fromEntries(
-        Object.entries(fila.datos).filter(([, v]) => v !== ''),
-      );
-      const existente = limpio.identificacion
-        ? await repo.findOne({ where: { identificacion: limpio.identificacion } })
-        : await repo.findOne({ where: { nombre: limpio.nombre } });
-      if (existente) {
-        Object.assign(existente, limpio);
-        await repo.save(existente);
-        actualizados++;
-      } else {
-        await repo.save(repo.create(limpio));
-        nuevos++;
+    // Única transacción por lote (QA Func. 1.1): sin aplicados parciales.
+    await this.dataSource.transaction(async (em) => {
+      const repo = em.getRepository(entity as any) as Repository<any>;
+      for (const fila of filas) {
+        const limpio = Object.fromEntries(
+          Object.entries(fila.datos).filter(([, v]) => v !== ''),
+        );
+        const existente = limpio.identificacion
+          ? await repo.findOne({ where: { identificacion: limpio.identificacion } })
+          : await repo.findOne({ where: { nombre: limpio.nombre } });
+        if (existente) {
+          Object.assign(existente, limpio);
+          await repo.save(existente);
+          actualizados++;
+        } else {
+          await repo.save(repo.create(limpio));
+          nuevos++;
+        }
       }
-    }
+    });
     return { nuevos, actualizados };
   }
 

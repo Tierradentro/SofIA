@@ -23,6 +23,7 @@ import { Product } from '../products/entities/product.entity';
 import { ProductBarcode } from '../products/entities/product-barcode.entity';
 import { ProductsService } from '../products/products.service';
 import { OcrDocument } from '../ocr/entities/ocr-document.entity';
+import { ClientAddress } from '../clients/entities/client-address.entity';
 import { DocumentType } from '../../common/enums/document-type.enum';
 import { MovementsService } from '../movements/movements.service';
 import { MovementType } from '../../common/enums/movement-type.enum';
@@ -97,7 +98,7 @@ export class OrdersService {
         ocrDoc.tipoDocumento !== DocumentType.COTIZACION
       ) {
         throw new BadRequestException(
-          'El documento OCR debe ser ORDEN_PEDIDO o COTIZACION (HU-028)',
+          'El documento OCR debe ser ORDEN_PEDIDO o COTIZACION',
         );
       }
       const d = ocrDoc.datosExtraidos as any;
@@ -113,6 +114,25 @@ export class OrdersService {
       throw new BadRequestException('El pedido requiere al menos un producto');
     }
 
+    // QA Func. 4.1: dirección de despacho elegida en el pedido (foto)
+    let direccionDespacho: string | null = null;
+    if (dto.direccionId) {
+      const direccion = await this.dataSource
+        .getRepository(ClientAddress)
+        .findOne({ where: { id: dto.direccionId, activo: true } });
+      if (!direccion) throw new NotFoundException('Dirección no encontrada');
+      if (direccion.clientId !== dto.clienteId) {
+        throw new BadRequestException('La dirección no pertenece al cliente del pedido');
+      }
+      direccionDespacho = direccion.direccion;
+    } else {
+      // Sin selección explícita: la principal del cliente (si existe)
+      const principal = await this.dataSource
+        .getRepository(ClientAddress)
+        .findOne({ where: { clientId: dto.clienteId, esPrincipal: true, activo: true } });
+      direccionDespacho = principal?.direccion ?? null;
+    }
+
     const resueltos = await this.resolverItems(dto.empresaId, itemsDto);
     const numero = await this.dataSource.transaction(async (em) => {
       const numero = await this.siguienteConsecutivo(em, dto.empresaId);
@@ -122,6 +142,7 @@ export class OrdersService {
           numero,
           ordenPedido,
           ciudad: dto.ciudad?.trim() || null,
+          direccionDespacho,
           clienteId: dto.clienteId,
           comercialId,
           notas: dto.notas?.trim() || null,
@@ -574,7 +595,7 @@ export class OrdersService {
       .findOne({ where: { id: ocrDocumentId } });
     if (!ocrDoc) throw new NotFoundException('Documento OCR no encontrado');
     if (ocrDoc.tipoDocumento !== DocumentType.FACTURA_VENTA) {
-      throw new BadRequestException('El documento OCR debe ser FACTURA_VENTA (HU-032)');
+      throw new BadRequestException('El documento OCR debe ser una factura de venta');
     }
 
     // Matchear las referencias de la factura contra productos de la empresa
@@ -746,14 +767,14 @@ export class OrdersService {
     if (user.rol === Role.COMERCIAL) {
       if (!user.comercialId) {
         throw new BadRequestException(
-          'El usuario Comercial no tiene un comercial asociado (M06)',
+          'El usuario Comercial no tiene un comercial asociado',
         );
       }
       return user.comercialId;
     }
     if (!dto.comercialId) {
       throw new BadRequestException(
-        'Debe indicar el comercial del pedido (M08: lo ingresa quien crea el pedido)',
+        'Debe indicar el comercial del pedido',
       );
     }
     return dto.comercialId;

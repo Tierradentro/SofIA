@@ -6,7 +6,7 @@
  * los flujos operativos (picking, despacho, ingreso).
  */
 import { useState } from 'react';
-import { api } from '@/lib/api';
+import { api, mensajeError } from '@/lib/api';
 
 export interface ProductoDetalle {
   id: string;
@@ -33,7 +33,7 @@ export function ConsultaProducto({ empresaId }: { empresaId?: string }) {
       `/products/lookup/${encodeURIComponent(criterio)}${qs}`,
     );
     if (status === 200) setResultado(body as ProductoDetalle);
-    else setError(body.message || 'Producto no encontrado');
+    else setError(mensajeError(body, 'Producto no encontrado'));
   }
 
   return (

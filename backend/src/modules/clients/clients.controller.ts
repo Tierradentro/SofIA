@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { ClientsService } from './clients.service';
 import { CreateClientDto, UpdateClientDto } from './dto/client.dto';
+import { CreateAddressDto, UpdateAddressDto } from './dto/address.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/enums/role.enum';
 import {
@@ -45,6 +46,43 @@ export class ClientsController {
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.clients.findOne(id, user);
+  }
+
+  /** QA Func. 4.1: direcciones de despacho del cliente (consulta: todos los roles). */
+  @Get(':id/direcciones')
+  listAddresses(@Param('id', ParseUUIDPipe) id: string) {
+    return this.clients.listAddresses(id);
+  }
+
+  @Post(':id/direcciones')
+  @Roles(Role.GENERADOR, Role.ADMINISTRADOR)
+  addAddress(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateAddressDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.clients.addAddress(id, dto, user);
+  }
+
+  @Patch(':id/direcciones/:addressId')
+  @Roles(Role.GENERADOR, Role.ADMINISTRADOR)
+  updateAddress(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('addressId', ParseUUIDPipe) addressId: string,
+    @Body() dto: UpdateAddressDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.clients.updateAddress(id, addressId, dto, user);
+  }
+
+  @Post(':id/direcciones/:addressId/eliminar')
+  @Roles(Role.GENERADOR, Role.ADMINISTRADOR)
+  removeAddress(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('addressId', ParseUUIDPipe) addressId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.clients.removeAddress(id, addressId, user);
   }
 
   @Patch(':id')

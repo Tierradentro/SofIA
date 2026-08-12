@@ -37,6 +37,22 @@ export function cerrarSesionLocal() {
   localStorage.removeItem('sofia_sesion');
 }
 
+/**
+ * Normaliza el `message` de una respuesta de error del backend para
+ * mostrarlo en la UI (QA Func. 2.6): si es un array de mensajes de
+ * validación los une en un texto legible; si es string lo devuelve tal
+ * cual; si no hay mensaje usa el fallback. Nunca muestra [object Object].
+ */
+export function mensajeError(body: unknown, fallback: string): string {
+  const msg = (body as { message?: unknown } | null | undefined)?.message;
+  if (Array.isArray(msg)) {
+    const legibles = msg.filter((m): m is string => typeof m === 'string');
+    if (legibles.length > 0) return legibles.join('. ');
+  }
+  if (typeof msg === 'string' && msg.trim() !== '') return msg;
+  return fallback;
+}
+
 /** 401 en cualquier llamada → sesión expirada: se limpia y se redirige. */
 function manejar401(status: number): void {
   if (status === 401 && typeof window !== 'undefined') {

@@ -58,7 +58,39 @@ describe('OcrFieldParser', () => {
       descripcion: 'PASTILLAS DE FRENO',
       cantidad: 12,
       unidad: 'UND',
+      valorUnitario: null,
+      valorTotal: null,
     });
+  });
+
+  it('QA Func. 2.5: en documentos de venta extrae NIT, teléfono y valores por ítem', () => {
+    const texto = [
+      'ORDEN DE PEDIDO',
+      'Cliente: Autorepuestos del Norte SA',
+      'NIT: 900.123.456-7',
+      'Teléfono: 310 555 1234',
+      'REF-5001 | FILTRO DE ACEITE | 3 | UND | 25.000 | 75.000',
+    ].join('\n');
+    const r = parser.parse(texto, DocumentType.ORDEN_PEDIDO);
+    expect(r.nit).toBe('900.123.456-7');
+    expect(r.telefono).toBe('310 555 1234');
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0].valorUnitario).toBe(25000);
+    expect(r.items[0].valorTotal).toBe(75000);
+  });
+
+  it('QA Func. 2.5: en factura de importación NO busca NIT ni valores (esquema por tipo)', () => {
+    const texto = [
+      'INVOICE INV-9',
+      'NIT: 900.123.456-7',
+      'REF-5002 | PASTILLA | 2 | UND',
+    ].join('\n');
+    const r = parser.parse(texto, DocumentType.FACTURA_IMPORTACION);
+    expect(r.nit).toBeNull();
+    expect(r.items).toHaveLength(1);
+    // sin campos de valor en el esquema de importación
+    expect(r.items[0].valorUnitario).toBeUndefined();
+    expect(r.items[0].cantidad).toBe(2);
   });
 
   it('extrae número de guía y transportadora', () => {

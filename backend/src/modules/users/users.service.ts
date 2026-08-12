@@ -175,7 +175,7 @@ export class UsersService {
   private assertComercialAssociation(rol: Role, comercialId?: string | null) {
     if (comercialId && rol !== Role.COMERCIAL) {
       throw new BadRequestException(
-        'La asociación a un comercial solo aplica a usuarios con rol Comercial (M06)',
+        'La asociación a un comercial solo aplica a usuarios con rol Comercial',
       );
     }
   }

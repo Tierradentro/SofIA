@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, obtenerSesion } from '@/lib/api';
+import { api, obtenerSesion, mensajeError } from '@/lib/api';
 
 interface Usuario {
   id: string;
@@ -56,7 +56,7 @@ export default function UsuariosPage() {
       cargar();
     } else {
       const detalle = Array.isArray(body.detalles) ? `: ${body.detalles.join(', ')}` : '';
-      setError((body.message || 'No se pudo crear el usuario') + detalle);
+      setError(mensajeError(body, 'No se pudo crear el usuario') + detalle);
     }
   }
 
@@ -67,7 +67,7 @@ export default function UsuariosPage() {
       method: 'PATCH',
       body: JSON.stringify({ estado, motivo }),
     });
-    if (status !== 200) setError(body.message || 'No se pudo cambiar el estado');
+    if (status !== 200) setError(mensajeError(body, 'No se pudo cambiar el estado'));
     cargar();
   }
 
@@ -79,7 +79,7 @@ export default function UsuariosPage() {
           'El usuario deberá cambiarla en su próximo inicio de sesión.',
       );
     } else {
-      setError(body.message || 'No se pudo resetear la clave');
+      setError(mensajeError(body, 'No se pudo resetear la clave'));
     }
   }
 

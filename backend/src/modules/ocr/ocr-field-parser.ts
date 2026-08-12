@@ -3,9 +3,12 @@ import { DocumentType } from '../../common/enums/document-type.enum';
 /** Item extraído de un documento (línea de producto). */
 export interface OcrItem {
   referencia: string;
-  descripcion: string;
+  descripcion: string | null;
   cantidad: number;
   unidad: string;
+  /** QA Func. 2.5: valor unitario por ítem (pedidos/cotizaciones/facturas). */
+  valorUnitario?: number | null;
+  valorTotal?: number | null;
 }
 
 /**
@@ -18,11 +21,76 @@ export interface OcrExtractedData {
   fecha: string | null;
   proveedor: string | null;
   cliente: string | null;
+  /** QA Func. 2.5: NIT/identificación y teléfono (ventas). */
+  nit: string | null;
+  telefono: string | null;
   direccion: string | null;
   numeroGuia: string | null;
   transportadora: string | null;
   items: OcrItem[];
+  /** QA Func. 2.5: totales del documento cuando aparecen. */
+  total?: number | null;
+  observaciones?: string | null;
 }
+
+/**
+ * QA Func. 2.5: esquema de extracción variable por tipo de documento.
+ * Cada tipo define qué campos de cabecera y de ítem aplican.
+ */
+export const OCR_CAMPOS_POR_TIPO: Record<
+  DocumentType,
+  { cabecera: string[]; itemFields: string[] }
+> = {
+  [DocumentType.FACTURA_IMPORTACION]: {
+    cabecera: [
+      'numeroFactura', 'fecha', 'proveedor', 'numeroGuia',
+      'transportadora', 'direccion',
+    ],
+    itemFields: ['referencia', 'descripcion', 'cantidad', 'unidad'],
+  },
+  [DocumentType.ORDEN_PEDIDO]: {
+    cabecera: ['numeroFactura', 'fecha', 'cliente', 'nit', 'direccion', 'telefono'],
+    itemFields: [
+      'referencia', 'descripcion', 'cantidad', 'unidad',
+      'valorUnitario', 'valorTotal',
+    ],
+  },
+  [DocumentType.COTIZACION]: {
+    cabecera: ['numeroFactura', 'fecha', 'cliente', 'nit', 'direccion', 'telefono'],
+    itemFields: [
+      'referencia', 'descripcion', 'cantidad', 'unidad',
+      'valorUnitario', 'valorTotal',
+    ],
+  },
+  [DocumentType.FACTURA_VENTA]: {
+    cabecera: [
+      'numeroFactura', 'fecha', 'cliente', 'nit', 'direccion',
+      'telefono', 'total', 'observaciones',
+    ],
+    itemFields: [
+      'referencia', 'descripcion', 'cantidad', 'unidad',
+      'valorUnitario', 'valorTotal',
+    ],
+  },
+  [DocumentType.GUIA_TRANSPORTE]: {
+    cabecera: [
+      'numeroGuia', 'fecha', 'transportadora', 'cliente', 'direccion',
+    ],
+    itemFields: ['referencia', 'descripcion', 'cantidad', 'unidad'],
+  },
+  [DocumentType.SOPORTE_PQRS]: {
+    cabecera: ['numeroFactura', 'fecha', 'cliente', 'observaciones'],
+    itemFields: ['referencia', 'descripcion', 'cantidad', 'unidad'],
+  },
+  [DocumentType.LOGO]: { cabecera: [], itemFields: [] },
+};
+
+/** Tipos cuyos ítems llevan valor/precio. */
+const TIPOS_CON_VALOR: DocumentType[] = [
+  DocumentType.ORDEN_PEDIDO,
+  DocumentType.COTIZACION,
+  DocumentType.FACTURA_VENTA,
+];
 
 const UNIDADES = ['UND', 'UN', 'UNIDAD', 'PCS', 'PZA', 'CAJA', 'CJ', 'PAR', 'JGO', 'KIT', 'LT', 'KG'];
 
@@ -32,10 +100,14 @@ function empty(): OcrExtractedData {
     fecha: null,
     proveedor: null,
     cliente: null,
+    nit: null,
+    telefono: null,
     direccion: null,
     numeroGuia: null,
     transportadora: null,
     items: [],
+    total: null,
+    observaciones: null,
   };
 }
 
@@ -57,17 +129,19 @@ function toIso(dia: string, mes: string, anio: string): string | null {
  * no reconoce queda null para corrección manual (CU-009, baja confianza).
  */
 export class OcrFieldParser {
-  parse(texto: string, _tipo: DocumentType): OcrExtractedData {
+  parse(texto: string, tipo: DocumentType): OcrExtractedData {
     const data = empty();
     if (!texto) return data;
+    const esquema = OCR_CAMPOS_POR_TIPO[tipo];
+    const conValor = TIPOS_CON_VALOR.includes(tipo);
     const lineas = texto
       .split('\n')
       .map((l) => l.trim())
       .filter((l) => l.length > 0);
 
     for (const linea of lineas) {
-      this.parseCabecera(linea, data);
-      const item = this.parseLineaItem(linea);
+      this.parseCabecera(linea, data, esquema.cabecera);
+      const item = this.parseLineaItem(linea, conValor);
       if (item) data.items.push(item);
     }
     return data;
@@ -75,8 +149,13 @@ export class OcrFieldParser {
 
   // ---------------------------------------------------------------
 
-  private parseCabecera(linea: string, data: OcrExtractedData) {
+  private parseCabecera(
+    linea: string,
+    data: OcrExtractedData,
+    cabecera: string[],
+  ) {
     const l = linea;
+    const aplica = (campo: string) => cabecera.includes(campo);
 
     // Número de factura / invoice
     if (!data.numeroFactura) {
@@ -107,19 +186,28 @@ export class OcrFieldParser {
       const m = regex.exec(l);
       return m ? m[1].trim() : null;
     };
-    if (!data.proveedor) {
+    if (!data.proveedor && aplica('proveedor')) {
       const v = campo(/(?:proveedor|supplier|vendor|remitente)\s*[:.-]\s*(.+)/i);
       if (v) data.proveedor = v;
     }
-    if (!data.cliente) {
+    if (!data.cliente && aplica('cliente')) {
       const v = campo(/(?:cliente|customer|client|destinatario|consignado)\s*[:.-]\s*(.+)/i);
       if (v) data.cliente = v;
     }
-    if (!data.direccion) {
+    // QA Func. 2.5: NIT/identificación y teléfono (ventas)
+    if (!data.nit && aplica('nit')) {
+      const v = campo(/(?:N\.?I\.?T\.?|identificaci[oó]n|c[ée]dula|c\.?c\.?)\s*[:.-]?\s*([0-9][0-9.\-]{4,19})/i);
+      if (v) data.nit = v;
+    }
+    if (!data.telefono && aplica('telefono')) {
+      const v = campo(/(?:tel[eé]fono|tel|celular|phone)\s*[:.-]?\s*([0-9+()\- ]{7,20})/i);
+      if (v) data.telefono = v;
+    }
+    if (!data.direccion && aplica('direccion')) {
       const v = campo(/(?:direcci[oó]n|address|dir)\s*[:.-]\s*(.+)/i);
       if (v) data.direccion = v;
     }
-    if (!data.transportadora) {
+    if (!data.transportadora && aplica('transportadora')) {
       const v = campo(/(?:transportadora|carrier|transportista)\s*[:.-]\s*(.+)/i);
       if (v) data.transportadora = v;
     }
@@ -131,7 +219,7 @@ export class OcrFieldParser {
    *   REF-1001 OIL FILTER 10 UND
    *   REF-1002 | BRAKE PADS | 5
    */
-  private parseLineaItem(linea: string): OcrItem | null {
+  private parseLineaItem(linea: string, conValor: boolean): OcrItem | null {
     // Separadores de tabla
     const partes = linea.includes('|')
       ? linea.split('|').map((p) => p.trim()).filter(Boolean)
@@ -140,13 +228,26 @@ export class OcrFieldParser {
     if (partes.length >= 2) {
       const [ref, ...resto] = partes;
       if (!/^[A-Z0-9][A-Z0-9-_.]{2,24}$/i.test(ref)) return null;
-      const { cantidad, unidad, descripcion } = this.extraerCantidad(resto.join(' '));
+      // QA Func. 2.5: en documentos de venta, los últimos valores numéricos
+      // con separador de miles/decimales son valor unitario/total
+      let valores: { unitario: number | null; total: number | null } = {
+        unitario: null,
+        total: null,
+      };
+      let textoResto = resto.join(' ');
+      if (conValor) {
+        const extraidos = this.extraerValores(textoResto);
+        textoResto = extraidos.resto;
+        valores = { unitario: extraidos.unitario, total: extraidos.total };
+      }
+      const { cantidad, unidad, descripcion } = this.extraerCantidad(textoResto);
       if (cantidad === null) return null;
       return {
         referencia: ref.toUpperCase(),
         descripcion: descripcion || null,
         cantidad,
         unidad: unidad ?? 'UND',
+        ...(conValor ? { valorUnitario: valores.unitario, valorTotal: valores.total } : {}),
       } as OcrItem;
     }
 
@@ -167,6 +268,31 @@ export class OcrFieldParser {
       descripcion: m[2].trim(),
       cantidad: parseInt(m[3], 10),
       unidad: unidad ?? 'UND',
+    };
+  }
+
+  /**
+   * Extrae valor unitario/total del final de la línea (números con formato
+   * monetario: 25.000, 25,000.00, $25.000). Devuelve el texto restante.
+   */
+  private extraerValores(texto: string): {
+    resto: string;
+    unitario: number | null;
+    total: number | null;
+  } {
+    const MONEDA = /\$?\s*(\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?|\d+[.,]\d{2})/g;
+    const matches = [...texto.matchAll(MONEDA)];
+    if (matches.length === 0) return { resto: texto, unitario: null, total: null };
+    const numeros = matches.map((m) =>
+      Number(m[1].replace(/\./g, '').replace(',', '.')),
+    );
+    let resto = texto;
+    for (const m of matches) resto = resto.replace(m[0], ' ');
+    resto = resto.replace(/\s{2,}/g, ' ').trim();
+    return {
+      resto,
+      unitario: numeros[0],
+      total: numeros.length > 1 ? numeros[numeros.length - 1] : null,
     };
   }
 

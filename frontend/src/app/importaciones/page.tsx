@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import * as XLSX from 'xlsx';
-import { api, obtenerSesion, Sesion } from '@/lib/api';
+import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 
 interface Empresa {
   id: string;
@@ -79,6 +79,7 @@ export default function ImportacionesPage() {
   const [empresaId, setEmpresaId] = useState('');
   const [archivo, setArchivo] = useState<File | null>(null);
   const [columnas, setColumnas] = useState<string[]>([]);
+  const [columnasSinEncabezado, setColumnasSinEncabezado] = useState(0);
   const [mapeo, setMapeo] = useState<Record<string, string>>({});
 
   const [job, setJob] = useState<ImportJob | null>(null);
@@ -101,7 +102,8 @@ export default function ImportacionesPage() {
   useEffect(() => {
     const s = obtenerSesion();
     if (!s) return router.replace('/login');
-    if (!['GENERADOR', 'ADMINISTRADOR'].includes(s.usuario.rol)) {
+    // QA Func. 3.4: solo Administrador (menú y URL directa)
+    if (s.usuario.rol !== 'ADMINISTRADOR') {
       return router.replace('/dashboard');
     }
     setSesion(s);
@@ -131,9 +133,30 @@ export default function ImportacionesPage() {
       const buffer = await file.arrayBuffer();
       const wb = XLSX.read(buffer, { type: 'array' });
       const hoja = wb.Sheets[wb.SheetNames[0]];
-      const filas = XLSX.utils.sheet_to_json<Record<string, unknown>>(hoja);
-      const cols = filas.length > 0 ? Object.keys(filas[0]) : [];
+      // Encabezados literales de la fila 1 (no inferidos de la primera fila
+      // de datos): una celda vacía en los datos ya no oculta su columna.
+      // Misma regla del parser del backend: duplicados se sufijan " (n)".
+      const matriz = XLSX.utils.sheet_to_json<unknown[]>(hoja, {
+        header: 1,
+        defval: '',
+      });
+      const encabezados = ((matriz[0] as unknown[]) ?? []).map((c) =>
+        String(c).trim(),
+      );
+      const vistos = new Map<string, number>();
+      const cols: string[] = [];
+      let sinEncabezado = 0;
+      for (const nombre of encabezados) {
+        if (nombre === '') {
+          sinEncabezado++;
+          continue;
+        }
+        const n = (vistos.get(nombre) ?? 0) + 1;
+        vistos.set(nombre, n);
+        cols.push(n > 1 ? `${nombre} (${n})` : nombre);
+      }
       setColumnas(cols);
+      setColumnasSinEncabezado(sinEncabezado);
       // Pre-mapeo por nombre; el usuario lo ajusta (mapeo declarativo, M18)
       const inicial: Record<string, string> = {};
       for (const c of cols) inicial[c] = adivinarDestino(c, destinos);
@@ -141,6 +164,7 @@ export default function ImportacionesPage() {
     } catch {
       setError('No se pudo leer el archivo. Use .xlsx, .xls o .csv');
       setColumnas([]);
+      setColumnasSinEncabezado(0);
     }
   }
 
@@ -176,7 +200,7 @@ export default function ImportacionesPage() {
           `Disponibles en el archivo: ${body.columnasDisponibles.join(', ')}`,
       );
     } else {
-      setError(body.message ?? 'Error al cargar el archivo');
+      setError(mensajeError(body, 'Error al cargar el archivo'));
     }
   }
 
@@ -193,7 +217,7 @@ export default function ImportacionesPage() {
       setMensaje('Importación aplicada correctamente.');
       cargarHistorial();
     } else {
-      setError((body as { message?: string }).message ?? 'No se pudo aprobar');
+      setError(mensajeError(body, 'No se pudo aprobar'));
     }
   }
 
@@ -211,7 +235,7 @@ export default function ImportacionesPage() {
       setMensaje('Importación rechazada.');
       cargarHistorial();
     } else {
-      setError((body as { message?: string }).message ?? 'No se pudo rechazar');
+      setError(mensajeError(body, 'No se pudo rechazar'));
     }
   }
 
@@ -326,7 +350,7 @@ export default function ImportacionesPage() {
             <p className="mt-3 rounded bg-amber-50 px-3 py-2 text-sm text-amber-800">
               Las cantidades se ajustan por <strong>movimientos de inventario</strong>{' '}
               (nunca por sobrescritura) y la aprobación la realiza únicamente el
-              Administrador (M18).
+              Administrador.
             </p>
           )}
         </section>
@@ -339,6 +363,13 @@ export default function ImportacionesPage() {
               Asigne cada columna del archivo a un campo destino. Requeridos:{' '}
               <strong>{campos?.[tipo].requeridos.join(', ')}</strong>
             </p>
+            {columnasSinEncabezado > 0 && (
+              <p className="mb-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                {columnasSinEncabezado} columna(s) del archivo no tienen
+                encabezado y no se ofrecen para mapeo. Revise el archivo si
+                esperaba usarlas.
+              </p>
+            )}
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {columnas.map((col) => (
                 <label key={col} className="flex items-center gap-2 text-sm">
