@@ -28,6 +28,7 @@ import { DocumentType } from '../../common/enums/document-type.enum';
 import { MovementsService } from '../movements/movements.service';
 import { MovementType } from '../../common/enums/movement-type.enum';
 import { AuditService } from '../audit/audit.service';
+import { User } from '../users/entities/user.entity';
 import { InventoriesService } from '../inventories/inventories.service';
 import { InboundMatcher } from '../inbound/inbound-matcher';
 import { compararFacturaConPedido } from './order-compare';
@@ -739,6 +740,12 @@ export class OrdersService {
     const cliente = await this.dataSource
       .getRepository('clients')
       .findOne({ where: { id: order.clienteId } }) as any;
+    // I19: trazabilidad de usuario en cada hito del pedido (nombres, no UUIDs)
+    const usuarios = await this.resolverUsuarios([
+      order.createdBy,
+      order.alistadoPor,
+      order.aprobadoPor,
+    ]);
     return {
       ...order,
       items: itemsConPendiente,
@@ -753,7 +760,28 @@ export class OrdersService {
             ciudad: cliente.ciudad,
           }
         : null,
+      trazabilidad: {
+        creadoPor: usuarios.get(order.createdBy) ?? null,
+        alistadoPor: usuarios.get(order.alistadoPor) ?? null,
+        aprobadoPor: usuarios.get(order.aprobadoPor) ?? null,
+      },
     };
+  }
+
+  /** I19: UUID de usuario → { id, nombre, username } en una sola consulta. */
+  private async resolverUsuarios(
+    ids: (string | null | undefined)[],
+  ): Promise<Map<string, { id: string; nombre: string; username: string }>> {
+    const unicos = [...new Set(ids.filter((x): x is string => !!x))];
+    const mapa = new Map<string, { id: string; nombre: string; username: string }>();
+    if (!unicos.length) return mapa;
+    const usuarios = await this.dataSource.getRepository(User).find({
+      where: unicos.map((id) => ({ id })),
+    });
+    for (const u of usuarios) {
+      mapa.set(u.id, { id: u.id, nombre: u.nombre, username: u.username });
+    }
+    return mapa;
   }
 
   private async findOne(id: string): Promise<Order> {

@@ -22,6 +22,7 @@ import { calcularPendiente, formatBoxId, formatNumeroDespacho } from './dispatch
 import { MovementsService } from '../movements/movements.service';
 import { MovementType } from '../../common/enums/movement-type.enum';
 import { AuditService } from '../audit/audit.service';
+import { User } from '../users/entities/user.entity';
 import { InventoriesService } from '../inventories/inventories.service';
 import {
   ApproveParcialDto,
@@ -424,7 +425,31 @@ export class DispatchesService {
     const cliente = await this.dataSource
       .getRepository('clients')
       .findOne({ where: { id: dispatch.clienteId } });
-    return { ...dispatch, cliente, pedidos, cajas, pendientes };
+    // I19: trazabilidad de usuario en cada hito del despacho (nombres, no UUIDs)
+    const usuarios = await this.resolverUsuarios([
+      dispatch.createdBy,
+      dispatch.aprobadoPor,
+      dispatch.parcialAprobadoPor,
+      dispatch.despachadoPor,
+      ...cajas.map((c: any) => c.createdBy),
+    ]);
+    const cajasConUsuario = cajas.map((c: any) => ({
+      ...c,
+      creadoPorUsuario: usuarios.get(c.createdBy) ?? null,
+    }));
+    return {
+      ...dispatch,
+      cliente,
+      pedidos,
+      cajas: cajasConUsuario,
+      pendientes,
+      trazabilidad: {
+        creadoPor: usuarios.get(dispatch.createdBy) ?? null,
+        aprobadoPor: usuarios.get(dispatch.aprobadoPor) ?? null,
+        parcialAprobadoPor: usuarios.get(dispatch.parcialAprobadoPor) ?? null,
+        despachadoPor: usuarios.get(dispatch.despachadoPor) ?? null,
+      },
+    };
   }
 
   /** HU-062: consulta de despacho por su número (API externa y consultas). */
@@ -789,6 +814,8 @@ export class DispatchesService {
       dto.tipo === TransportType.EXTERNA ? carrier!.nombre : dto.nombreTransporte!.trim();
     dispatch.fechaSalida = new Date();
     dispatch.estado = DispatchStatus.DESPACHADO;
+    // I19: trazabilidad del usuario que registra la salida
+    dispatch.despachadoPor = user.id;
     dispatch.despachadoAt = new Date();
     await this.dataSource.getRepository(Dispatch).save(dispatch);
     await this.audit.log({
@@ -1061,4 +1088,21 @@ export class DispatchesService {
     }
     return new InboundMatcher(productos, map);
   }
+
+  /** I19: UUID de usuario → { id, nombre, username } en una sola consulta. */
+  private async resolverUsuarios(
+    ids: (string | null | undefined)[],
+  ): Promise<Map<string, { id: string; nombre: string; username: string }>> {
+    const unicos = [...new Set(ids.filter((x): x is string => !!x))];
+    const mapa = new Map<string, { id: string; nombre: string; username: string }>();
+    if (!unicos.length) return mapa;
+    const usuarios = await this.dataSource.getRepository(User).find({
+      where: unicos.map((id) => ({ id })),
+    });
+    for (const u of usuarios) {
+      mapa.set(u.id, { id: u.id, nombre: u.nombre, username: u.username });
+    }
+    return mapa;
+  }
+
 }

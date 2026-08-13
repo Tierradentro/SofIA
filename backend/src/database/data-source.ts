@@ -45,6 +45,7 @@ import { SeguridadI131753000010000 } from './migrations/1753000010000-seguridad-
 import { DespachoGlobalI131753000011000 } from './migrations/1753000011000-despacho-global-i13';
 import { ApiExternaI131753000012000 } from './migrations/1753000012000-api-externa-i13';
 import { DireccionesI151753000013000 } from './migrations/1753000013000-direcciones-i15';
+import { TrazabilidadUsuariosI191753000014000 } from './migrations/1753000014000-trazabilidad-usuarios-i19';
 
 export function buildDataSourceOptions(): DataSourceOptions {
   const isTest = process.env.NODE_ENV === 'test';
@@ -104,6 +105,7 @@ export function buildDataSourceOptions(): DataSourceOptions {
       DespachoGlobalI131753000011000,
       ApiExternaI131753000012000,
       DireccionesI151753000013000,
+      TrazabilidadUsuariosI191753000014000,
     ],
     synchronize: false,
     logging: false,

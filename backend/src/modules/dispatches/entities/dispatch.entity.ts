@@ -122,6 +122,10 @@ export class Dispatch {
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
+  /** I19: quién registró la salida (transporte) del despacho. */
+  @Column({ name: 'despachado_por', type: 'uuid', nullable: true })
+  despachadoPor: string | null;
+
   @Column({ name: 'despachado_at', type: 'timestamptz', nullable: true })
   despachadoAt: Date | null;
 

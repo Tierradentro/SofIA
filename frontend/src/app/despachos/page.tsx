@@ -20,12 +20,20 @@ interface Pendiente {
   pendiente: number;
 }
 
+/** I19: usuario que ejecutó cada hito (nombre visible, no UUID). */
+interface UsuarioTraz {
+  id: string;
+  nombre: string;
+  username: string;
+}
+
 interface Caja {
   id: string;
   boxId: string;
   numeroEnDespacho: number;
   estado: 'ABIERTA' | 'CERRADA';
   items: { id: string; codigo: string; cantidad: number }[];
+  creadoPorUsuario?: UsuarioTraz | null;
 }
 
 interface Despacho {
@@ -55,6 +63,13 @@ interface Despacho {
   pendientes: Pendiente[];
   totalPedidos?: number;
   totalCajas?: number;
+  despachadoAt?: string | null;
+  trazabilidad?: {
+    creadoPor: UsuarioTraz | null;
+    aprobadoPor: UsuarioTraz | null;
+    parcialAprobadoPor: UsuarioTraz | null;
+    despachadoPor: UsuarioTraz | null;
+  };
 }
 
 const ESTADOS: Record<Despacho['estado'], string> = {
@@ -321,6 +336,19 @@ export default function DespachosPage() {
             {despacho.cliente?.nombre} · <span className="font-medium">{ESTADOS[despacho.estado]}</span>
               {despacho.despachoOrigenId && ' · Despacho adicional'}
             </p>
+            {/* I19: quién realizó cada actividad del despacho */}
+            {despacho.trazabilidad && (
+              <p className="mt-1 text-xs text-slate-500">
+                {despacho.trazabilidad.creadoPor &&
+                  `Creado por ${despacho.trazabilidad.creadoPor.nombre} (${despacho.trazabilidad.creadoPor.username})`}
+                {despacho.trazabilidad.aprobadoPor &&
+                  ` · Aprobado por ${despacho.trazabilidad.aprobadoPor.nombre} (${despacho.trazabilidad.aprobadoPor.username})`}
+                {despacho.trazabilidad.parcialAprobadoPor &&
+                  ` · Parcial aprobado por ${despacho.trazabilidad.parcialAprobadoPor.nombre} (${despacho.trazabilidad.parcialAprobadoPor.username})`}
+                {despacho.trazabilidad.despachadoPor &&
+                  ` · Despachado por ${despacho.trazabilidad.despachadoPor.nombre} (${despacho.trazabilidad.despachadoPor.username})${despacho.despachadoAt ? ` · ${new Date(despacho.despachadoAt).toLocaleString('es-CO')}` : ''}`}
+              </p>
+            )}
             {/* QA Func. 4.1: dirección de entrega (se escoge en el Pedido, se ajusta aquí) */}
             {!editandoDireccion ? (
               <p className="mt-1 text-sm text-slate-500">
@@ -419,6 +447,9 @@ export default function DespachosPage() {
                 <li key={c.id} className="flex items-center justify-between rounded border p-2">
                   <span>
                     Caja {c.numeroEnDespacho} <span className="text-slate-500">({c.boxId})</span> — {c.estado}
+                    {c.creadoPorUsuario && (
+                      <span className="ml-1 text-xs text-slate-400">· empacada por {c.creadoPorUsuario.nombre}</span>
+                    )}
                     {c.items.length > 0 && (
                       <span className="text-slate-500"> · {c.items.map((i) => `${i.codigo}×${i.cantidad}`).join(', ')}</span>
                     )}
@@ -448,6 +479,32 @@ export default function DespachosPage() {
                 Devolver al Generador
               </button>
             </div>
+          </section>
+        )}
+
+        {/* I19: cajas del despacho con el usuario que empacó (visible en
+            cualquier estado, también cuando el packing ya no está activo) */}
+        {despacho.cajas.length > 0 && !(despacho.estado === 'ABIERTO' && !despacho.empaqueFinalizado && esOperador) && (
+          <section className="mb-4 rounded-lg bg-white p-4 shadow">
+            <h2 className="mb-2 font-semibold">Cajas</h2>
+            <ul className="space-y-1 text-sm">
+              {despacho.cajas.map((c) => (
+                <li key={c.id} className="flex items-center justify-between rounded border p-2">
+                  <span>
+                    Caja {c.numeroEnDespacho} <span className="text-slate-500">({c.boxId})</span> — {c.estado}
+                    {c.creadoPorUsuario && (
+                      <span className="ml-1 text-xs text-slate-400">· empacada por {c.creadoPorUsuario.nombre}</span>
+                    )}
+                    {c.items.length > 0 && (
+                      <span className="text-slate-500"> · {c.items.map((i) => `${i.codigo}×${i.cantidad}`).join(', ')}</span>
+                    )}
+                  </span>
+                  {c.estado === 'CERRADA' && (
+                    <button onClick={() => verEtiqueta(c.id)} className="rounded bg-slate-600 px-2 py-1 text-xs text-white">Etiqueta QR</button>
+                  )}
+                </li>
+              ))}
+            </ul>
           </section>
         )}
 

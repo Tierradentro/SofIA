@@ -22,6 +22,13 @@ interface OrderItem {
   valorTotal: string;
 }
 
+/** I19: usuario que ejecutó cada hito (nombre visible, no UUID). */
+interface UsuarioTraz {
+  id: string;
+  nombre: string;
+  username: string;
+}
+
 interface Pedido {
   id: string;
   numero: string;
@@ -37,6 +44,13 @@ interface Pedido {
   items: OrderItem[];
   valorTotal: number;
   cliente: { id: string; nombre: string; identificacion: string; ciudad: string } | null;
+  alistadoAt?: string | null;
+  aprobadoAt?: string | null;
+  trazabilidad?: {
+    creadoPor: UsuarioTraz | null;
+    alistadoPor: UsuarioTraz | null;
+    aprobadoPor: UsuarioTraz | null;
+  };
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
@@ -354,6 +368,17 @@ function PedidosContenido() {
                 {pedido.cliente?.nombre} · Total ${pedido.valorTotal.toLocaleString()}
                 {pedido.numeroFactura && ` · Factura ${pedido.numeroFactura}`}
               </p>
+              {/* I19: quién realizó cada actividad hasta la aprobación */}
+              {pedido.trazabilidad && (
+                <p className="mt-1 text-xs text-slate-500">
+                  {pedido.trazabilidad.creadoPor &&
+                    `Creado por ${pedido.trazabilidad.creadoPor.nombre} (${pedido.trazabilidad.creadoPor.username}) · ${new Date(pedido.createdAt).toLocaleString('es-CO')}`}
+                  {pedido.trazabilidad.alistadoPor &&
+                    ` · Alistado por ${pedido.trazabilidad.alistadoPor.nombre} (${pedido.trazabilidad.alistadoPor.username})${pedido.alistadoAt ? ` · ${new Date(pedido.alistadoAt).toLocaleString('es-CO')}` : ''}`}
+                  {pedido.trazabilidad.aprobadoPor &&
+                    ` · Aprobado por ${pedido.trazabilidad.aprobadoPor.nombre} (${pedido.trazabilidad.aprobadoPor.username})${pedido.aprobadoAt ? ` · ${new Date(pedido.aprobadoAt).toLocaleString('es-CO')}` : ''}`}
+                </p>
+              )}
             </div>
 
             {pedido.estado === 'PENDIENTE_CORRECCION' && (
