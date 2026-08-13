@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, obtenerSesion, mensajeError } from '@/lib/api';
+import { api, obtenerSesion, mensajeError, Sesion } from '@/lib/api';
+import { AppShell } from '@/components/app-shell';
+import { EncabezadoPagina } from '@/components/ui';
 
 interface Usuario {
   id: string;
@@ -18,6 +20,7 @@ const ROLES = ['OPERADOR', 'GENERADOR', 'ADMINISTRADOR', 'COMERCIAL', 'API'];
 /** HU-004/005: gestión de usuarios (solo Administrador; el backend enforcea). */
 export default function UsuariosPage() {
   const router = useRouter();
+  const [sesion, setSesion] = useState<Sesion | null>(null);
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [form, setForm] = useState({
     nombre: '',
@@ -38,6 +41,7 @@ export default function UsuariosPage() {
   useEffect(() => {
     const s = obtenerSesion();
     if (!s) return router.replace('/login');
+    setSesion(s);
     cargar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
@@ -83,12 +87,11 @@ export default function UsuariosPage() {
     }
   }
 
+  if (!sesion) return null;
+
   return (
-    <main className="min-h-screen p-6">
-      <button onClick={() => router.push('/dashboard')} className="mb-4 text-sm text-sofia-600">
-        ← Volver al dashboard
-      </button>
-      <h1 className="mb-4 text-xl font-semibold">Gestión de usuarios</h1>
+    <AppShell sesion={sesion}>
+      <EncabezadoPagina titulo="Gestión de usuarios" />
 
       <form onSubmit={crear} className="mb-6 grid max-w-3xl grid-cols-2 gap-3 rounded-lg bg-white p-5 shadow">
         <input
@@ -182,6 +185,6 @@ export default function UsuariosPage() {
           ))}
         </tbody>
       </table>
-    </main>
+        </AppShell>
   );
 }

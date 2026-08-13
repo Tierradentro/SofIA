@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, obtenerSesion, Sesion } from '@/lib/api';
+import { AppShell } from '@/components/app-shell';
+import { EncabezadoPagina } from '@/components/ui';
 
 interface Empresa {
   id: string;
@@ -40,7 +42,6 @@ export default function EmpresasPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (!sesion) return null;
 
   const limpiar = () => {
     setEditando(null);
@@ -67,15 +68,12 @@ export default function EmpresasPage() {
     }
   };
 
+  if (!sesion) return null;
+
   return (
-    <main className="mx-auto max-w-3xl p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-bold">Empresas</h1>
-        <button onClick={() => router.push('/dashboard')} className="rounded bg-slate-200 px-3 py-1 text-sm">← Panel</button>
-      </div>
-      <p className="mb-4 text-sm text-slate-600">
-        Empresas que comparten la bodega. Las existencias nunca se mezclan entre ellas.
-      </p>
+    <AppShell sesion={sesion}>
+      <EncabezadoPagina titulo="Empresas"
+      descripcion="Empresas que comparten la bodega. Las existencias nunca se mezclan entre ellas." />
 
       <div className="mb-4 rounded-lg bg-white p-4 shadow">
         <h2 className="mb-2 font-semibold">{editando ? `Editar ${editando.nombre}` : 'Nueva empresa'}</h2>
@@ -138,6 +136,6 @@ export default function EmpresasPage() {
           </tbody>
         </table>
       </div>
-    </main>
+        </AppShell>
   );
 }

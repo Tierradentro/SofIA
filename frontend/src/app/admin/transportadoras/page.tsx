@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, obtenerSesion, mensajeError } from '@/lib/api';
+import { api, obtenerSesion, mensajeError, Sesion } from '@/lib/api';
+import { AppShell } from '@/components/app-shell';
+import { EncabezadoPagina } from '@/components/ui';
 
 interface Transportadora {
   id: string;
@@ -16,6 +18,7 @@ interface Transportadora {
 /** HU-008: gestión de transportadoras (solo Administrador). */
 export default function TransportadorasPage() {
   const router = useRouter();
+  const [sesion, setSesion] = useState<Sesion | null>(null);
   const [items, setItems] = useState<Transportadora[]>([]);
   const [form, setForm] = useState({ nombre: '', tipo: 'EXTERNA', identificacion: '', telefonos: '' });
   const [mensaje, setMensaje] = useState('');
@@ -59,12 +62,11 @@ export default function TransportadorasPage() {
     cargar();
   }
 
+  if (!sesion) return null;
+
   return (
-    <main className="min-h-screen p-6">
-      <button onClick={() => router.push('/dashboard')} className="mb-4 text-sm text-sofia-600">
-        ← Volver al dashboard
-      </button>
-      <h1 className="mb-4 text-xl font-semibold">Transportadoras</h1>
+    <AppShell sesion={sesion}>
+      <EncabezadoPagina titulo="Transportadoras" />
 
       <form onSubmit={crear} className="mb-6 grid max-w-3xl grid-cols-2 gap-3 rounded-lg bg-white p-5 shadow">
         <input
@@ -130,6 +132,6 @@ export default function TransportadorasPage() {
           ))}
         </tbody>
       </table>
-    </main>
+        </AppShell>
   );
 }

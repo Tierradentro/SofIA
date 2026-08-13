@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, obtenerSesion, Sesion } from '@/lib/api';
+import { AppShell } from '@/components/app-shell';
+import { EncabezadoPagina } from '@/components/ui';
 
 interface Pedido { id: string; numero: string; estado: string; numeroFactura: string | null; createdAt: string }
 interface Despacho { id: string; numero: string; estado: string; nombreTransporte: string | null; guia: string | null }
@@ -47,21 +49,17 @@ export default function TableroPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (!sesion) return null;
 
   const activos = pedidos.filter((p) => p.estado !== 'CANCELADO');
   const enTransito = despachos.filter((d) => !['DESPACHADO', 'CANCELADO'].includes(d.estado));
   const casosAbiertos = casos.filter((c) => c.estado === 'ABIERTA' || c.estado === 'PENDIENTE_CORRECCION');
 
+  if (!sesion) return null;
+
   return (
-    <main className="mx-auto max-w-5xl p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-bold">Mi tablero</h1>
-        <button onClick={() => router.push('/dashboard')} className="rounded bg-slate-200 px-3 py-1 text-sm">← Panel</button>
-      </div>
-      <p className="mb-4 text-sm text-slate-600">
-        Pedidos, despachos y devoluciones asociados a su comercial.
-      </p>
+    <AppShell sesion={sesion}>
+      <EncabezadoPagina titulo="Mi tablero"
+      descripcion="Pedidos, despachos y devoluciones asociados a su comercial." />
 
       <div className="mb-4 grid grid-cols-3 gap-3 text-center">
         <div className="rounded-lg bg-white p-4 shadow">
@@ -152,6 +150,6 @@ export default function TableroPage() {
           </table>
         )}
       </section>
-    </main>
+        </AppShell>
   );
 }

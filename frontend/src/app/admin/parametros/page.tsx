@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, obtenerSesion, mensajeError } from '@/lib/api';
+import { api, obtenerSesion, mensajeError, Sesion } from '@/lib/api';
+import { AppShell } from '@/components/app-shell';
+import { EncabezadoPagina } from '@/components/ui';
 
 interface Param {
   clave: string;
@@ -29,6 +31,7 @@ const PARAMS_EDITABLES: Record<string, { campos: { key: string; label: string; t
 /** M14: edición de parámetros del sistema con motivo obligatorio. */
 export default function ParametrosPage() {
   const router = useRouter();
+  const [sesion, setSesion] = useState<Sesion | null>(null);
   const [params, setParams] = useState<Param[]>([]);
   const [editando, setEditando] = useState<string | null>(null);
   const [form, setForm] = useState<Record<string, any>>({});
@@ -72,12 +75,11 @@ export default function ParametrosPage() {
     }
   }
 
+  if (!sesion) return null;
+
   return (
-    <main className="min-h-screen p-6">
-      <button onClick={() => router.push('/dashboard')} className="mb-4 text-sm text-sofia-600">
-        ← Volver al dashboard
-      </button>
-      <h1 className="mb-4 text-xl font-semibold">Parámetros del sistema</h1>
+    <AppShell sesion={sesion}>
+      <EncabezadoPagina titulo="Parámetros del sistema" />
 
       {mensaje && <p className="mb-4 max-w-2xl rounded bg-green-50 px-3 py-2 text-sm text-green-700">{mensaje}</p>}
       {error && <p className="mb-4 max-w-2xl rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
@@ -161,6 +163,6 @@ export default function ParametrosPage() {
           );
         })}
       </div>
-    </main>
+        </AppShell>
   );
 }

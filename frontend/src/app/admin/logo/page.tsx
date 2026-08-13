@@ -2,13 +2,16 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiUpload, obtenerSesion, mensajeError } from '@/lib/api';
+import { apiUpload, obtenerSesion, mensajeError, Sesion } from '@/lib/api';
+import { AppShell } from '@/components/app-shell';
+import { EncabezadoPagina } from '@/components/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 
 /** HU-006: carga del logo empresarial (solo Administrador). */
 export default function LogoPage() {
   const router = useRouter();
+  const [sesion, setSesion] = useState<Sesion | null>(null);
   const [archivo, setArchivo] = useState<File | null>(null);
   const [mensaje, setMensaje] = useState('');
   const [error, setError] = useState('');
@@ -19,6 +22,7 @@ export default function LogoPage() {
   useEffect(() => {
     const s = obtenerSesion();
     if (!s) return router.replace('/login');
+    setSesion(s);
     if (s.usuario.rol !== 'ADMINISTRADOR') return router.replace('/dashboard');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -45,12 +49,11 @@ export default function LogoPage() {
     }
   }
 
+  if (!sesion) return null;
+
   return (
-    <main className="min-h-screen p-6">
-      <button onClick={() => router.push('/dashboard')} className="mb-4 text-sm text-sofia-600">
-        ← Volver al dashboard
-      </button>
-      <h1 className="mb-4 text-xl font-semibold">Logo empresarial</h1>
+    <AppShell sesion={sesion}>
+      <EncabezadoPagina titulo="Logo empresarial" />
 
       <div className="max-w-xl rounded-lg bg-white p-5 shadow">
         <p className="mb-3 text-sm text-slate-600">
@@ -85,6 +88,6 @@ export default function LogoPage() {
         {error && <p className="mt-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
         {mensaje && <p className="mt-3 rounded bg-green-50 px-3 py-2 text-sm text-green-700">{mensaje}</p>}
       </div>
-    </main>
+        </AppShell>
   );
 }

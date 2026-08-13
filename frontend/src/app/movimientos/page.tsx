@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, obtenerSesion, Sesion } from '@/lib/api';
+import { AppShell } from '@/components/app-shell';
+import { EncabezadoPagina } from '@/components/ui';
 
 interface Empresa { id: string; nombre: string; siglas: string }
 interface Producto { id: string; codigo: string; descripcion: string }
@@ -91,11 +93,8 @@ export default function MovimientosPage() {
   if (!sesion) return null;
 
   return (
-    <main className="mx-auto max-w-6xl p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-bold">Movimientos de inventario (kardex)</h1>
-        <button onClick={() => router.push('/dashboard')} className="rounded bg-slate-200 px-3 py-1 text-sm">← Panel</button>
-      </div>
+    <AppShell sesion={sesion}>
+      <EncabezadoPagina titulo="Movimientos de inventario (kardex)" />
 
       <div className="mb-4 flex flex-wrap gap-3 rounded-lg bg-white p-4 shadow">
         <div>
@@ -175,6 +174,6 @@ export default function MovimientosPage() {
           </table>
         </div>
       )}
-    </main>
+        </AppShell>
   );
 }

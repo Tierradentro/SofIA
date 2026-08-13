@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, obtenerSesion, mensajeError } from '@/lib/api';
+import { api, obtenerSesion, mensajeError, Sesion } from '@/lib/api';
+import { AppShell } from '@/components/app-shell';
+import { EncabezadoPagina } from '@/components/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 
@@ -21,6 +23,7 @@ interface Log {
 /** HU-065 + A-03: consulta de auditoría con filtros y purga controlada. */
 export default function AuditoriaPage() {
   const router = useRouter();
+  const [sesion, setSesion] = useState<Sesion | null>(null);
   const [logs, setLogs] = useState<Log[]>([]);
   const [total, setTotal] = useState(0);
   const [filtros, setFiltros] = useState({ tabla: '', accion: '', fechaDesde: '', fechaHasta: '' });
@@ -68,6 +71,7 @@ export default function AuditoriaPage() {
   useEffect(() => {
     const s = obtenerSesion();
     if (!s) return router.replace('/login');
+    setSesion(s);
     cargar();
     cargarRespaldos();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -106,12 +110,11 @@ export default function AuditoriaPage() {
     }
   }
 
+  if (!sesion) return null;
+
   return (
-    <main className="min-h-screen p-6">
-      <button onClick={() => router.push('/dashboard')} className="mb-4 text-sm text-sofia-600">
-        ← Volver al dashboard
-      </button>
-      <h1 className="mb-4 text-xl font-semibold">Auditoría</h1>
+    <AppShell sesion={sesion}>
+      <EncabezadoPagina titulo="Auditoría" />
 
       <div className="mb-4 flex flex-wrap items-end gap-3 rounded-lg bg-white p-4 text-sm shadow">
         <label>
@@ -222,6 +225,6 @@ export default function AuditoriaPage() {
         {error && <p className="mt-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
         {mensaje && <p className="mt-3 rounded bg-green-50 px-3 py-2 text-sm text-green-700">{mensaje}</p>}
       </div>
-    </main>
+        </AppShell>
   );
 }

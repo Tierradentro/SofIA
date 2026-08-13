@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, obtenerSesion, mensajeError } from '@/lib/api';
+import { api, obtenerSesion, mensajeError, Sesion } from '@/lib/api';
+import { AppShell } from '@/components/app-shell';
+import { EncabezadoPagina } from '@/components/ui';
 
 interface ApiKeyItem {
   id: string;
@@ -24,6 +26,7 @@ interface UsuarioApi {
 /** M17: gestión de API keys (solo Administrador). Consulta enmascarada. */
 export default function ApiKeysPage() {
   const router = useRouter();
+  const [sesion, setSesion] = useState<Sesion | null>(null);
   const [keys, setKeys] = useState<ApiKeyItem[]>([]);
   const [usuariosApi, setUsuariosApi] = useState<UsuarioApi[]>([]);
   const [form, setForm] = useState({ userId: '', nombre: '' });
@@ -78,12 +81,11 @@ export default function ApiKeysPage() {
     cargar();
   }
 
+  if (!sesion) return null;
+
   return (
-    <main className="min-h-screen p-6">
-      <button onClick={() => router.push('/dashboard')} className="mb-4 text-sm text-sofia-600">
-        ← Volver al dashboard
-      </button>
-      <h1 className="mb-4 text-xl font-semibold">API Keys</h1>
+    <AppShell sesion={sesion}>
+      <EncabezadoPagina titulo="API Keys" />
 
       {usuariosApi.length === 0 && (
         <p className="mb-4 max-w-2xl rounded bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -157,6 +159,6 @@ export default function ApiKeysPage() {
           ))}
         </tbody>
       </table>
-    </main>
+        </AppShell>
   );
 }

@@ -2,7 +2,10 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Lock, ShieldCheck } from 'lucide-react';
 import { api, obtenerSesion, guardarSesion, mensajeError } from '@/lib/api';
+import { LogoSofia } from '@/components/logo';
+import { CLASE_BOTON_PRIMARIO, CLASE_INPUT } from '@/components/ui';
 
 /** HU-003 / M02: cambio de clave (obligatorio en primer login o tras reseteo). */
 export default function CambiarClavePage() {
@@ -36,54 +39,81 @@ export default function CambiarClavePage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-sofia-900">
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden p-4">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/login-fondo.jpg"
+        alt=""
+        className="absolute inset-0 h-full w-full object-cover"
+      />
+      <div className="absolute inset-0 bg-sofia-950/60" />
+
       <form
         onSubmit={onSubmit}
-        className="w-full max-w-sm rounded-xl bg-white p-8 shadow-lg"
+        className="relative w-full max-w-sm rounded-2xl bg-white/95 p-8 shadow-2xl backdrop-blur"
       >
-        <h1 className="mb-2 text-xl font-semibold text-sofia-900">
+        <div className="mb-6 flex justify-center">
+          <LogoSofia width={180} height={72} />
+        </div>
+        <h1 className="mb-2 text-center text-xl font-bold text-sofia-900">
           Cambio de contraseña
         </h1>
-        <p className="mb-6 text-sm text-slate-600">
+        <p className="mb-6 text-center text-sm text-slate-600">
           Por seguridad debe establecer una nueva contraseña (mínimo 6
           caracteres, con mayúsculas, minúsculas y números).
         </p>
-        <label className="mb-1 block text-sm font-medium">Contraseña actual</label>
-        <input
-          type="password"
-          className="mb-4 w-full rounded border px-3 py-2"
-          value={claveActual}
-          onChange={(e) => setClaveActual(e.target.value)}
-          required
-        />
-        <label className="mb-1 block text-sm font-medium">Nueva contraseña</label>
-        <input
-          type="password"
-          className="mb-4 w-full rounded border px-3 py-2"
-          value={claveNueva}
-          onChange={(e) => setClaveNueva(e.target.value)}
-          required
-        />
-        <label className="mb-1 block text-sm font-medium">Confirmación</label>
-        <input
-          type="password"
-          className="mb-4 w-full rounded border px-3 py-2"
-          value={confirmacion}
-          onChange={(e) => setConfirmacion(e.target.value)}
-          required
-        />
+
+        <label className="mb-1 block text-sm font-medium text-slate-700">Contraseña actual</label>
+        <div className="relative mb-4">
+          <Lock size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="password"
+            className={`${CLASE_INPUT} pl-9`}
+            value={claveActual}
+            onChange={(e) => setClaveActual(e.target.value)}
+            required
+          />
+        </div>
+
+        <label className="mb-1 block text-sm font-medium text-slate-700">Nueva contraseña</label>
+        <div className="relative mb-4">
+          <Lock size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="password"
+            className={`${CLASE_INPUT} pl-9`}
+            value={claveNueva}
+            onChange={(e) => setClaveNueva(e.target.value)}
+            required
+          />
+        </div>
+
+        <label className="mb-1 block text-sm font-medium text-slate-700">Confirmación</label>
+        <div className="relative mb-4">
+          <Lock size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="password"
+            className={`${CLASE_INPUT} pl-9`}
+            value={confirmacion}
+            onChange={(e) => setConfirmacion(e.target.value)}
+            required
+          />
+        </div>
+
         {error && (
-          <p className="mb-4 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+          <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
         )}
         {mensaje && (
-          <p className="mb-4 rounded bg-green-50 px-3 py-2 text-sm text-green-700">{mensaje}</p>
+          <p className="mb-4 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">{mensaje}</p>
         )}
-        <button
-          type="submit"
-          className="w-full rounded bg-sofia-600 py-2 font-medium text-white hover:bg-sofia-700"
-        >
+
+        <button type="submit" className={`${CLASE_BOTON_PRIMARIO} w-full`}>
           Actualizar contraseña
         </button>
+
+        <p className="mt-4 flex items-center justify-center gap-1.5 text-center text-xs text-slate-500">
+          <ShieldCheck size={13} className="text-menta-600" />
+          La contraseña se almacena cifrada y nunca se muestra en pantalla.
+        </p>
       </form>
     </main>
   );

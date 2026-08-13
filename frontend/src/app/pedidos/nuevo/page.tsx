@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, obtenerSesion, Sesion } from '@/lib/api';
+import { AppShell } from '@/components/app-shell';
+import { EncabezadoPagina } from '@/components/ui';
 import { NuevoPedido } from './formulario';
 
 /**
@@ -45,13 +47,11 @@ export default function NuevoPedidoPage() {
   if (!sesion || !empresaId) return null;
 
   return (
-    <main className="min-h-screen bg-slate-100 p-6">
-      <button
-        onClick={() => router.push('/pedidos')}
-        className="mb-4 text-sm text-sofia-600 hover:underline"
-      >
-        ← Volver a pedidos
-      </button>
+    <AppShell sesion={sesion}>
+      <EncabezadoPagina
+        titulo="Nuevo pedido"
+        descripcion="Cree la orden manualmente, desde un PDF con OCR (con revisión previa) o desde un archivo Excel."
+      />
       <NuevoPedido
         empresaId={empresaId}
         clientes={clientes}
@@ -61,6 +61,6 @@ export default function NuevoPedidoPage() {
         onCreado={(id) => router.push(`/pedidos?abrir=${id}`)}
         onCancelar={() => router.push('/pedidos')}
       />
-    </main>
+    </AppShell>
   );
 }
