@@ -2,7 +2,18 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { MapPin, Search } from 'lucide-react';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
+import { AppShell } from '@/components/app-shell';
+import {
+  CLASE_BOTON_PRIMARIO,
+  CLASE_BOTON_SECUNDARIO,
+  CLASE_INPUT,
+  CLASES_TABLA,
+  EncabezadoPagina,
+  Insignia,
+  Tarjeta,
+} from '@/components/ui';
 
 interface Cliente {
   id: string;
@@ -120,162 +131,185 @@ export default function ClientesPage() {
 
   if (!sesion) return null;
 
+  const panelAbierto = Boolean(clienteDirecciones && puedeEditar);
+
   return (
-    <main className="min-h-screen p-6">
-      <button onClick={() => router.push('/dashboard')} className="mb-4 text-sm text-sofia-600">
-        ← Volver al dashboard
-      </button>
-      <h1 className="mb-4 text-xl font-semibold">Clientes</h1>
+    <AppShell sesion={sesion}>
+      <EncabezadoPagina titulo="Clientes" />
 
-      <form onSubmit={(e) => { e.preventDefault(); cargar(); }} className="mb-4 flex max-w-xl gap-2">
-        <input
-          placeholder="Buscar por nombre o identificación"
-          className="flex-1 rounded border px-3 py-2"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-        <button className="rounded bg-sofia-600 px-4 py-2 text-white">Buscar</button>
-      </form>
-
-      {mensaje && <p className="mb-3 max-w-3xl rounded bg-green-50 px-3 py-2 text-sm text-green-700">{mensaje}</p>}
-      {error && <p className="mb-3 max-w-3xl rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-
-      {puedeEditar && (
-        <form onSubmit={guardar} className="mb-6 grid max-w-3xl grid-cols-2 gap-3 rounded-lg bg-white p-5 shadow">
-          <input placeholder="Nombre *" className="rounded border px-3 py-2" value={form.nombre}
-            onChange={(e) => setForm({ ...form, nombre: e.target.value })} required />
-          <input placeholder="Identificación (NIT)" className="rounded border px-3 py-2" value={form.identificacion}
-            onChange={(e) => setForm({ ...form, identificacion: e.target.value })} />
-          <input placeholder="Dirección" className="rounded border px-3 py-2" value={form.direccion}
-            onChange={(e) => setForm({ ...form, direccion: e.target.value })} />
-          <input placeholder="Teléfonos" className="rounded border px-3 py-2" value={form.telefonos}
-            onChange={(e) => setForm({ ...form, telefonos: e.target.value })} />
-          <input placeholder="Ciudad" className="rounded border px-3 py-2" value={form.ciudad}
-            onChange={(e) => setForm({ ...form, ciudad: e.target.value })} />
-          <div className="flex gap-2">
-            <button className="flex-1 rounded bg-sofia-600 py-2 text-white">
-              {editando ? 'Guardar cambios' : 'Crear cliente'}
-            </button>
-            {editando && (
-              <button type="button" onClick={() => { setEditando(null); setForm(VACIO); }}
-                className="rounded bg-slate-100 px-4">
-                Cancelar
-              </button>
-            )}
+      <Tarjeta className="mb-4 max-w-3xl p-4">
+        <form onSubmit={(e) => { e.preventDefault(); cargar(); }} className="flex gap-2">
+          <div className="relative flex-1">
+            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              placeholder="Buscar por nombre o identificación"
+              className={`${CLASE_INPUT} pl-9`}
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
           </div>
+          <button className={CLASE_BOTON_PRIMARIO}>Buscar</button>
         </form>
-      )}
+      </Tarjeta>
 
-      {/* QA Func. 4.1: direcciones de despacho del cliente (máx. 10) */}
-      {clienteDirecciones && puedeEditar && (
-        <section className="mb-6 max-w-3xl rounded-lg bg-white p-5 shadow">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-semibold">
-              Direcciones de {clienteDirecciones.nombre} ({direcciones.length}/10)
-            </h2>
-            <button onClick={() => setClienteDirecciones(null)} className="text-sm text-slate-500">
-              Cerrar
-            </button>
-          </div>
-          <ul className="mb-4 space-y-2 text-sm">
-            {direcciones.map((d) => (
-              <li key={d.id} className="flex items-center justify-between rounded border px-3 py-2">
-                <span>
-                  {d.direccion}
-                  {d.ciudad ? ` — ${d.ciudad}` : ''}
-                  {d.esPrincipal && (
-                    <span className="ml-2 rounded bg-sofia-100 px-1.5 py-0.5 text-xs font-medium text-sofia-800">
-                      Principal
+      {mensaje && <p className="mb-3 max-w-3xl rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">{mensaje}</p>}
+      {error && <p className="mb-3 max-w-3xl rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+
+      <div className={`mb-6 grid grid-cols-1 gap-6 ${panelAbierto ? 'xl:grid-cols-2' : ''}`}>
+        {puedeEditar && (
+          <Tarjeta className={`p-5 ${panelAbierto ? '' : 'max-w-3xl'}`}>
+            <form onSubmit={guardar} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <input placeholder="Nombre *" className={CLASE_INPUT} value={form.nombre}
+                onChange={(e) => setForm({ ...form, nombre: e.target.value })} required />
+              <input placeholder="Identificación (NIT)" className={CLASE_INPUT} value={form.identificacion}
+                onChange={(e) => setForm({ ...form, identificacion: e.target.value })} />
+              <input placeholder="Dirección" className={CLASE_INPUT} value={form.direccion}
+                onChange={(e) => setForm({ ...form, direccion: e.target.value })} />
+              <input placeholder="Teléfonos" className={CLASE_INPUT} value={form.telefonos}
+                onChange={(e) => setForm({ ...form, telefonos: e.target.value })} />
+              <input placeholder="Ciudad" className={CLASE_INPUT} value={form.ciudad}
+                onChange={(e) => setForm({ ...form, ciudad: e.target.value })} />
+              <div className="flex gap-2">
+                <button className={`${CLASE_BOTON_PRIMARIO} flex-1`}>
+                  {editando ? 'Guardar cambios' : 'Crear cliente'}
+                </button>
+                {editando && (
+                  <button type="button" onClick={() => { setEditando(null); setForm(VACIO); }}
+                    className="rounded-lg bg-slate-100 px-4 text-sm text-slate-600 hover:bg-slate-200">
+                    Cancelar
+                  </button>
+                )}
+              </div>
+            </form>
+          </Tarjeta>
+        )}
+
+        {/* QA Func. 4.1: direcciones de despacho del cliente (máx. 10) */}
+        {panelAbierto && clienteDirecciones && (
+          <Tarjeta className="p-5">
+            <div className="mb-4 flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
+              <h2 className="font-semibold text-slate-900">
+                Direcciones de {clienteDirecciones.nombre}{' '}
+                <span className="text-sm font-normal text-slate-500">({direcciones.length}/10)</span>
+              </h2>
+              <button
+                onClick={() => setClienteDirecciones(null)}
+                className={`${CLASE_BOTON_SECUNDARIO} px-3 py-1 text-xs`}
+              >
+                Cerrar
+              </button>
+            </div>
+            <ul className="mb-4 space-y-2 text-sm">
+              {direcciones.map((d) => (
+                <li key={d.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <MapPin size={14} className="shrink-0 text-slate-400" />
+                    <span className="truncate">
+                      {d.direccion}
+                      {d.ciudad ? ` — ${d.ciudad}` : ''}
                     </span>
-                  )}
-                </span>
-                <span className="flex gap-2">
+                    {d.esPrincipal && <Insignia tono="azul">Principal</Insignia>}
+                  </span>
                   {!d.esPrincipal && (
-                    <>
+                    <span className="flex gap-3 text-xs font-medium">
                       <button onClick={() => marcarPrincipal(d)} className="text-sofia-700 hover:underline">
                         Marcar principal
                       </button>
-                      <button onClick={() => eliminarDireccion(d)} className="text-red-700 hover:underline">
+                      <button onClick={() => eliminarDireccion(d)} className="text-red-600 hover:underline">
                         Eliminar
                       </button>
-                    </>
+                    </span>
                   )}
-                </span>
-              </li>
-            ))}
-            {!direcciones.length && (
-              <li className="text-slate-500">Este cliente aún no tiene direcciones registradas.</li>
-            )}
-          </ul>
-          {direcciones.length < 10 && (
-            <form onSubmit={agregarDireccion} className="flex gap-2">
-              <input
-                placeholder="Nueva dirección *"
-                className="flex-1 rounded border px-3 py-2"
-                value={nuevaDireccion.direccion}
-                onChange={(e) => setNuevaDireccion({ ...nuevaDireccion, direccion: e.target.value })}
-                maxLength={250}
-                required
-              />
-              <input
-                placeholder="Ciudad"
-                className="w-40 rounded border px-3 py-2"
-                value={nuevaDireccion.ciudad}
-                onChange={(e) => setNuevaDireccion({ ...nuevaDireccion, ciudad: e.target.value })}
-                maxLength={120}
-              />
-              <button className="rounded bg-sofia-600 px-4 py-2 text-white">Agregar</button>
-            </form>
-          )}
-        </section>
-      )}
-
-      <table className="w-full max-w-4xl rounded-lg bg-white text-sm shadow">
-        <thead>
-          <tr className="border-b text-left">
-            <th className="p-3">Nombre</th>
-            <th className="p-3">Identificación</th>
-            <th className="p-3">Ciudad</th>
-            <th className="p-3">Teléfonos</th>
-            {puedeEditar && <th className="p-3">Acciones</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {clientes.map((c) => (
-            <tr key={c.id} className="border-b last:border-0">
-              <td className="p-3">{c.nombre}</td>
-              <td className="p-3">{c.identificacion}</td>
-              <td className="p-3">{c.ciudad}</td>
-              <td className="p-3">{c.telefonos}</td>
-              {puedeEditar && (
-                <td className="p-3">
-                  <button
-                    onClick={() => {
-                      setEditando(c.id);
-                      setForm({
-                        nombre: c.nombre,
-                        identificacion: c.identificacion || '',
-                        direccion: c.direccion || '',
-                        telefonos: c.telefonos || '',
-                        ciudad: c.ciudad || '',
-                      });
-                    }}
-                    className="rounded bg-sofia-100 px-2 py-1 text-sofia-700"
-                  >
-                    Editar
-                  </button>
-                  <button
-                    onClick={() => abrirDirecciones(c)}
-                    className="ml-2 rounded bg-slate-100 px-2 py-1 text-slate-700"
-                  >
-                    Direcciones
-                  </button>
-                </td>
+                </li>
+              ))}
+              {!direcciones.length && (
+                <li className="text-slate-500">Este cliente aún no tiene direcciones registradas.</li>
               )}
+            </ul>
+            {direcciones.length < 10 && (
+              <form onSubmit={agregarDireccion} className="flex flex-col gap-2 sm:flex-row">
+                <input
+                  placeholder="Nueva dirección *"
+                  className={`${CLASE_INPUT} flex-1`}
+                  value={nuevaDireccion.direccion}
+                  onChange={(e) => setNuevaDireccion({ ...nuevaDireccion, direccion: e.target.value })}
+                  maxLength={250}
+                  required
+                />
+                <input
+                  placeholder="Ciudad"
+                  className={`${CLASE_INPUT} sm:w-40`}
+                  value={nuevaDireccion.ciudad}
+                  onChange={(e) => setNuevaDireccion({ ...nuevaDireccion, ciudad: e.target.value })}
+                  maxLength={120}
+                />
+                <button className={CLASE_BOTON_PRIMARIO}>Agregar</button>
+              </form>
+            )}
+          </Tarjeta>
+        )}
+      </div>
+
+      <Tarjeta className="max-w-5xl overflow-hidden">
+        <table className={CLASES_TABLA.tabla}>
+          <thead>
+            <tr className={CLASES_TABLA.cabecera}>
+              <th className={CLASES_TABLA.celdaCabecera}>Nombre</th>
+              <th className={CLASES_TABLA.celdaCabecera}>Identificación</th>
+              <th className={CLASES_TABLA.celdaCabecera}>Ciudad</th>
+              <th className={CLASES_TABLA.celdaCabecera}>Teléfonos</th>
+              {puedeEditar && <th className={CLASES_TABLA.celdaCabecera}>Acciones</th>}
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </main>
+          </thead>
+          <tbody>
+            {clientes.map((c) => (
+              <tr key={c.id} className={CLASES_TABLA.fila}>
+                <td className={`${CLASES_TABLA.celda} font-medium`}>{c.nombre}</td>
+                <td className={CLASES_TABLA.celda}>{c.identificacion}</td>
+                <td className={CLASES_TABLA.celda}>{c.ciudad}</td>
+                <td className={CLASES_TABLA.celda}>{c.telefonos}</td>
+                {puedeEditar && (
+                  <td className={CLASES_TABLA.celda}>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          setEditando(c.id);
+                          setForm({
+                            nombre: c.nombre,
+                            identificacion: c.identificacion || '',
+                            direccion: c.direccion || '',
+                            telefonos: c.telefonos || '',
+                            ciudad: c.ciudad || '',
+                          });
+                        }}
+                        className="rounded-md bg-sofia-100 px-3 py-1 text-xs font-medium text-sofia-700 hover:bg-sofia-200"
+                      >
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => abrirDirecciones(c)}
+                        className="rounded-md bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-200"
+                      >
+                        Direcciones
+                      </button>
+                    </div>
+                  </td>
+                )}
+              </tr>
+            ))}
+            {!clientes.length && (
+              <tr>
+                <td colSpan={puedeEditar ? 5 : 4} className="px-4 py-8 text-center text-sm text-slate-500">
+                  No se encontraron clientes.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+        <p className="border-t border-slate-100 px-4 py-2.5 text-xs text-slate-500">
+          Mostrando {clientes.length} resultado{clientes.length === 1 ? '' : 's'}
+        </p>
+      </Tarjeta>
+    </AppShell>
   );
 }

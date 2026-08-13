@@ -73,18 +73,20 @@ export default function ComercialesPage() {
     <AppShell sesion={sesion}>
       <EncabezadoPagina titulo="Comerciales" />
 
-      <form onSubmit={(e) => { e.preventDefault(); cargar(); }} className="mb-4 flex max-w-xl gap-2">
-        <div className="relative flex-1">
-          <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            placeholder="Buscar por nombre o identificación"
-            className={`${CLASE_INPUT} pl-9`}
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
-        </div>
-        <button className={CLASE_BOTON_PRIMARIO}>Buscar</button>
-      </form>
+      <Tarjeta className="mb-4 max-w-3xl p-4">
+        <form onSubmit={(e) => { e.preventDefault(); cargar(); }} className="flex gap-2">
+          <div className="relative flex-1">
+            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              placeholder="Buscar por nombre o identificación"
+              className={`${CLASE_INPUT} pl-9`}
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+          </div>
+          <button className={CLASE_BOTON_PRIMARIO}>Buscar</button>
+        </form>
+      </Tarjeta>
 
       {mensaje && <p className="mb-3 max-w-3xl rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">{mensaje}</p>}
       {error && <p className="mb-3 max-w-3xl rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
@@ -156,8 +158,18 @@ export default function ComercialesPage() {
                 )}
               </tr>
             ))}
+            {!comerciales.length && (
+              <tr>
+                <td colSpan={puedeEditar ? 5 : 4} className="px-4 py-8 text-center text-sm text-slate-500">
+                  No se encontraron comerciales.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
+        <p className="border-t border-slate-100 px-4 py-2.5 text-xs text-slate-500">
+          Mostrando {comerciales.length} resultado{comerciales.length === 1 ? '' : 's'}
+        </p>
       </Tarjeta>
     </AppShell>
   );
