@@ -2,7 +2,17 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { CheckCircle2, Plus, Search } from 'lucide-react';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
+import { AppShell } from '@/components/app-shell';
+import {
+  CLASE_BOTON_PRIMARIO,
+  CLASE_INPUT,
+  CLASES_TABLA,
+  EncabezadoPagina,
+  Insignia,
+  Tarjeta,
+} from '@/components/ui';
 import { ConsultaProducto } from './consulta';
 
 interface Empresa {
@@ -264,110 +274,152 @@ export default function ProductosPage() {
   if (!sesion) return null;
 
   return (
-    <main className="min-h-screen p-6">
-      <button onClick={() => router.push('/dashboard')} className="mb-4 text-sm text-sofia-600">
-        ← Volver al dashboard
-      </button>
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Productos</h1>
-        <div className="flex items-center gap-3">
-          <select
-            className="rounded border px-3 py-2"
-            value={empresaId}
-            onChange={(e) => setEmpresaId(e.target.value)}
-          >
-            {empresas.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.nombre}
-              </option>
-            ))}
-          </select>
-          {esGenerador && (
+    <AppShell sesion={sesion}>
+      <EncabezadoPagina
+        titulo="Productos"
+        acciones={
+          esGenerador ? (
             <button
               onClick={() => { setMostrarForm(!mostrarForm); setEditando(null); setFicha(null); }}
-              className="rounded bg-sofia-600 px-4 py-2 text-white hover:bg-sofia-700"
+              className={`${CLASE_BOTON_PRIMARIO} flex items-center gap-2`}
             >
+              <Plus size={16} />
               {mostrarForm ? 'Cerrar' : 'Nuevo producto'}
             </button>
-          )}
-        </div>
+          ) : undefined
+        }
+      />
+
+      {/* Selector de empresa como tarjetas */}
+      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        Empresas registradas
+      </h2>
+      <div className="mb-6 grid max-w-2xl grid-cols-1 gap-4 sm:grid-cols-2">
+        {empresas.map((e) => {
+          const activa = e.id === empresaId;
+          return (
+            <button
+              key={e.id}
+              onClick={() => setEmpresaId(e.id)}
+              className={`flex items-center gap-4 rounded-xl border-2 p-4 text-left shadow-sm transition-colors ${
+                activa
+                  ? 'border-sofia-700 bg-white'
+                  : 'border-transparent bg-white hover:border-sofia-200'
+              }`}
+            >
+              <span
+                className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-sm font-bold ${
+                  activa ? 'bg-sofia-900 text-white' : 'bg-slate-100 text-slate-500'
+                }`}
+              >
+                {e.siglas}
+              </span>
+              <span>
+                <span className="block font-semibold text-slate-900">{e.siglas}</span>
+                <span
+                  className={`flex items-center gap-1 text-xs ${
+                    activa ? 'text-sofia-700' : 'text-slate-400'
+                  }`}
+                >
+                  {activa ? (
+                    <>
+                      <CheckCircle2 size={13} /> Seleccionada
+                    </>
+                  ) : (
+                    'Cambiar a esta empresa'
+                  )}
+                </span>
+              </span>
+            </button>
+          );
+        })}
       </div>
 
-      {mensaje && <p className="mb-4 max-w-3xl rounded bg-green-50 px-3 py-2 text-sm text-green-700">{mensaje}</p>}
-      {error && <p className="mb-4 max-w-3xl rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+      {mensaje && <p className="mb-4 max-w-3xl rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">{mensaje}</p>}
+      {error && <p className="mb-4 max-w-3xl rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
       {/* QA Func. 2.4: búsqueda parcial */}
-      <form onSubmit={buscar} className="mb-4 flex max-w-3xl gap-2">
-        <input
-          placeholder="Buscar por código, OE, referencia cruzada o descripción (coincidencia parcial)"
-          className="flex-1 rounded border px-3 py-2"
-          value={consulta}
-          onChange={(e) => setConsulta(e.target.value)}
-        />
-        <button className="rounded bg-sofia-600 px-4 py-2 text-white hover:bg-sofia-700">Buscar</button>
-        {consulta && (
-          <button
-            type="button"
-            onClick={() => { setConsulta(''); cargar(); }}
-            className="rounded bg-slate-100 px-3 py-2"
-          >
-            Limpiar
-          </button>
-        )}
-      </form>
+      <Tarjeta className="mb-4 max-w-3xl p-4">
+        <form onSubmit={buscar} className="flex flex-col gap-2 sm:flex-row">
+          <div className="relative flex-1">
+            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              placeholder="Buscar por código, OE, referencia cruzada o descripción (coincidencia parcial)"
+              className={`${CLASE_INPUT} pl-9`}
+              value={consulta}
+              onChange={(e) => setConsulta(e.target.value)}
+            />
+          </div>
+          <div className="flex gap-2">
+            <button className={CLASE_BOTON_PRIMARIO}>Buscar</button>
+            {consulta && (
+              <button
+                type="button"
+                onClick={() => { setConsulta(''); cargar(); }}
+                className="rounded-lg bg-slate-100 px-4 text-sm text-slate-600 hover:bg-slate-200"
+              >
+                Limpiar
+              </button>
+            )}
+          </div>
+        </form>
+      </Tarjeta>
 
       {/* Consulta exacta por código de barras (no se toca: match exacto) */}
-      <div className="mb-6 max-w-3xl rounded-lg bg-white p-4 shadow">
+      <Tarjeta className="mb-6 max-w-3xl p-4">
         <h2 className="mb-2 text-sm font-semibold text-slate-700">
           Consulta exacta (código de barras / código / OE / referencia)
         </h2>
         <ConsultaProducto empresaId={empresaId || undefined} />
-      </div>
+      </Tarjeta>
 
       {mostrarForm && esGenerador && (
-        <form onSubmit={crear} className="mb-6 grid max-w-4xl grid-cols-3 gap-3 rounded-lg bg-white p-5 shadow">
-          <input placeholder="Código *" className="rounded border px-3 py-2" value={form.codigo}
-            onChange={(e) => setForm({ ...form, codigo: e.target.value })} required />
-          {CAMPOS_EDICION.filter((c) => c.clave === 'descripcion').map((c) => (
-            <input key={c.clave} placeholder={c.etiqueta} className="col-span-2 rounded border px-3 py-2"
-              value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} required />
-          ))}
-          {CAMPOS_EDICION.filter((c) => c.clave !== 'descripcion').map((c) => (
-            <input
-              key={c.clave}
-              placeholder={c.etiqueta}
-              type={c.tipo ?? 'text'}
-              step={c.tipo === 'number' ? '0.01' : undefined}
-              min={c.tipo === 'number' ? 0 : undefined}
-              className="rounded border px-3 py-2"
-              value={form[c.clave]}
-              onChange={(e) => setForm({ ...form, [c.clave]: e.target.value })}
-            />
-          ))}
-          <button className="col-span-3 rounded bg-sofia-600 py-2 font-medium text-white hover:bg-sofia-700">
-            Crear producto
-          </button>
-        </form>
+        <Tarjeta className="mb-6 max-w-4xl p-5">
+          <h2 className="mb-3 font-semibold text-slate-900">Nuevo producto</h2>
+          <form onSubmit={crear} className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <input placeholder="Código *" className={CLASE_INPUT} value={form.codigo}
+              onChange={(e) => setForm({ ...form, codigo: e.target.value })} required />
+            {CAMPOS_EDICION.filter((c) => c.clave === 'descripcion').map((c) => (
+              <input key={c.clave} placeholder={c.etiqueta} className={`${CLASE_INPUT} sm:col-span-2`}
+                value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} required />
+            ))}
+            {CAMPOS_EDICION.filter((c) => c.clave !== 'descripcion').map((c) => (
+              <input
+                key={c.clave}
+                placeholder={c.etiqueta}
+                type={c.tipo ?? 'text'}
+                step={c.tipo === 'number' ? '0.01' : undefined}
+                min={c.tipo === 'number' ? 0 : undefined}
+                className={CLASE_INPUT}
+                value={form[c.clave]}
+                onChange={(e) => setForm({ ...form, [c.clave]: e.target.value })}
+              />
+            ))}
+            <button className={`${CLASE_BOTON_PRIMARIO} sm:col-span-2 lg:col-span-3`}>
+              Crear producto
+            </button>
+          </form>
+        </Tarjeta>
       )}
 
       {/* QA Func. 2.2: ficha técnica completa */}
       {ficha && (
-        <section className="mb-6 max-w-4xl rounded-lg bg-white p-5 shadow">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-semibold">Ficha técnica — {ficha.codigo}</h2>
+        <Tarjeta className="mb-6 max-w-4xl border-l-4 border-menta-400 p-5">
+          <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
+            <h2 className="font-semibold text-slate-900">Ficha técnica — {ficha.codigo}</h2>
             <div className="flex gap-2">
               {puedeEditar && (
                 <button onClick={() => abrirEdicion(ficha)}
-                  className="rounded bg-sofia-600 px-3 py-1 text-sm text-white hover:bg-sofia-700">
+                  className="rounded-lg bg-sofia-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-sofia-600">
                   Editar
                 </button>
               )}
-              <button onClick={() => setFicha(null)} className="rounded bg-slate-100 px-3 py-1 text-sm">
+              <button onClick={() => setFicha(null)} className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-200">
                 Cerrar
               </button>
             </div>
           </div>
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3">
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
             {(
               [
                 ['Empresa', ficha.empresa ? `${ficha.empresa.siglas} — ${ficha.empresa.nombre}` : ficha.empresaId],
@@ -393,8 +445,16 @@ export default function ProductosPage() {
               ] as [string, unknown][]
             ).map(([etiqueta, valor]) => (
               <div key={etiqueta}>
-                <dt className="text-xs uppercase text-slate-400">{etiqueta}</dt>
-                <dd className="font-medium">{valor === null || valor === undefined || valor === '' ? '—' : String(valor)}</dd>
+                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">{etiqueta}</dt>
+                <dd className="mt-0.5 font-medium text-slate-800">
+                  {etiqueta === 'Estado' ? (
+                    <Insignia tono={valor === 'ACTIVO' ? 'menta' : 'gris'}>{String(valor)}</Insignia>
+                  ) : valor === null || valor === undefined || valor === '' ? (
+                    '—'
+                  ) : (
+                    String(valor)
+                  )}
+                </dd>
               </div>
             ))}
             {ficha.observaciones && (
@@ -414,157 +474,177 @@ export default function ProductosPage() {
               </div>
             )}
           </dl>
-        </section>
+        </Tarjeta>
       )}
 
       {/* QA Func. 2.2: formulario de edición */}
       {editando && (
-        <form onSubmit={guardarEdicion} className="mb-6 grid max-w-4xl grid-cols-3 gap-3 rounded-lg bg-white p-5 shadow">
-          <div className="col-span-3 flex items-center justify-between">
-            <h2 className="font-semibold">Editar producto — {editando.codigo}</h2>
-            <button type="button" onClick={() => setEditando(null)} className="rounded bg-slate-100 px-3 py-1 text-sm">
+        <Tarjeta className="mb-6 max-w-4xl p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-semibold text-slate-900">Editar producto — {editando.codigo}</h2>
+            <button type="button" onClick={() => setEditando(null)} className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-200">
               Cancelar
             </button>
           </div>
-          <p className="col-span-3 text-xs text-slate-500">
+          <p className="mb-3 text-xs text-slate-500">
             El código y la empresa no se editan aquí; las cantidades solo cambian por movimientos.
           </p>
-          {CAMPOS_EDICION.map((c) => (
-            <input
-              key={c.clave}
-              placeholder={c.etiqueta}
-              type={c.tipo ?? 'text'}
-              step={c.tipo === 'number' ? '0.01' : undefined}
-              min={c.tipo === 'number' ? 0 : undefined}
-              className="rounded border px-3 py-2"
-              value={formEdicion[c.clave]}
-              onChange={(e) => setFormEdicion({ ...formEdicion, [c.clave]: e.target.value })}
-              required={c.clave === 'descripcion'}
-            />
-          ))}
-          <button className="col-span-3 rounded bg-sofia-600 py-2 font-medium text-white hover:bg-sofia-700">
-            Guardar cambios
-          </button>
-        </form>
+          <form onSubmit={guardarEdicion} className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {CAMPOS_EDICION.map((c) => (
+              <input
+                key={c.clave}
+                placeholder={c.etiqueta}
+                type={c.tipo ?? 'text'}
+                step={c.tipo === 'number' ? '0.01' : undefined}
+                min={c.tipo === 'number' ? 0 : undefined}
+                className={CLASE_INPUT}
+                value={formEdicion[c.clave]}
+                onChange={(e) => setFormEdicion({ ...formEdicion, [c.clave]: e.target.value })}
+                required={c.clave === 'descripcion'}
+              />
+            ))}
+            <button className={`${CLASE_BOTON_PRIMARIO} sm:col-span-2 lg:col-span-3`}>
+              Guardar cambios
+            </button>
+          </form>
+        </Tarjeta>
       )}
 
       {barcodeProducto && (
-        <form onSubmit={asociarBarcode} className="mb-6 flex max-w-3xl items-end gap-3 rounded-lg bg-white p-4 shadow">
+        <form onSubmit={asociarBarcode} className="mb-6 flex max-w-3xl flex-col gap-3 rounded-xl bg-white p-4 shadow-sm sm:flex-row sm:items-end">
           <div className="flex-1">
             <p className="mb-1 text-sm font-medium">
               Asociar código de barras a <strong>{barcodeProducto.codigo}</strong>
             </p>
             <input
               placeholder="Escanee o digite el código"
-              className="w-full rounded border px-3 py-2"
+              className={CLASE_INPUT}
               value={barcode}
               onChange={(e) => setBarcode(e.target.value)}
               autoFocus
               required
             />
           </div>
-          <button className="rounded bg-sofia-600 px-4 py-2 text-white">Asociar</button>
-          <button type="button" onClick={() => setBarcodeProducto(null)} className="rounded bg-slate-100 px-4 py-2">
-            Cancelar
-          </button>
+          <div className="flex gap-2">
+            <button className={CLASE_BOTON_PRIMARIO}>Asociar</button>
+            <button type="button" onClick={() => setBarcodeProducto(null)} className="rounded-lg bg-slate-100 px-4 py-2 text-sm text-slate-600 hover:bg-slate-200">
+              Cancelar
+            </button>
+          </div>
         </form>
       )}
 
       {/* QA Func. 2.3: corrección de código mal asociado */}
       {correccion && (
-        <form onSubmit={corregirBarcode} className="mb-6 flex max-w-3xl items-end gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 shadow">
+        <form onSubmit={corregirBarcode} className="mb-6 flex max-w-3xl flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm sm:flex-row sm:items-end">
           <div className="flex-1">
             <p className="mb-1 text-sm font-medium">
               Corregir código de <strong>{correccion.codigo}</strong> (actual: {correccion.codigoBarras?.barcode})
             </p>
             <input
               placeholder="Escanee o digite el código correcto"
-              className="w-full rounded border px-3 py-2"
+              className={CLASE_INPUT}
               value={barcode}
               onChange={(e) => setBarcode(e.target.value)}
               autoFocus
               required
             />
           </div>
-          <button className="rounded bg-amber-600 px-4 py-2 text-white">Reemplazar</button>
-          <button type="button" onClick={() => { setCorreccion(null); setBarcode(''); }} className="rounded bg-slate-100 px-4 py-2">
-            Cancelar
-          </button>
+          <div className="flex gap-2">
+            <button className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700">Reemplazar</button>
+            <button type="button" onClick={() => { setCorreccion(null); setBarcode(''); }} className="rounded-lg bg-white px-4 py-2 text-sm text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50">
+              Cancelar
+            </button>
+          </div>
         </form>
       )}
 
-      <table className="w-full rounded-lg bg-white text-sm shadow">
-        <thead>
-          <tr className="border-b text-left">
-            <th className="p-3">Código</th>
-            <th className="p-3">Descripción</th>
-            <th className="p-3">Marca</th>
-            <th className="p-3">Código barras</th>
-            <th className="p-3">Ubicación</th>
-            <th className="p-3 text-right">Existencia</th>
-            <th className="p-3 text-right">Bloqueada</th>
-            <th className="p-3">Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          {productos.map((p) => (
-            <tr key={p.id} className="border-b last:border-0">
-              <td className="p-3 font-medium">
-                {p.codigo}
-                {faltanDatos(p) && (
-                  <span
-                    title="Datos incompletos: el Generador puede completar código OE, marca o ubicación"
-                    className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700"
-                  >
-                    Incompleto
-                  </span>
-                )}
-              </td>
-              <td className="p-3">{p.descripcion}</td>
-              <td className="p-3">{p.marca}</td>
-              <td className="p-3 font-mono text-xs">
-                {p.codigoBarras ? `${p.codigoBarras.barcode} (${p.codigoBarras.origen})` : '—'}
-              </td>
-              <td className="p-3">{p.ubicacion || '—'}</td>
-              <td className="p-3 text-right">{p.cantidad}</td>
-              <td className="p-3 text-right">{p.cantidadBloqueada}</td>
-              <td className="p-3">
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={() => verFicha(p)}
-                    className="rounded bg-slate-100 px-2 py-1 text-slate-700 hover:bg-slate-200"
-                  >
-                    Ficha
-                  </button>
-                  {!p.codigoBarras && puedeBarcode && (
-                    <button
-                      onClick={() => { setBarcodeProducto(p); setError(''); setMensaje(''); }}
-                      className="rounded bg-sofia-100 px-2 py-1 text-sofia-700"
-                    >
-                      Asociar código
-                    </button>
-                  )}
-                  {p.codigoBarras && puedeEditar && (
-                    <button
-                      onClick={() => { setCorreccion(p); setBarcode(''); setError(''); setMensaje(''); }}
-                      className="rounded bg-amber-100 px-2 py-1 text-amber-700"
-                    >
-                      Corregir código
-                    </button>
-                  )}
-                </div>
-              </td>
-            </tr>
-          ))}
-          {productos.length === 0 && (
-            <tr>
-              <td colSpan={8} className="p-6 text-center text-slate-400">
-                Sin productos en esta empresa
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </main>
+      <Tarjeta className="overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className={CLASES_TABLA.tabla}>
+            <thead>
+              <tr className={CLASES_TABLA.cabecera}>
+                <th className={CLASES_TABLA.celdaCabecera}>Código</th>
+                <th className={CLASES_TABLA.celdaCabecera}>Descripción</th>
+                <th className={CLASES_TABLA.celdaCabecera}>Marca</th>
+                <th className={CLASES_TABLA.celdaCabecera}>Código barras</th>
+                <th className={CLASES_TABLA.celdaCabecera}>Ubicación</th>
+                <th className={`${CLASES_TABLA.celdaCabecera} text-right`}>Existencia</th>
+                <th className={`${CLASES_TABLA.celdaCabecera} text-right`}>Bloqueada</th>
+                <th className={CLASES_TABLA.celdaCabecera}>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {productos.map((p) => (
+                <tr key={p.id} className={CLASES_TABLA.fila}>
+                  <td className={`${CLASES_TABLA.celda} font-medium`}>
+                    {p.codigo}
+                    {faltanDatos(p) && (
+                      <span
+                        title="Datos incompletos: el Generador puede completar código OE, marca o ubicación"
+                        className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700"
+                      >
+                        Incompleto
+                      </span>
+                    )}
+                  </td>
+                  <td className={`${CLASES_TABLA.celda} max-w-xs truncate`} title={p.descripcion}>{p.descripcion}</td>
+                  <td className={CLASES_TABLA.celda}>{p.marca || '—'}</td>
+                  <td className={`${CLASES_TABLA.celda} font-mono text-xs`}>
+                    {p.codigoBarras ? (
+                      <>
+                        {p.codigoBarras.barcode}
+                        <span className="block text-[10px] uppercase text-slate-400">({p.codigoBarras.origen})</span>
+                      </>
+                    ) : '—'}
+                  </td>
+                  <td className={CLASES_TABLA.celda}>{p.ubicacion || '—'}</td>
+                  <td className={`${CLASES_TABLA.celda} text-right`}>{p.cantidad}</td>
+                  <td className={`${CLASES_TABLA.celda} text-right`}>{p.cantidadBloqueada}</td>
+                  <td className={CLASES_TABLA.celda}>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => verFicha(p)}
+                        className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-200"
+                      >
+                        Ficha
+                      </button>
+                      {!p.codigoBarras && puedeBarcode && (
+                        <button
+                          onClick={() => { setBarcodeProducto(p); setError(''); setMensaje(''); }}
+                          className="rounded-md bg-sofia-100 px-2.5 py-1 text-xs font-medium text-sofia-700 hover:bg-sofia-200"
+                        >
+                          Asociar código
+                        </button>
+                      )}
+                      {p.codigoBarras && puedeEditar && (
+                        <button
+                          onClick={() => { setCorreccion(p); setBarcode(''); setError(''); setMensaje(''); }}
+                          className="rounded-md bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700 hover:bg-amber-200"
+                        >
+                          Corregir código
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {productos.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-4 py-8 text-center text-sm text-slate-400">
+                    Sin productos en esta empresa
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        {productos.length > 0 && (
+          <p className="border-t border-slate-100 px-4 py-2.5 text-xs text-slate-400">
+            Mostrando {productos.length} resultado{productos.length === 1 ? '' : 's'}
+          </p>
+        )}
+      </Tarjeta>
+    </AppShell>
   );
 }
