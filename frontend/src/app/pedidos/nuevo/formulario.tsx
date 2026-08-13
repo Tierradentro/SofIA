@@ -63,18 +63,22 @@ const ITEM_VACIO: ItemForm = {
 
 export function NuevoPedido({
   empresaId,
+  empresas,
   clientes,
   comerciales,
   productos,
   rol,
+  onCambiarEmpresa,
   onCreado,
   onCancelar,
 }: {
   empresaId: string;
+  empresas: { id: string; nombre: string }[];
   clientes: Cliente[];
   comerciales: Comercial[];
   productos: ProductoLite[];
   rol: string;
+  onCambiarEmpresa: (id: string) => void;
   onCreado: (id: string, numero: string, origen: string) => void;
   onCancelar: () => void;
 }) {
@@ -84,6 +88,8 @@ export function NuevoPedido({
   const [direccionId, setDireccionId] = useState('');
   const [comercialId, setComercialId] = useState(comerciales[0]?.id ?? '');
   const [ciudad, setCiudad] = useState('');
+  // I18: búsqueda del cliente por nombre o identificación (lista completa)
+  const [busquedaCliente, setBusquedaCliente] = useState('');
   const [notas, setNotas] = useState('');
   const [items, setItems] = useState<ItemForm[]>([{ ...ITEM_VACIO }]);
   const [via, setVia] = useState<'MANUAL' | 'OCR' | 'EXCEL'>('MANUAL');
@@ -102,6 +108,8 @@ export function NuevoPedido({
     setDireccionId('');
     setDirecciones([]);
     if (!clienteId) return;
+    // I18: la ciudad arranca con la que trae el cliente
+    setCiudad(clientes.find((c) => c.id === clienteId)?.ciudad ?? '');
     api<DireccionCliente[]>(`/clients/${clienteId}/direcciones`).then(({ status, body }) => {
       if (status === 200) {
         setDirecciones(body);
@@ -110,6 +118,22 @@ export function NuevoPedido({
       }
     });
   }, [clienteId]);
+
+  // I18: al elegir otra dirección (cliente con varias), su ciudad prevalece
+  useEffect(() => {
+    const d = direcciones.find((x) => x.id === direccionId);
+    if (d?.ciudad) setCiudad(d.ciudad);
+  }, [direccionId, direcciones]);
+
+  // I18: filtro del selector por nombre o identificación
+  const termino = busquedaCliente.trim().toLowerCase();
+  const clientesFiltrados = termino
+    ? clientes.filter(
+        (c) =>
+          c.nombre.toLowerCase().includes(termino) ||
+          (c.identificacion ?? '').toLowerCase().includes(termino),
+      )
+    : clientes;
 
   function totalPie(): number {
     return items.reduce((acc, i) => {
@@ -336,6 +360,15 @@ export function NuevoPedido({
         {/* Encabezado */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <label className="text-sm">
+            Empresa *
+            <select value={empresaId} onChange={(e) => onCambiarEmpresa(e.target.value)}
+              className="mt-1 block w-full rounded border px-2 py-1.5" required>
+              {empresas.map((e) => (
+                <option key={e.id} value={e.id}>{e.nombre}</option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm">
             Fecha
             <input value={new Date().toLocaleDateString('es-CO')} disabled
               className="mt-1 block w-full rounded border bg-slate-50 px-2 py-1.5" />
@@ -345,15 +378,28 @@ export function NuevoPedido({
             <input value={ciudad} onChange={(e) => setCiudad(e.target.value)}
               className="mt-1 block w-full rounded border px-2 py-1.5" />
           </label>
-          <label className="text-sm sm:col-span-2">
+          <div className="text-sm sm:col-span-2">
             Cliente *
+            <input
+              value={busquedaCliente}
+              onChange={(e) => setBusquedaCliente(e.target.value)}
+              placeholder="Buscar por nombre o identificación"
+              className="mt-1 block w-full rounded border px-2 py-1 text-[13px]"
+            />
             <select value={clienteId} onChange={(e) => setClienteId(e.target.value)}
               className="mt-1 block w-full rounded border px-2 py-1.5" required>
-              {clientes.map((c) => (
-                <option key={c.id} value={c.id}>{c.nombre}</option>
+              {clientesFiltrados.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nombre}{c.identificacion ? ` — ${c.identificacion}` : ''}
+                </option>
               ))}
             </select>
-          </label>
+            {termino && (
+              <p className="mt-0.5 text-xs text-slate-500">
+                {clientesFiltrados.length} resultado(s)
+              </p>
+            )}
+          </div>
           <label className="text-sm">
             NIT
             <input value={cliente?.identificacion ?? ''} disabled

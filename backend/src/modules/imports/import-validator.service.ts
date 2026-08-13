@@ -110,7 +110,7 @@ export class ImportValidatorService {
       }
 
       const valorClave = datos[clave];
-      if (valorClave) {
+      if (valorClave && tipo !== ImportType.CLIENTES) {
         if (vistos.has(valorClave)) {
           if (!duplicados.includes(valorClave)) duplicados.push(valorClave);
           errores.push(`Duplicado en el archivo: '${valorClave}'`);

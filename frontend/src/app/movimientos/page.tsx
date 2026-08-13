@@ -17,18 +17,20 @@ interface Movimiento {
   docId: string | null;
   usuarioUsername: string | null;
   motivo: string | null;
-  createdAt: string;
+  fecha: string; // columna real de la API (inventory_movements.fecha)
 }
 
+// I18: alineado con MovementType del backend (antes sobraban 2 tipos y
+// faltaban INGRESO_APROBADO / CORRECCION_ADMIN → caían al código crudo)
 const TIPO_LABEL: Record<string, string> = {
-  INGRESO_MERCANCIA: 'Ingreso',
+  INGRESO_APROBADO: 'Ingreso aprobado',
   BLOQUEO_ALISTAMIENTO: 'Bloqueo alistamiento',
   LIBERACION_BLOQUEO: 'Liberación bloqueo',
   DESPACHO_CIERRE_CAJA: 'Despacho (cierre caja)',
-  CANCELACION_DESPACHO: 'Cancelación despacho',
+  AJUSTE_INVENTARIO: 'Ajuste inventario',
   AJUSTE_IMPORTACION: 'Ajuste importación',
   REINGRESO_DEVOLUCION: 'Reingreso devolución',
-  AJUSTE_INVENTARIO: 'Ajuste inventario',
+  CORRECCION_ADMIN: 'Corrección administrativa',
 };
 
 /**
@@ -154,7 +156,7 @@ export default function MovimientosPage() {
             <tbody>
               {movimientos.map((m) => (
                 <tr key={m.id} className="border-b last:border-0">
-                  <td className="p-2 whitespace-nowrap">{new Date(m.createdAt).toLocaleString('es-CO')}</td>
+                  <td className="p-2 whitespace-nowrap">{new Date(m.fecha).toLocaleString('es-CO')}</td>
                   <td className="p-2">{TIPO_LABEL[m.tipo] ?? m.tipo}</td>
                   <td className={`p-2 text-right font-mono ${Number(m.cantidadDelta) < 0 ? 'text-red-600' : 'text-green-700'}`}>
                     {m.cantidadDelta === null ? '—' : Number(m.cantidadDelta) > 0 ? `+${m.cantidadDelta}` : m.cantidadDelta}

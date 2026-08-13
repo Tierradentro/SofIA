@@ -215,6 +215,76 @@ describe('Importaciones contables (e2e)', () => {
     ]);
   });
 
+  it('I18: cliente repetido suma dirección; cliente+dirección existentes se descarta; no sobrescribe datos', async () => {
+    // Cliente previo con su dirección principal (como el alta manual)
+    const [previo] = await t.dataSource.query(
+      `INSERT INTO clients (id, nombre, identificacion, direccion, ciudad, telefonos)
+       VALUES (gen_random_uuid(), 'Multi Dir S.A.S', '901.222.333-4', 'Cra 1 # 2-3', 'Bogotá', '3001112233')
+       RETURNING id`,
+    );
+    await t.dataSource.query(
+      `INSERT INTO client_addresses (id, client_id, direccion, ciudad, es_principal)
+       VALUES (gen_random_uuid(), $1, 'Cra 1 # 2-3', 'Bogotá', true)`,
+      [previo.id],
+    );
+
+    const buffer = xlsxBuffer([
+      { Nombre: 'Multi Dir S.A.S', Nit: '901.222.333-4', 'Dirección': 'Cra 1 # 2-3', Ciudad: 'Bogotá', 'Teléfonos': '9999999999' },
+      { Nombre: 'Multi Dir S.A.S', Nit: '901.222.333-4', 'Dirección': 'Calle 8 # 9-10', Ciudad: 'Cali', 'Teléfonos': '9999999999' },
+      { Nombre: 'Nuevo Cliente Ltda', Nit: '902.333.444-5', 'Dirección': 'Av 5 # 6-7', Ciudad: 'Medellín', 'Teléfonos': '3105556677' },
+    ]);
+    const res = await t.http
+      .post('/api/v1/imports')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .field('tipo', 'CLIENTES')
+      .field('mapeo', JSON.stringify({
+        Nombre: 'nombre', Nit: 'identificacion', 'Dirección': 'direccion',
+        Ciudad: 'ciudad', 'Teléfonos': 'telefonos',
+      }))
+      .attach('file', buffer, { filename: 'clientes-dir.xlsx', contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    expect(res.status).toBe(201);
+    // Nombre repetido ya NO invalida filas: las 3 son válidas
+    expect(res.body.resumen.validas).toBe(3);
+    expect(res.body.resumen.nuevos).toBe(1);
+    expect(res.body.resumen.direccionesAAgregar).toBe(1);
+    expect(res.body.resumen.descartados).toBe(1);
+
+    const approve = await t.http
+      .post(`/api/v1/imports/${res.body.id}/approve`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(approve.body.resumen.aplicado).toMatchObject({
+      nuevos: 1, direccionesAgregadas: 1, descartados: 1, omitidasMaximo: 0,
+    });
+
+    // El cliente existente conserva sus datos (no se sobrescriben)
+    const [cliente] = await t.dataSource.query(
+      `SELECT telefonos, direccion FROM clients WHERE id=$1`, [previo.id],
+    );
+    expect(cliente.telefonos).toBe('3001112233');
+    expect(cliente.direccion).toBe('Cra 1 # 2-3');
+
+    // Y ahora tiene 2 direcciones: la original (principal) + la nueva
+    const dirs = await t.dataSource.query(
+      `SELECT direccion, ciudad, es_principal FROM client_addresses WHERE client_id=$1 AND activo=true ORDER BY created_at`,
+      [previo.id],
+    );
+    expect(dirs.length).toBe(2);
+    expect(dirs[0]).toMatchObject({ direccion: 'Cra 1 # 2-3', es_principal: true });
+    expect(dirs[1]).toMatchObject({ direccion: 'Calle 8 # 9-10', ciudad: 'Cali', es_principal: false });
+
+    // El cliente nuevo nace con su dirección principal
+    const [nuevo] = await t.dataSource.query(
+      `SELECT id FROM clients WHERE identificacion='902.333.444-5'`,
+    );
+    const dirsNuevo = await t.dataSource.query(
+      `SELECT direccion, es_principal FROM client_addresses WHERE client_id=$1`,
+      [nuevo.id],
+    );
+    expect(dirsNuevo).toEqual([
+      expect.objectContaining({ direccion: 'Av 5 # 6-7', es_principal: true }),
+    ]);
+  });
+
   it('HU-017: exportación CSV UTF-8 por empresa con trazabilidad (empresa en cada fila)', async () => {
     const res = await t.http
       .get(`/api/v1/exports/products.csv?empresaId=${ireId}`)

@@ -61,6 +61,21 @@ describe('ImportValidatorService (HU-016)', () => {
     expect(r.invalidas.some((f) => f.errores.some((e) => e.includes('Duplicado')))).toBe(true);
   });
 
+  it('I18: en CLIENTES el nombre repetido NO invalida — cada fila es una dirección del mismo cliente', () => {
+    const r = service.validar(
+      ImportType.CLIENTES,
+      ['Nombre', 'Dirección'],
+      [
+        { Nombre: 'ACME S.A.S', 'Dirección': 'Cra 1 # 2-3' },
+        { Nombre: 'ACME S.A.S', 'Dirección': 'Calle 9 # 8-7' },
+      ],
+      { Nombre: 'nombre', 'Dirección': 'direccion' },
+    );
+    expect(r.invalidas.length).toBe(0);
+    expect(r.validas.length).toBe(2);
+    expect(r.duplicados.length).toBe(0);
+  });
+
   it('QA Func. 1.1: texto que excede el varchar de la columna → fila inválida, nunca llega al INSERT', () => {
     const larga = 'x'.repeat(300); // descripcion es varchar(250)
     const r = service.validar(

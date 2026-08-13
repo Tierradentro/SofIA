@@ -33,6 +33,8 @@ interface ImportJob {
     duplicados: string[];
     nuevos?: number;
     actualizados?: number;
+    direccionesAAgregar?: number;
+    descartados?: number;
     conDiferencia?: number;
     productosNoExistentes?: string[];
     diferencias?: { codigo: string; actual: number; nueva: number; diferencia: number }[];
@@ -423,7 +425,16 @@ export default function ImportacionesPage() {
                   </li>
                 </>
               )}
-              {(job.tipo === 'CLIENTES' || job.tipo === 'COMERCIALES') && (
+              {job.tipo === 'CLIENTES' && (
+                <>
+                  <li>Clientes nuevos: {job.resumen?.nuevos}</li>
+                  <li>Direcciones a agregar: {job.resumen?.direccionesAAgregar}</li>
+                  <li className="text-amber-700">
+                    Descartados (cliente y dirección ya existen): {job.resumen?.descartados}
+                  </li>
+                </>
+              )}
+              {job.tipo === 'COMERCIALES' && (
                 <li>Registros a crear: {job.resumen?.nuevos}</li>
               )}
               {job.resumen?.duplicados && job.resumen.duplicados.length > 0 && (

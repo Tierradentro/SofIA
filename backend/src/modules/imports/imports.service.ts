@@ -14,6 +14,8 @@ import { AuditService } from '../audit/audit.service';
 import { MovementsService } from '../movements/movements.service';
 import { Product } from '../products/entities/product.entity';
 import { Client } from '../clients/entities/client.entity';
+import { ClientAddress } from '../clients/entities/client-address.entity';
+import { MAX_DIRECCIONES_CLIENTE } from '../clients/clients.service';
 import { Comercial } from '../comerciales/entities/comercial.entity';
 import { ProductStatus } from '../../common/enums/product-status.enum';
 import { MovementType } from '../../common/enums/movement-type.enum';
@@ -176,10 +178,10 @@ export class ImportsService {
         aplicado = await this.aplicarCantidades(job, filas, user);
         break;
       case ImportType.CLIENTES:
-        aplicado = await this.aplicarClientes(filas, Client);
+        aplicado = await this.aplicarClientesConDirecciones(filas);
         break;
       case ImportType.COMERCIALES:
-        aplicado = await this.aplicarClientes(filas, Comercial);
+        aplicado = await this.aplicarCatalogo(filas, Comercial);
         break;
     }
 
@@ -257,7 +259,69 @@ export class ImportsService {
         diferencias: diferencias.filter((d: any) => d.diferencia !== undefined).slice(0, 50),
       };
     }
-    // CLIENTES / COMERCIALES
+    if (dto.tipo === ImportType.CLIENTES) {
+      // I18: estimación previa con la misma regla de aplicación — una fila
+      // por dirección; cliente+dirección existentes se descartan.
+      const norm = (v?: string | null) =>
+        (v ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+      const claveDir = (d?: string | null, c?: string | null) =>
+        `${norm(d)}|${norm(c)}`;
+      const repoClientes = this.dataSource.getRepository(Client);
+      const repoDirs = this.dataSource.getRepository(ClientAddress);
+      let nuevos = 0;
+      let direccionesAAgregar = 0;
+      let descartados = 0;
+      const nuevosEnLote = new Map<string, Set<string>>();
+      const dirsCache = new Map<string, Set<string>>();
+      for (const f of validas) {
+        const limpio = Object.fromEntries(
+          Object.entries(f.datos).filter(([, v]) => v !== ''),
+        );
+        const claveNuevo = norm(limpio.identificacion || limpio.nombre);
+        const existente = limpio.identificacion
+          ? await repoClientes.findOne({
+              where: { identificacion: limpio.identificacion },
+            })
+          : await repoClientes.findOne({ where: { nombre: limpio.nombre } });
+        if (!existente && !nuevosEnLote.has(claveNuevo)) {
+          nuevos++;
+          nuevosEnLote.set(
+            claveNuevo,
+            new Set(limpio.direccion ? [claveDir(limpio.direccion, limpio.ciudad)] : []),
+          );
+          continue;
+        }
+        const direccion = limpio.direccion?.trim();
+        if (!direccion) {
+          descartados++;
+          continue;
+        }
+        let conocidas: Set<string>;
+        if (existente) {
+          if (!dirsCache.has(existente.id)) {
+            const actuales = await repoDirs.find({
+              where: { clientId: existente.id, activo: true },
+            });
+            dirsCache.set(
+              existente.id,
+              new Set(actuales.map((a) => claveDir(a.direccion, a.ciudad))),
+            );
+          }
+          conocidas = dirsCache.get(existente.id)!;
+        } else {
+          conocidas = nuevosEnLote.get(claveNuevo)!;
+        }
+        const clave = claveDir(direccion, limpio.ciudad);
+        if (conocidas.has(clave)) {
+          descartados++;
+        } else {
+          conocidas.add(clave);
+          direccionesAAgregar++;
+        }
+      }
+      return { nuevos, direccionesAAgregar, descartados };
+    }
+    // COMERCIALES
     return { nuevos: validas.length, actualizados: 0 };
   }
 
@@ -398,9 +462,9 @@ export class ImportsService {
     return { ajustes, omitidos: omitidos.length };
   }
 
-  private async aplicarClientes(
+  private async aplicarCatalogo(
     filas: FilaValidada[],
-    entity: typeof Client | typeof Comercial,
+    entity: typeof Comercial,
   ) {
     let nuevos = 0;
     let actualizados = 0;
@@ -425,6 +489,105 @@ export class ImportsService {
       }
     });
     return { nuevos, actualizados };
+  }
+
+  /**
+   * I18 — CLIENTES: la maestra contable trae una fila por dirección; un
+   * cliente repetido no es duplicado a descartar, es otra dirección suya.
+   *  - Cliente nuevo            → se crea; su dirección queda principal.
+   *  - Cliente existe + dirección nueva → se agrega a client_addresses
+   *    (máx. 10, QA Func. 4.1; si no tenía ninguna, queda principal).
+   *  - Cliente existe + dirección ya registrada → la fila se descarta.
+   * Los datos del cliente existente ya no se sobrescriben: la fila solo
+   * aporta direcciones. Todo en la transacción única del lote (QA Func. 1.1).
+   */
+  private async aplicarClientesConDirecciones(filas: FilaValidada[]) {
+    let nuevos = 0;
+    let direccionesAgregadas = 0;
+    let descartados = 0;
+    let omitidasMaximo = 0;
+    const norm = (v?: string | null) =>
+      (v ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const claveDir = (direccion?: string | null, ciudad?: string | null) =>
+      `${norm(direccion)}|${norm(ciudad)}`;
+
+    await this.dataSource.transaction(async (em) => {
+      const repoClientes = em.getRepository(Client);
+      const repoDirs = em.getRepository(ClientAddress);
+      // Cachés del lote: evitan duplicar direcciones cuando el mismo
+      // cliente aparece varias veces en el archivo.
+      const dirsPorCliente = new Map<string, Set<string>>();
+
+      const dirsConocidas = async (clienteId: string) => {
+        if (!dirsPorCliente.has(clienteId)) {
+          const actuales = await repoDirs.find({
+            where: { clientId: clienteId, activo: true },
+          });
+          dirsPorCliente.set(
+            clienteId,
+            new Set(actuales.map((a) => claveDir(a.direccion, a.ciudad))),
+          );
+        }
+        return dirsPorCliente.get(clienteId)!;
+      };
+
+      for (const fila of filas) {
+        const limpio = Object.fromEntries(
+          Object.entries(fila.datos).filter(([, v]) => v !== ''),
+        );
+        const direccion = limpio.direccion?.trim();
+        const ciudad = limpio.ciudad?.trim() || null;
+
+        let cliente = limpio.identificacion
+          ? await repoClientes.findOne({
+              where: { identificacion: limpio.identificacion },
+            })
+          : await repoClientes.findOne({ where: { nombre: limpio.nombre } });
+
+        if (!cliente) {
+          cliente = await repoClientes.save(repoClientes.create(limpio));
+          nuevos++;
+          if (direccion) {
+            await repoDirs.save(
+              repoDirs.create({
+                clientId: cliente.id,
+                direccion,
+                ciudad,
+                esPrincipal: true,
+              }),
+            );
+            (await dirsConocidas(cliente.id)).add(claveDir(direccion, ciudad));
+          }
+          continue;
+        }
+
+        // Cliente existente: la fila solo puede aportar una dirección nueva.
+        if (!direccion) {
+          descartados++;
+          continue;
+        }
+        const conocidas = await dirsConocidas(cliente.id);
+        if (conocidas.has(claveDir(direccion, ciudad))) {
+          descartados++;
+          continue;
+        }
+        if (conocidas.size >= MAX_DIRECCIONES_CLIENTE) {
+          omitidasMaximo++;
+          continue;
+        }
+        await repoDirs.save(
+          repoDirs.create({
+            clientId: cliente.id,
+            direccion,
+            ciudad,
+            esPrincipal: conocidas.size === 0,
+          }),
+        );
+        conocidas.add(claveDir(direccion, ciudad));
+        direccionesAgregadas++;
+      }
+    });
+    return { nuevos, direccionesAgregadas, descartados, omitidasMaximo };
   }
 
   private async findJob(id: string): Promise<ImportJob> {

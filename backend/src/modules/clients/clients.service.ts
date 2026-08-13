@@ -60,7 +60,7 @@ export class ClientsService {
           ]
         : { activo: true },
       order: { nombre: 'ASC' },
-      take: 100,
+      // I18: sin límite — el pedido manual necesita la lista completa de clientes.
     });
   }
 
