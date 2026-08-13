@@ -365,6 +365,7 @@ export default function IngresosPage() {
             </form>
           )}
 
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left">
@@ -412,6 +413,7 @@ export default function IngresosPage() {
               )}
             </tbody>
           </table>
+          </div>
         </section>
 
         {/* Detalle */}
@@ -470,6 +472,7 @@ export default function IngresosPage() {
               </div>
             )}
 
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-left">
@@ -523,6 +526,7 @@ export default function IngresosPage() {
                 ))}
               </tbody>
             </table>
+            </div>
 
             {esOperador && enRecepcion && (
               <div className="mt-3 flex gap-3">

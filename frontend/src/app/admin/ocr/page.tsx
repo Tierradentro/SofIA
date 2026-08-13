@@ -272,6 +272,7 @@ export default function AdminOcrPage() {
             </form>
           )}
 
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left">
@@ -328,6 +329,7 @@ export default function AdminOcrPage() {
               )}
             </tbody>
           </table>
+          </div>
         </section>
 
         {/* HU-018: prueba de procesamiento */}

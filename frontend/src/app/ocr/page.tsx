@@ -351,6 +351,7 @@ export default function OcrPage() {
             </div>
 
             <h3 className="mb-2 mt-4 text-sm font-semibold">Items</h3>
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-left">
@@ -443,6 +444,7 @@ export default function OcrPage() {
                 ))}
               </tbody>
             </table>
+            </div>
             {editable && (
               <button
                 onClick={() =>
@@ -481,6 +483,7 @@ export default function OcrPage() {
         {/* Historial */}
         <section className="rounded-lg bg-white p-5 shadow">
           <h2 className="mb-3 font-semibold">Documentos procesados</h2>
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left">
@@ -526,6 +529,7 @@ export default function OcrPage() {
               )}
             </tbody>
           </table>
+          </div>
         </section>
       </div>
         </AppShell>

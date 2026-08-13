@@ -533,6 +533,7 @@ export default function DevolucionesPage() {
         {lista.length === 0 ? (
           <p className="text-sm text-slate-500">No hay casos registrados.</p>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left text-slate-500">
@@ -559,6 +560,7 @@ export default function DevolucionesPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </section>
         </AppShell>

@@ -299,6 +299,7 @@ function PedidosContenido() {
           </div>
 
 
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left">
@@ -337,6 +338,7 @@ function PedidosContenido() {
               )}
             </tbody>
           </table>
+          </div>
         </section>
 
         {pedido && (
@@ -408,6 +410,7 @@ function PedidosContenido() {
               </div>
             )}
 
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-left">
@@ -436,6 +439,7 @@ function PedidosContenido() {
                 ))}
               </tbody>
             </table>
+            </div>
 
             {/* Corrección del creador */}
             {pedido.estado === 'PENDIENTE_CORRECCION' && (pedido.createdBy === sesion.usuario.id || esGenerador) && (

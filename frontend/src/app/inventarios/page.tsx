@@ -263,6 +263,7 @@ export default function InventariosPage() {
         {/* Comparación (HU-050) */}
         <section className="mb-4 rounded-lg bg-white p-4 shadow">
           <h2 className="mb-2 font-semibold">Comparación conteo vs existencia</h2>
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left text-slate-500">
@@ -291,6 +292,7 @@ export default function InventariosPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </section>
 
         {/* Aprobación (Generador, PENDIENTE_APROBACION): documentar diferencias */}
@@ -399,6 +401,7 @@ export default function InventariosPage() {
         {lista.length === 0 ? (
           <p className="text-sm text-slate-500">No hay jornadas de inventario.</p>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left text-slate-500">
@@ -423,6 +426,7 @@ export default function InventariosPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </section>
         </AppShell>

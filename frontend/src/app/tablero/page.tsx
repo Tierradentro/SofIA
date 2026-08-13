@@ -81,6 +81,7 @@ export default function TableroPage() {
         {pedidos.length === 0 ? (
           <p className="text-sm text-slate-500">Sin pedidos asociados.</p>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left text-slate-500">
@@ -98,6 +99,7 @@ export default function TableroPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </section>
 
@@ -106,6 +108,7 @@ export default function TableroPage() {
         {despachos.length === 0 ? (
           <p className="text-sm text-slate-500">Sin despachos asociados.</p>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left text-slate-500">
@@ -123,6 +126,7 @@ export default function TableroPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </section>
 
@@ -131,6 +135,7 @@ export default function TableroPage() {
         {casos.length === 0 ? (
           <p className="text-sm text-slate-500">Sin casos asociados.</p>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left text-slate-500">
@@ -148,6 +153,7 @@ export default function TableroPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </section>
         </AppShell>

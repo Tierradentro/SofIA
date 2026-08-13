@@ -636,6 +636,7 @@ export default function DespachosPage() {
         {lista.length === 0 ? (
           <p className="text-sm text-slate-500">No hay despachos.</p>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left text-slate-500">
@@ -670,6 +671,7 @@ export default function DespachosPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </section>
         </AppShell>

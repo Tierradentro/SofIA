@@ -38,7 +38,7 @@ export function ConsultaProducto({ empresaId }: { empresaId?: string }) {
 
   return (
     <div>
-      <form onSubmit={buscar} className="flex gap-3">
+      <form onSubmit={buscar} className="flex flex-wrap gap-3">
         <input
           placeholder="Código de barras, código, OE o referencia cruzada"
           className="flex-1 rounded border px-3 py-2"
@@ -46,7 +46,7 @@ export function ConsultaProducto({ empresaId }: { empresaId?: string }) {
           onChange={(e) => setCriterio(e.target.value)}
           required
         />
-        <button className="rounded bg-sofia-600 px-4 py-2 text-white">Consultar</button>
+        <button className="shrink-0 rounded bg-sofia-600 px-4 py-2 text-white">Consultar</button>
       </form>
       {error && <p className="mt-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
       {resultado && (

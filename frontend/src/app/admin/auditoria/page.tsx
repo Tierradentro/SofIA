@@ -159,6 +159,7 @@ export default function AuditoriaPage() {
       </div>
 
       <p className="mb-2 text-sm text-slate-600">{total} registros</p>
+      <div className="overflow-x-auto">
       <table className="w-full rounded-lg bg-white text-sm shadow">
         <thead>
           <tr className="border-b text-left">
@@ -183,6 +184,7 @@ export default function AuditoriaPage() {
           ))}
         </tbody>
       </table>
+      </div>
 
       <div className="mt-6 max-w-2xl rounded-lg border border-red-200 bg-white p-4 shadow">
         <h2 className="mb-2 font-semibold text-red-700">Purga de logs (exporta CSV antes de borrar)</h2>

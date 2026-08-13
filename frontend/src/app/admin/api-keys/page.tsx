@@ -127,6 +127,7 @@ export default function ApiKeysPage() {
         )}
       </form>
 
+      <div className="overflow-x-auto">
       <table className="w-full max-w-4xl rounded-lg bg-white text-sm shadow">
         <thead>
           <tr className="border-b text-left">
@@ -159,6 +160,7 @@ export default function ApiKeysPage() {
           ))}
         </tbody>
       </table>
+      </div>
         </AppShell>
   );
 }

@@ -141,6 +141,7 @@ export default function UsuariosPage() {
         {mensaje && <p className="col-span-2 rounded bg-green-50 px-3 py-2 text-sm text-green-700">{mensaje}</p>}
       </form>
 
+      <div className="overflow-x-auto">
       <table className="w-full max-w-4xl rounded-lg bg-white text-sm shadow">
         <thead>
           <tr className="border-b text-left">
@@ -185,6 +186,7 @@ export default function UsuariosPage() {
           ))}
         </tbody>
       </table>
+      </div>
         </AppShell>
   );
 }

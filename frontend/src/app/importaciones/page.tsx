@@ -445,6 +445,7 @@ export default function ImportacionesPage() {
             </ul>
 
             {job.resumen?.diferencias && job.resumen.diferencias.length > 0 && (
+              <div className="overflow-x-auto">
               <table className="mt-3 w-full text-sm">
                 <thead>
                   <tr className="border-b text-left">
@@ -471,6 +472,7 @@ export default function ImportacionesPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
 
             {job.resumen?.invalidas && job.resumen.invalidas.length > 0 && (
@@ -531,6 +533,7 @@ export default function ImportacionesPage() {
         {/* Historial */}
         <section className="rounded-lg bg-white p-5 shadow">
           <h2 className="mb-3 font-semibold">Importaciones recientes</h2>
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left">
@@ -570,6 +573,7 @@ export default function ImportacionesPage() {
               )}
             </tbody>
           </table>
+          </div>
         </section>
       </div>
         </AppShell>

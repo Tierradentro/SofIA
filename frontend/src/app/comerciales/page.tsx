@@ -120,6 +120,7 @@ export default function ComercialesPage() {
       )}
 
       <Tarjeta className="max-w-4xl overflow-hidden">
+        <div className="overflow-x-auto">
         <table className={CLASES_TABLA.tabla}>
           <thead>
             <tr className={CLASES_TABLA.cabecera}>
@@ -167,6 +168,7 @@ export default function ComercialesPage() {
             )}
           </tbody>
         </table>
+        </div>
         <p className="border-t border-slate-100 px-4 py-2.5 text-xs text-slate-500">
           Mostrando {comerciales.length} resultado{comerciales.length === 1 ? '' : 's'}
         </p>

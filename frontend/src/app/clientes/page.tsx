@@ -251,6 +251,7 @@ export default function ClientesPage() {
       </div>
 
       <Tarjeta className="max-w-5xl overflow-hidden">
+        <div className="overflow-x-auto">
         <table className={CLASES_TABLA.tabla}>
           <thead>
             <tr className={CLASES_TABLA.cabecera}>
@@ -306,6 +307,7 @@ export default function ClientesPage() {
             )}
           </tbody>
         </table>
+        </div>
         <p className="border-t border-slate-100 px-4 py-2.5 text-xs text-slate-500">
           Mostrando {clientes.length} resultado{clientes.length === 1 ? '' : 's'}
         </p>

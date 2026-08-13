@@ -447,6 +447,7 @@ export function NuevoPedido({
         {/* Tabla de ítems */}
         {via !== 'EXCEL' && (
           <>
+            <div className="overflow-x-auto">
             <table className="mt-4 w-full text-sm">
               <thead>
                 <tr className="border-b text-left text-xs uppercase text-slate-400">
@@ -497,6 +498,7 @@ export function NuevoPedido({
                 ))}
               </tbody>
             </table>
+            </div>
             <datalist id="productos-ref">
               {productos.map((p) => (
                 <option key={p.id} value={p.codigo}>{p.descripcion}</option>
