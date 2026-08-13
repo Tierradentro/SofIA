@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
+import { AppShell } from '@/components/app-shell';
+import { CLASE_BOTON_PRIMARIO, CLASE_BOTON_SECUNDARIO, EncabezadoPagina } from '@/components/ui';
 
 interface Cliente { id: string; nombre: string }
 interface Comercial { id: string; nombre: string }
@@ -262,17 +264,21 @@ export default function DevolucionesPage() {
   // ---------------------------------------------------------------
   if (caso) {
     return (
-      <main className="mx-auto max-w-5xl p-6">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold">Caso {caso.codigo} × {caso.cantidad}</h1>
-            <p className="text-sm text-slate-600">
-              {caso.cliente?.nombre} · <span className="font-medium">{ESTADOS[caso.estado]}</span>
-              {' '}· {caso.motivoCodigo} ({caso.motivo?.concepto === 'GARANTIA' ? 'Garantía' : 'Garantía no aplica'}: {caso.motivo?.descripcion})
-              {' '}· Prioridad {caso.prioridad}
-            </p>
-          </div>
-          <button onClick={() => { setCaso(null); cargarLista(); }} className="rounded bg-slate-200 px-3 py-1 text-sm">← Volver</button>
+      <AppShell sesion={sesion}>
+      <EncabezadoPagina
+        titulo={`Caso ${caso.codigo} × ${caso.cantidad}`}
+        acciones={
+          <button onClick={() => { setCaso(null); cargarLista(); }} className={CLASE_BOTON_SECUNDARIO}>
+            ← Volver
+          </button>
+        }
+      />
+        <div className="mb-4">
+          <p className="text-sm text-slate-600">
+            {caso.cliente?.nombre} · <span className="font-medium">{ESTADOS[caso.estado]}</span>
+            {' '}· {caso.motivoCodigo} ({caso.motivo?.concepto === 'GARANTIA' ? 'Garantía' : 'Garantía no aplica'}: {caso.motivo?.descripcion})
+            {' '}· Prioridad {caso.prioridad}
+          </p>
         </div>
 
         {mensaje && <p className="mb-3 rounded bg-green-100 p-2 text-sm text-green-800">{mensaje}</p>}
@@ -418,7 +424,7 @@ export default function DevolucionesPage() {
             </div>
           </section>
         )}
-      </main>
+            </AppShell>
     );
   }
 
@@ -426,18 +432,17 @@ export default function DevolucionesPage() {
   // Lista de casos + creación
   // ---------------------------------------------------------------
   return (
-    <main className="mx-auto max-w-5xl p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-bold">Devoluciones (PQRS)</h1>
-        <div className="flex gap-2">
-          <button onClick={() => router.push('/dashboard')} className="rounded bg-slate-200 px-3 py-1 text-sm">← Panel</button>
-          {esOperador && (
-            <button onClick={() => setMostrarCrear(!mostrarCrear)} className="rounded bg-sofia-600 px-3 py-1 text-sm text-white">
+    <AppShell sesion={sesion}>
+      <EncabezadoPagina
+        titulo="Devoluciones (PQRS)"
+        acciones={
+          esOperador ? (
+            <button onClick={() => setMostrarCrear(!mostrarCrear)} className={CLASE_BOTON_PRIMARIO}>
               Nuevo caso
             </button>
-          )}
-        </div>
-      </div>
+          ) : undefined
+        }
+      />
 
       {mensaje && <p className="mb-3 rounded bg-green-100 p-2 text-sm text-green-800">{mensaje}</p>}
       {error && <p className="mb-3 rounded bg-red-100 p-2 text-sm text-red-800">{error}</p>}
@@ -556,6 +561,6 @@ export default function DevolucionesPage() {
           </table>
         )}
       </section>
-    </main>
+        </AppShell>
   );
 }

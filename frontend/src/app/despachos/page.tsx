@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
+import { AppShell } from '@/components/app-shell';
+import { CLASE_BOTON_PRIMARIO, CLASE_BOTON_SECUNDARIO, EncabezadoPagina } from '@/components/ui';
 
 interface PedidoAprobado { id: string; numero: string; clienteId: string }
 interface Carrier { id: string; nombre: string; tipo: 'EXTERNA' | 'INTERNA' }
@@ -302,12 +304,21 @@ export default function DespachosPage() {
     const cajasAbiertas = despacho.cajas.filter((c) => c.estado === 'ABIERTA');
     const externos = carriers.filter((c) => c.tipo === 'EXTERNA');
     return (
-      <main className="mx-auto max-w-5xl p-6">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold">Despacho {despacho.numero}</h1>
-            <p className="text-sm text-slate-600">
-              {despacho.cliente?.nombre} · <span className="font-medium">{ESTADOS[despacho.estado]}</span>
+      <AppShell sesion={sesion}>
+      <EncabezadoPagina
+        titulo={`Despacho ${despacho.numero}`}
+        acciones={
+          <button
+            onClick={() => { setDespacho(null); setEtiqueta(null); cargarLista(); }}
+            className={CLASE_BOTON_SECUNDARIO}
+          >
+            ← Volver
+          </button>
+        }
+      />
+        <div className="mb-4">
+          <p className="text-sm text-slate-600">
+            {despacho.cliente?.nombre} · <span className="font-medium">{ESTADOS[despacho.estado]}</span>
               {despacho.despachoOrigenId && ' · Despacho adicional'}
             </p>
             {/* QA Func. 4.1: dirección de entrega (se escoge en el Pedido, se ajusta aquí) */}
@@ -336,10 +347,6 @@ export default function DespachosPage() {
                 <button onClick={() => setEditandoDireccion(false)} className="text-slate-500">Cancelar</button>
               </div>
             )}
-          </div>
-          <button onClick={() => { setDespacho(null); setEtiqueta(null); cargarLista(); }} className="rounded bg-slate-200 px-3 py-1 text-sm">
-            ← Volver
-          </button>
         </div>
 
         {mensaje && <p className="mb-3 rounded bg-green-100 p-2 text-sm text-green-800">{mensaje}</p>}
@@ -545,7 +552,7 @@ export default function DespachosPage() {
             </div>
           </section>
         )}
-      </main>
+      </AppShell>
     );
   }
 
@@ -553,18 +560,17 @@ export default function DespachosPage() {
   // Lista de despachos + consulta de caja (M10)
   // ---------------------------------------------------------------
   return (
-    <main className="mx-auto max-w-5xl p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-bold">Despachos</h1>
-        <div className="flex gap-2">
-          <button onClick={() => router.push('/dashboard')} className="rounded bg-slate-200 px-3 py-1 text-sm">← Panel</button>
-          {esGenerador && (
-            <button onClick={() => setMostrarCrear(!mostrarCrear)} className="rounded bg-sofia-600 px-3 py-1 text-sm text-white">
+    <AppShell sesion={sesion}>
+      <EncabezadoPagina
+        titulo="Despachos"
+        acciones={
+          esGenerador ? (
+            <button onClick={() => setMostrarCrear(!mostrarCrear)} className={CLASE_BOTON_PRIMARIO}>
               Nuevo despacho
             </button>
-          )}
-        </div>
-      </div>
+          ) : undefined
+        }
+      />
 
       {mensaje && <p className="mb-3 rounded bg-green-100 p-2 text-sm text-green-800">{mensaje}</p>}
       {error && <p className="mb-3 rounded bg-red-100 p-2 text-sm text-red-800">{error}</p>}
@@ -666,6 +672,6 @@ export default function DespachosPage() {
           </table>
         )}
       </section>
-    </main>
+        </AppShell>
   );
 }

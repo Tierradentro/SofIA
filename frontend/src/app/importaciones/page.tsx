@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import * as XLSX from 'xlsx';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
+import { AppShell } from '@/components/app-shell';
+import { EncabezadoPagina } from '@/components/ui';
 
 interface Empresa {
   id: string;
@@ -264,19 +266,9 @@ export default function ImportacionesPage() {
   if (!sesion) return null;
 
   return (
-    <main className="min-h-screen bg-slate-100 p-6">
+    <AppShell sesion={sesion}>
+      <EncabezadoPagina titulo="Importación contable (Excel/CSV)" />
       <div className="mx-auto max-w-4xl">
-        <div className="mb-4 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-sofia-900">
-            Importación contable (Excel/CSV)
-          </h1>
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="rounded bg-white px-3 py-1 text-sm shadow hover:bg-slate-50"
-          >
-            ← Volver
-          </button>
-        </div>
 
         {mensaje && (
           <p className="mb-3 rounded bg-green-100 px-3 py-2 text-sm text-green-800">
@@ -569,6 +561,6 @@ export default function ImportacionesPage() {
           </table>
         </section>
       </div>
-    </main>
+        </AppShell>
   );
 }

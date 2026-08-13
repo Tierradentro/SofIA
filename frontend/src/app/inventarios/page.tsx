@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
+import { AppShell } from '@/components/app-shell';
+import { CLASE_BOTON_PRIMARIO, CLASE_BOTON_SECUNDARIO, EncabezadoPagina } from '@/components/ui';
 
 interface Empresa { id: string; nombre: string; siglas: string }
 interface Producto { id: string; codigo: string; descripcion: string; cantidad: number }
@@ -211,15 +213,19 @@ export default function InventariosPage() {
     const conDif = items.filter((i) => i.diferencia !== null && i.diferencia !== 0);
     const sinContar = items.filter((i) => i.conteo === null).length;
     return (
-      <main className="mx-auto max-w-5xl p-6">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold">{jornada.numero} — {jornada.empresa?.nombre}</h1>
-            <p className="text-sm text-slate-600">
-              <span className="font-medium">{ESTADOS[jornada.estado]}</span> · {jornada.instruccion}
-            </p>
-          </div>
-          <button onClick={() => { setJornada(null); cargarLista(); }} className="rounded bg-slate-200 px-3 py-1 text-sm">← Volver</button>
+      <AppShell sesion={sesion}>
+      <EncabezadoPagina
+        titulo={`${jornada.numero} — ${jornada.empresa?.nombre ?? ''}`}
+        acciones={
+          <button onClick={() => { setJornada(null); cargarLista(); }} className={CLASE_BOTON_SECUNDARIO}>
+            ← Volver
+          </button>
+        }
+      />
+        <div className="mb-4">
+          <p className="text-sm text-slate-600">
+            <span className="font-medium">{ESTADOS[jornada.estado]}</span> · {jornada.instruccion}
+          </p>
         </div>
 
         {mensaje && <p className="mb-3 rounded bg-green-100 p-2 text-sm text-green-800">{mensaje}</p>}
@@ -326,7 +332,7 @@ export default function InventariosPage() {
         {jornada.estado === 'CANCELADO' && (
           <p className="rounded bg-red-100 p-2 text-sm text-red-800">Cancelada: {jornada.motivoCancelacion}</p>
         )}
-      </main>
+            </AppShell>
     );
   }
 
@@ -334,18 +340,17 @@ export default function InventariosPage() {
   // Lista de jornadas + creación
   // ---------------------------------------------------------------
   return (
-    <main className="mx-auto max-w-5xl p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-bold">Inventarios</h1>
-        <div className="flex gap-2">
-          <button onClick={() => router.push('/dashboard')} className="rounded bg-slate-200 px-3 py-1 text-sm">← Panel</button>
-          {esGenerador && (
-            <button onClick={() => setMostrarCrear(!mostrarCrear)} className="rounded bg-sofia-600 px-3 py-1 text-sm text-white">
+    <AppShell sesion={sesion}>
+      <EncabezadoPagina
+        titulo="Inventarios"
+        acciones={
+          esGenerador ? (
+            <button onClick={() => setMostrarCrear(!mostrarCrear)} className={CLASE_BOTON_PRIMARIO}>
               Nueva jornada
             </button>
-          )}
-        </div>
-      </div>
+          ) : undefined
+        }
+      />
 
       {mensaje && <p className="mb-3 rounded bg-green-100 p-2 text-sm text-green-800">{mensaje}</p>}
       {error && <p className="mb-3 rounded bg-red-100 p-2 text-sm text-red-800">{error}</p>}
@@ -420,6 +425,6 @@ export default function InventariosPage() {
           </table>
         )}
       </section>
-    </main>
+        </AppShell>
   );
 }

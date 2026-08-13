@@ -3,6 +3,8 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
+import { AppShell } from '@/components/app-shell';
+import { EncabezadoPagina } from '@/components/ui';
 
 
 interface Empresa { id: string; nombre: string; siglas: string }
@@ -243,14 +245,9 @@ function PedidosContenido() {
   if (!sesion) return null;
 
   return (
-    <main className="min-h-screen bg-slate-100 p-6">
+    <AppShell sesion={sesion}>
+      <EncabezadoPagina titulo="Pedidos y alistamiento" />
       <div className="mx-auto max-w-6xl">
-        <div className="mb-4 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-sofia-900">Pedidos y alistamiento</h1>
-          <button onClick={() => router.push('/dashboard')} className="rounded bg-white px-3 py-1 text-sm shadow hover:bg-slate-50">
-            ← Volver
-          </button>
-        </div>
 
         {mensaje && <p className="mb-3 rounded bg-green-100 px-3 py-2 text-sm text-green-800">{mensaje}</p>}
         {error && <p className="mb-3 rounded bg-red-100 px-3 py-2 text-sm text-red-800">{error}</p>}
@@ -502,7 +499,7 @@ function PedidosContenido() {
           </section>
         )}
       </div>
-    </main>
+        </AppShell>
   );
 }
 

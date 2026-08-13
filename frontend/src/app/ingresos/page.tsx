@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
+import { AppShell } from '@/components/app-shell';
+import { EncabezadoPagina } from '@/components/ui';
 
 interface Empresa {
   id: string;
@@ -236,17 +238,9 @@ export default function IngresosPage() {
     ingreso && (ingreso.resumen.conDiferencias > 0 || ingreso.resumen.nuevos > 0);
 
   return (
-    <main className="min-h-screen bg-slate-100 p-6">
+    <AppShell sesion={sesion}>
+      <EncabezadoPagina titulo="Ingreso de mercancía" />
       <div className="mx-auto max-w-5xl">
-        <div className="mb-4 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-sofia-900">Ingreso de mercancía</h1>
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="rounded bg-white px-3 py-1 text-sm shadow hover:bg-slate-50"
-          >
-            ← Volver
-          </button>
-        </div>
 
         {mensaje && (
           <p className="mb-3 rounded bg-green-100 px-3 py-2 text-sm text-green-800">{mensaje}</p>
@@ -593,6 +587,6 @@ export default function IngresosPage() {
           </section>
         )}
       </div>
-    </main>
+        </AppShell>
   );
 }
