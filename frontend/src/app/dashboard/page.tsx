@@ -2,8 +2,25 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, cerrarSesionLocal, obtenerSesion, Sesion } from '@/lib/api';
-import { LogoSofia } from '@/components/logo';
+import {
+  CheckCircle2,
+  Clock,
+  Download,
+  MapPin,
+  Package,
+  Percent,
+  Truck,
+} from 'lucide-react';
+import { api, obtenerSesion, Sesion } from '@/lib/api';
+import { AppShell } from '@/components/app-shell';
+import {
+  CLASES_TABLA,
+  EncabezadoPagina,
+  Insignia,
+  Tarjeta,
+  TarjetaStat,
+  TonoInsignia,
+} from '@/components/ui';
 
 interface Empresa {
   id: string;
@@ -12,66 +29,185 @@ interface Empresa {
   ciudad?: string;
 }
 
-interface PedidoKanban {
+interface PedidoCola {
   id: string;
   numero: string;
   estado: 'ABIERTO' | 'ALISTADO' | 'APROBADO' | 'PENDIENTE_CORRECCION' | 'CANCELADO';
-  valorTotal: number;
   createdAt: string;
-  cliente: { id: string; nombre: string } | null;
-}
-
-interface DespachoKanban {
-  id: string;
-  numero: string;
-  estado: 'CREADO' | 'ABIERTO' | 'PENDIENTE_CORRECCION' | 'PARCIAL' | 'DESPACHADO' | 'CANCELADO';
-  tipoTransporte: string | null;
   clienteId: string;
 }
 
-/** QA Func. 3.1: columnas del tablero en el orden del ciclo de vida. */
-const COLUMNAS_PEDIDOS: { valor: PedidoKanban['estado']; etiqueta: string; color: string }[] = [
-  { valor: 'ABIERTO', etiqueta: 'Abierto', color: 'border-blue-400 bg-blue-50' },
-  { valor: 'ALISTADO', etiqueta: 'Alistado', color: 'border-amber-400 bg-amber-50' },
-  { valor: 'APROBADO', etiqueta: 'Aprobado', color: 'border-green-400 bg-green-50' },
-  { valor: 'PENDIENTE_CORRECCION', etiqueta: 'Pendiente corrección', color: 'border-red-400 bg-red-50' },
-  { valor: 'CANCELADO', etiqueta: 'Cancelado', color: 'border-slate-300 bg-slate-100' },
+interface DespachoTraza {
+  id: string;
+  numero: string;
+  estado: string;
+  clienteId: string;
+  createdAt: string;
+  fechaSalida: string | null;
+  tipoTransporte: string | null;
+  empresas?: string[];
+}
+
+interface InboundPendiente {
+  id: string;
+  estado: string;
+}
+
+interface ProductoStock {
+  cantidad: number;
+  estado: string;
+}
+
+const PESTANAS: { valor: PedidoCola['estado']; etiqueta: string }[] = [
+  { valor: 'ABIERTO', etiqueta: 'Abierto' },
+  { valor: 'ALISTADO', etiqueta: 'Alistado' },
+  { valor: 'APROBADO', etiqueta: 'Aprobado' },
+  { valor: 'PENDIENTE_CORRECCION', etiqueta: 'Pendiente corrección' },
 ];
 
-const COLUMNAS_DESPACHOS: { valor: DespachoKanban['estado']; etiqueta: string; color: string }[] = [
-  { valor: 'CREADO', etiqueta: 'Creado', color: 'border-slate-400 bg-slate-50' },
-  { valor: 'ABIERTO', etiqueta: 'Abierto', color: 'border-blue-400 bg-blue-50' },
-  { valor: 'PARCIAL', etiqueta: 'Parcial', color: 'border-amber-400 bg-amber-50' },
-  { valor: 'DESPACHADO', etiqueta: 'Despachado', color: 'border-green-400 bg-green-50' },
-  { valor: 'PENDIENTE_CORRECCION', etiqueta: 'Pendiente corrección', color: 'border-red-400 bg-red-50' },
-  { valor: 'CANCELADO', etiqueta: 'Cancelado', color: 'border-slate-300 bg-slate-100' },
-];
+const TONOS_DESPACHO: Record<string, TonoInsignia> = {
+  CREADO: 'gris',
+  ABIERTO: 'menta',
+  PARCIAL: 'ambar',
+  DESPACHADO: 'verde',
+  PENDIENTE_CORRECCION: 'rojo',
+  CANCELADO: 'gris',
+};
 
-/** Dashboard I1: empresas (M03), tablero operativo (QA Func. 3.1) y accesos según rol. */
+const ETIQUETA_DESPACHO: Record<string, string> = {
+  CREADO: 'Creado',
+  ABIERTO: 'Abierto',
+  PARCIAL: 'Parcial',
+  DESPACHADO: 'Despachado',
+  PENDIENTE_CORRECCION: 'Pendiente corrección',
+  CANCELADO: 'Cancelado',
+};
+
+/** Minutos transcurridos en lenguaje natural ("hace 15 min", "hace 2 h"). */
+function haceMinutos(fechaIso: string): string {
+  const min = Math.max(0, Math.floor((Date.now() - new Date(fechaIso).getTime()) / 60000));
+  if (min < 1) return 'hace un momento';
+  if (min < 60) return `hace ${min} min`;
+  const horas = Math.floor(min / 60);
+  return `hace ${horas} h`;
+}
+
+function formatearFecha(fechaIso: string | null): string {
+  if (!fechaIso) return '—';
+  const d = new Date(fechaIso);
+  return d.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+/** I17: mapa estático ilustrativo del almacén (sin datos operativos en el modelo). */
+function MapaAlmacen() {
+  return (
+    <Tarjeta className="p-5">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold text-slate-900">Mapa del Almacén</h2>
+        <div className="flex items-center gap-4 text-xs text-slate-500">
+          <span className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full bg-menta-400" /> Operativo
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full bg-sofia-700" /> Crítico
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full bg-slate-300" /> Libre
+          </span>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 p-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="flex h-36 flex-col items-center justify-center rounded-lg bg-slate-100">
+            <p className="text-lg font-bold tracking-wide text-slate-700">ZONA A</p>
+            <p className="text-xs text-slate-500">Racks Pesados</p>
+          </div>
+          <div className="flex h-36 flex-col items-center justify-center rounded-lg bg-slate-100">
+            <p className="text-lg font-bold tracking-wide text-slate-700">ZONA B</p>
+            <p className="text-xs text-slate-500">Pick-Pack</p>
+          </div>
+          <div className="relative flex h-36 flex-col items-center justify-center rounded-lg border border-slate-200 bg-white">
+            <span className="absolute right-3 top-3 h-3 w-3 rounded-full bg-menta-400" />
+            <p className="text-lg font-bold tracking-wide text-slate-700">ZONA C</p>
+            <p className="text-xs text-slate-500">Devoluciones</p>
+          </div>
+        </div>
+
+        <p className="my-3 text-center text-[11px] font-semibold uppercase tracking-widest text-slate-400">
+          Corredor principal de montacargas
+        </p>
+
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="flex h-24 flex-col items-center justify-center rounded-lg bg-menta-200 text-sofia-900">
+            <MapPin size={18} />
+            <p className="mt-1 text-sm font-medium">Bahía 01</p>
+          </div>
+          <div className="flex h-24 flex-col items-center justify-center rounded-lg bg-menta-200 text-sofia-900">
+            <MapPin size={18} />
+            <p className="mt-1 text-sm font-medium">Bahía 02</p>
+          </div>
+          <div className="flex h-24 flex-col items-center justify-center rounded-lg bg-slate-100 text-slate-400">
+            <MapPin size={18} />
+            <p className="mt-1 text-sm font-medium">Bahía 03</p>
+          </div>
+          <div className="flex h-24 flex-col items-center justify-center rounded-lg bg-slate-100 text-sofia-700">
+            <Truck size={18} />
+            <p className="mt-1 text-sm font-medium">Patio de Maniobras</p>
+          </div>
+        </div>
+      </div>
+    </Tarjeta>
+  );
+}
+
+/** Dashboard: monitor de flujo logístico (I17). El backend filtra por rol. */
 export default function DashboardPage() {
   const router = useRouter();
   const [sesion, setSesion] = useState<Sesion | null>(null);
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
-  const [pedidos, setPedidos] = useState<PedidoKanban[]>([]);
-  const [despachos, setDespachos] = useState<DespachoKanban[]>([]);
+  const [pedidos, setPedidos] = useState<PedidoCola[]>([]);
+  const [despachos, setDespachos] = useState<DespachoTraza[]>([]);
+  const [stockTotal, setStockTotal] = useState<number | null>(null);
+  const [recibosPendientes, setRecibosPendientes] = useState<number | null>(null);
   const [nombreClientes, setNombreClientes] = useState<Record<string, string>>({});
+  const [pestana, setPestana] = useState<PedidoCola['estado']>('ABIERTO');
 
   useEffect(() => {
     const s = obtenerSesion();
     if (!s) return router.replace('/login');
     if (s.usuario.debeCambiarClave) return router.replace('/cambiar-clave');
     setSesion(s);
-    api<Empresa[]>('/companies').then(({ status, body }) => {
-      if (status === 200) setEmpresas(body);
+
+    api<Empresa[]>('/companies').then(async ({ status, body }) => {
+      if (status !== 200) return;
+      setEmpresas(body);
+      // KPI Stock total: suma de existencias activas de todas las empresas
+      const listas = await Promise.all(
+        body.map((e) => api<ProductoStock[]>(`/products?empresaId=${e.id}`)),
+      );
+      let total = 0;
+      for (const { status: st, body: prods } of listas) {
+        if (st !== 200) continue;
+        for (const p of prods) {
+          if (p.estado === 'ACTIVO') total += Number(p.cantidad) || 0;
+        }
+      }
+      setStockTotal(total);
     });
-    // QA Func. 3.1: el backend filtra por rol (COMERCIAL solo ve lo suyo)
-    api<PedidoKanban[]>('/orders').then(({ status, body }) => {
+
+    api<PedidoCola[]>('/orders').then(({ status, body }) => {
       if (status === 200) setPedidos(body);
     });
-    api<DespachoKanban[]>('/dispatches').then(({ status, body }) => {
+    api<DespachoTraza[]>('/dispatches').then(({ status, body }) => {
       if (status === 200) setDespachos(body);
     });
-    // El listado de despachos trae clienteId; se resuelve el nombre con el catálogo
+    // KPI Recibos pendientes: recibos de ingreso aún no aprobados
+    api<InboundPendiente[]>('/inbound').then(({ status, body }) => {
+      if (status === 200) {
+        setRecibosPendientes(body.filter((r) => r.estado !== 'APROBADO' && r.estado !== 'CANCELADO').length);
+      }
+    });
     api<{ id: string; nombre: string }[]>('/clients').then(({ status, body }) => {
       if (status === 200) {
         const mapa: Record<string, string> = {};
@@ -81,274 +217,200 @@ export default function DashboardPage() {
     });
   }, [router]);
 
-  async function logout() {
-    await api('/auth/logout', { method: 'POST' });
-    cerrarSesionLocal();
-    router.replace('/login');
-  }
-
   if (!sesion) return null;
-  const esAdmin = sesion.usuario.rol === 'ADMINISTRADOR';
-  const veTablero = ['GENERADOR', 'OPERADOR', 'COMERCIAL', 'ADMINISTRADOR'].includes(sesion.usuario.rol);
+  const hoy = new Date().toDateString();
+  const despachosHoy = despachos.filter(
+    (d) => d.fechaSalida && new Date(d.fechaSalida).toDateString() === hoy,
+  ).length;
+  const enPestana = pedidos
+    .filter((p) => p.estado === pestana)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const trazabilidad = [...despachos]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 6);
 
   return (
-    <main className="min-h-screen">
-      <header className="flex items-center justify-between bg-sofia-900 px-6 py-3 text-white">
-        <div className="flex items-center gap-3">
-          <LogoSofia width={40} height={40} />
-          <span className="font-semibold">SofIA Logística Inteligente</span>
-        </div>
-        <div className="flex items-center gap-4 text-sm">
-          <span>
-            {sesion.usuario.nombre} · <strong>{sesion.usuario.rol}</strong>
-          </span>
-          <button
-            onClick={() => router.push('/cambiar-clave')}
-            className="rounded bg-sofia-700 px-3 py-1 hover:bg-sofia-600"
-          >
-            Cambiar clave
-          </button>
-          <button
-            onClick={logout}
-            className="rounded bg-red-600 px-3 py-1 hover:bg-red-700"
-          >
-            Cerrar sesión
-          </button>
-        </div>
-      </header>
+    <AppShell sesion={sesion}>
+      <EncabezadoPagina
+        titulo="SofIA Logística Inteligente"
+        descripcion="Monitor de flujo logístico y eficiencia de almacén."
+      />
 
-      <section className="p-6">
-        <div className="mb-6 flex flex-wrap gap-3">
-          <button
-            onClick={() => router.push('/productos')}
-            className="rounded bg-sofia-600 px-4 py-2 text-white shadow hover:bg-sofia-700"
-          >
-            Productos
-          </button>
-          <button
-            onClick={() => router.push('/clientes')}
-            className="rounded bg-white px-4 py-2 shadow hover:bg-slate-50"
-          >
-            Clientes
-          </button>
-          <button
-            onClick={() => router.push('/comerciales')}
-            className="rounded bg-white px-4 py-2 shadow hover:bg-slate-50"
-          >
-            Comerciales
-          </button>
-          {['GENERADOR', 'OPERADOR', 'ADMINISTRADOR'].includes(sesion.usuario.rol) && (
-            <button
-              onClick={() => router.push('/ingresos')}
-              className="rounded bg-white px-4 py-2 shadow hover:bg-slate-50"
-            >
-              Ingresos
-            </button>
-          )}
-          {veTablero && (
-            <button
-              onClick={() => router.push('/pedidos')}
-              className="rounded bg-white px-4 py-2 shadow hover:bg-slate-50"
-            >
-              Pedidos
-            </button>
-          )}
-          {veTablero && (
-            <button
-              onClick={() => router.push('/despachos')}
-              className="rounded bg-white px-4 py-2 shadow hover:bg-slate-50"
-            >
-              Despachos
-            </button>
-          )}
-          {veTablero && (
-            <button
-              onClick={() => router.push('/devoluciones')}
-              className="rounded bg-white px-4 py-2 shadow hover:bg-slate-50"
-            >
-              Devoluciones
-            </button>
-          )}
-          {['GENERADOR', 'OPERADOR', 'ADMINISTRADOR'].includes(sesion.usuario.rol) && (
-            <button
-              onClick={() => router.push('/movimientos')}
-              className="rounded bg-white px-4 py-2 shadow hover:bg-slate-50"
-            >
-              Movimientos
-            </button>
-          )}
-          {['GENERADOR', 'OPERADOR', 'ADMINISTRADOR'].includes(sesion.usuario.rol) && (
-            <button
-              onClick={() => router.push('/inventarios')}
-              className="rounded bg-white px-4 py-2 shadow hover:bg-slate-50"
-            >
-              Inventarios
-            </button>
-          )}
-          {sesion.usuario.rol === 'COMERCIAL' && (
-            <button
-              onClick={() => router.push('/tablero')}
-              className="rounded bg-sofia-600 px-4 py-2 text-white shadow hover:bg-sofia-700"
-            >
-              Mi tablero
-            </button>
-          )}
-        </div>
-
-        {/* QA Func. 3.1: tablero Kanban de Pedidos y Despachos por estado */}
-        {veTablero && (
-          <div className="mb-8 space-y-6">
-            <div>
-              <h2 className="mb-2 text-lg font-semibold">Pedidos</h2>
-              <div className="flex gap-3 overflow-x-auto pb-2">
-                {COLUMNAS_PEDIDOS.map((col) => {
-                  const tarjetas = pedidos.filter((p) => p.estado === col.valor);
-                  return (
-                    <div key={col.valor} className={`w-56 shrink-0 rounded-lg border-t-4 p-2 ${col.color}`}>
-                      <p className="mb-2 text-sm font-semibold text-slate-700">
-                        {col.etiqueta} <span className="text-slate-400">({tarjetas.length})</span>
-                      </p>
-                      <div className="space-y-2">
-                        {tarjetas.map((p) => (
-                          <button
-                            key={p.id}
-                            onClick={() => router.push('/pedidos')}
-                            className="block w-full rounded bg-white p-2 text-left text-sm shadow-sm hover:shadow"
-                          >
-                            <span className="font-medium text-sofia-800">{p.numero}</span>
-                            <span className="block truncate text-xs text-slate-500">
-                              {p.cliente?.nombre ?? 'Sin cliente'}
-                            </span>
-                            <span className="block text-xs text-slate-400">
-                              $ {Number(p.valorTotal).toLocaleString('es-CO')}
-                            </span>
-                          </button>
-                        ))}
-                        {!tarjetas.length && <p className="text-xs text-slate-400">Vacío</p>}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+      {/* Empresas registradas */}
+      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+        Empresas registradas
+      </h2>
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {empresas.map((e) => (
+          <Tarjeta key={e.id} className="flex items-center gap-4 p-5">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-sofia-900 text-sm font-bold text-white">
+              {e.siglas}
+            </span>
+            <div className="min-w-0">
+              <p className="font-semibold text-slate-900">{e.siglas}</p>
+              <p className="truncate text-sm text-slate-500">{e.nombre}</p>
             </div>
+          </Tarjeta>
+        ))}
+      </div>
 
-            <div>
-              <h2 className="mb-2 text-lg font-semibold">Despachos</h2>
-              <div className="flex gap-3 overflow-x-auto pb-2">
-                {COLUMNAS_DESPACHOS.map((col) => {
-                  const tarjetas = despachos.filter((d) => d.estado === col.valor);
-                  return (
-                    <div key={col.valor} className={`w-56 shrink-0 rounded-lg border-t-4 p-2 ${col.color}`}>
-                      <p className="mb-2 text-sm font-semibold text-slate-700">
-                        {col.etiqueta} <span className="text-slate-400">({tarjetas.length})</span>
-                      </p>
-                      <div className="space-y-2">
-                        {tarjetas.map((d) => (
-                          <button
-                            key={d.id}
-                            onClick={() => router.push('/despachos')}
-                            className="block w-full rounded bg-white p-2 text-left text-sm shadow-sm hover:shadow"
-                          >
-                            <span className="font-medium text-sofia-800">{d.numero}</span>
-                            <span className="block truncate text-xs text-slate-500">
-                              {nombreClientes[d.clienteId] ?? 'Cliente'}
-                            </span>
-                            {d.tipoTransporte && (
-                              <span className="block text-xs text-slate-400">{d.tipoTransporte}</span>
-                            )}
-                          </button>
-                        ))}
-                        {!tarjetas.length && <p className="text-xs text-slate-400">Vacío</p>}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+      {/* KPIs operativos */}
+      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <TarjetaStat
+          icono={Package}
+          etiqueta="Stock total"
+          valor={stockTotal === null ? '…' : stockTotal.toLocaleString('es-CO')}
+          unidad="und"
+          tono="azul"
+        />
+        <TarjetaStat
+          icono={Download}
+          etiqueta="Recibos pendientes"
+          valor={recibosPendientes === null ? '…' : String(recibosPendientes)}
+          unidad="Lotes"
+          tono="menta"
+        />
+        <TarjetaStat
+          icono={Truck}
+          etiqueta="Despachos hoy"
+          valor={String(despachosHoy)}
+          unidad="Órdenes"
+          tono="marino"
+        />
+        <TarjetaStat
+          icono={Percent}
+          etiqueta="Tasa devoluciones"
+          valor="—"
+          detalle="Disponible con el módulo PQRS"
+          tono="rosa"
+        />
+      </div>
+
+      {/* Cola de pedidos (picking y packing) */}
+      <Tarjeta className="mb-8 p-5">
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold text-slate-900">Cola de Pedidos (Picking y Packing)</h2>
+          <p className="text-sm text-slate-500">Pedidos listos para alistamiento y empaque.</p>
+        </div>
+        <div className="mb-4 flex flex-wrap gap-1 border-b border-slate-200">
+          {PESTANAS.map((t) => {
+            const n = pedidos.filter((p) => p.estado === t.valor).length;
+            const activa = pestana === t.valor;
+            return (
+              <button
+                key={t.valor}
+                onClick={() => setPestana(t.valor)}
+                className={`-mb-px border-b-2 px-4 py-2 text-sm transition-colors ${
+                  activa
+                    ? 'border-sofia-700 font-semibold text-sofia-700'
+                    : 'border-transparent text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {t.etiqueta} <span className="text-xs text-slate-400">({n})</span>
+              </button>
+            );
+          })}
+        </div>
+        {enPestana.length ? (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {enPestana.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => router.push(`/pedidos?abrir=${p.id}`)}
+                className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 text-left transition-shadow hover:shadow-md"
+              >
+                <div className="mb-6 flex items-start justify-between">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-sofia-700">
+                    <Package size={18} />
+                  </span>
+                  {p.estado === 'PENDIENTE_CORRECCION' && <Insignia tono="rojo">Corrección</Insignia>}
+                  {p.estado === 'APROBADO' && <Insignia tono="menta">Prioridad</Insignia>}
+                </div>
+                <p className="font-semibold text-slate-800">{p.numero}</p>
+                <p className="truncate text-sm font-medium text-sofia-700">
+                  {nombreClientes[p.clienteId] ?? 'Sin cliente'}
+                </p>
+                <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-400">
+                  <Clock size={13} /> {haceMinutos(p.createdAt)}
+                </p>
+              </button>
+            ))}
           </div>
+        ) : (
+          <p className="py-8 text-center text-sm text-slate-400">
+            No hay pedidos en estado «{PESTANAS.find((t) => t.valor === pestana)?.etiqueta}».
+          </p>
         )}
+      </Tarjeta>
 
-        <h1 className="mb-4 text-lg font-semibold">Empresas registradas</h1>
-        <div className="grid max-w-2xl grid-cols-1 gap-4 sm:grid-cols-2">
-          {empresas.map((e) => (
-            <div key={e.id} className="rounded-lg bg-white p-5 shadow">
-              <p className="text-xl font-bold text-sofia-700">{e.siglas}</p>
-              <p className="font-medium">{e.nombre}</p>
-              {e.ciudad && <p className="text-sm text-slate-500">{e.ciudad}</p>}
-            </div>
-          ))}
+      {/* Mapa del almacén (ilustrativo) */}
+      <div className="mb-8">
+        <MapaAlmacen />
+      </div>
+
+      {/* Trazabilidad reciente de despachos */}
+      <Tarjeta className="overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-4">
+          <h2 className="text-lg font-semibold text-slate-900">Trazabilidad Reciente de Despachos</h2>
+          <button
+            onClick={() => router.push('/despachos')}
+            className="text-sm font-medium text-sofia-700 hover:text-sofia-600"
+          >
+            Ver todos →
+          </button>
         </div>
+        <div className="overflow-x-auto">
+          <table className={CLASES_TABLA.tabla}>
+            <thead>
+              <tr className={CLASES_TABLA.cabecera}>
+                <th className={CLASES_TABLA.celdaCabecera}>Fecha</th>
+                <th className={CLASES_TABLA.celdaCabecera}>Despacho</th>
+                <th className={CLASES_TABLA.celdaCabecera}>Cliente</th>
+                <th className={CLASES_TABLA.celdaCabecera}>Estado</th>
+                <th className={CLASES_TABLA.celdaCabecera}>Transporte</th>
+              </tr>
+            </thead>
+            <tbody>
+              {trazabilidad.map((d) => (
+                <tr
+                  key={d.id}
+                  className={`${CLASES_TABLA.fila} cursor-pointer`}
+                  onClick={() => router.push('/despachos')}
+                >
+                  <td className={CLASES_TABLA.celda}>{formatearFecha(d.fechaSalida ?? d.createdAt)}</td>
+                  <td className={`${CLASES_TABLA.celda} font-medium text-sofia-700`}>{d.numero}</td>
+                  <td className={CLASES_TABLA.celda}>{nombreClientes[d.clienteId] ?? '—'}</td>
+                  <td className={CLASES_TABLA.celda}>
+                    <Insignia tono={TONOS_DESPACHO[d.estado] ?? 'gris'}>
+                      {ETIQUETA_DESPACHO[d.estado] ?? d.estado}
+                    </Insignia>
+                  </td>
+                  <td className={CLASES_TABLA.celda}>{d.tipoTransporte ?? '—'}</td>
+                </tr>
+              ))}
+              {!trazabilidad.length && (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-400">
+                    Aún no hay despachos registrados.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Tarjeta>
 
-        {esAdmin && (
-          <div className="mt-8">
-            <h2 className="mb-3 text-lg font-semibold">Administración</h2>
-            <div className="flex flex-wrap gap-3">
-              <button
-                onClick={() => router.push('/admin/usuarios')}
-                className="rounded bg-white px-4 py-2 shadow hover:bg-slate-50"
-              >
-                Usuarios
-              </button>
-              <button
-                onClick={() => router.push('/empresas')}
-                className="rounded bg-white px-4 py-2 shadow hover:bg-slate-50"
-              >
-                Empresas
-              </button>
-              {/* QA Func. 3.4: importaciones y procesamiento OCR solo en el menú
-                  del Administrador (la ejecución de OCR sigue abierta en la API) */}
-              <button
-                onClick={() => router.push('/importaciones')}
-                className="rounded bg-white px-4 py-2 shadow hover:bg-slate-50"
-              >
-                Importaciones
-              </button>
-              <button
-                onClick={() => router.push('/ocr')}
-                className="rounded bg-white px-4 py-2 shadow hover:bg-slate-50"
-              >
-                Procesar documentos OCR
-              </button>
-              <button
-                onClick={() => router.push('/admin/auditoria')}
-                className="rounded bg-white px-4 py-2 shadow hover:bg-slate-50"
-              >
-                Auditoría
-              </button>
-              <button
-                onClick={() => router.push('/admin/transportadoras')}
-                className="rounded bg-white px-4 py-2 shadow hover:bg-slate-50"
-              >
-                Transportadoras
-              </button>
-              <button
-                onClick={() => router.push('/admin/api-keys')}
-                className="rounded bg-white px-4 py-2 shadow hover:bg-slate-50"
-              >
-                API Keys
-              </button>
-              <button
-                onClick={() => router.push('/admin/parametros')}
-                className="rounded bg-white px-4 py-2 shadow hover:bg-slate-50"
-              >
-                Parámetros
-              </button>
-              <button
-                onClick={() => router.push('/admin/logo')}
-                className="rounded bg-white px-4 py-2 shadow hover:bg-slate-50"
-              >
-                Logo
-              </button>
-              <button
-                onClick={() => router.push('/admin/ocr')}
-                className="rounded bg-white px-4 py-2 shadow hover:bg-slate-50"
-              >
-                Configurar motor OCR
-              </button>
-            </div>
-          </div>
-        )}
-      </section>
-    </main>
+      {/* Acceso rápido para el rol comercial */}
+      {sesion.usuario.rol === 'COMERCIAL' && (
+        <div className="mt-6">
+          <button
+            onClick={() => router.push('/tablero')}
+            className="flex items-center gap-2 rounded-lg bg-sofia-700 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-sofia-600"
+          >
+            <CheckCircle2 size={16} /> Ir a mi tablero
+          </button>
+        </div>
+      )}
+    </AppShell>
   );
 }
