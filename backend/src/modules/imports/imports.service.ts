@@ -16,6 +16,10 @@ import { Product } from '../products/entities/product.entity';
 import { Client } from '../clients/entities/client.entity';
 import { ClientAddress } from '../clients/entities/client-address.entity';
 import { MAX_DIRECCIONES_CLIENTE } from '../clients/clients.service';
+import {
+  claveDireccion,
+  direccionDuplicada,
+} from '../../common/utils/normalizar-direccion';
 import { Comercial } from '../comerciales/entities/comercial.entity';
 import { ProductStatus } from '../../common/enums/product-status.enum';
 import { MovementType } from '../../common/enums/movement-type.enum';
@@ -262,22 +266,23 @@ export class ImportsService {
     if (dto.tipo === ImportType.CLIENTES) {
       // I18: estimación previa con la misma regla de aplicación — una fila
       // por dirección; cliente+dirección existentes se descartan.
-      const norm = (v?: string | null) =>
-        (v ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
-      const claveDir = (d?: string | null, c?: string | null) =>
-        `${norm(d)}|${norm(c)}`;
+      // I20: misma normalización (abreviaturas/puntuación/similitud) y
+      // mismo tope de 10 direcciones que el paso real de aprobación.
       const repoClientes = this.dataSource.getRepository(Client);
       const repoDirs = this.dataSource.getRepository(ClientAddress);
       let nuevos = 0;
       let direccionesAAgregar = 0;
       let descartados = 0;
+      let omitidasMaximo = 0;
       const nuevosEnLote = new Map<string, Set<string>>();
       const dirsCache = new Map<string, Set<string>>();
       for (const f of validas) {
         const limpio = Object.fromEntries(
           Object.entries(f.datos).filter(([, v]) => v !== ''),
         );
-        const claveNuevo = norm(limpio.identificacion || limpio.nombre);
+        const claveNuevo = (limpio.identificacion || limpio.nombre || '')
+          .trim()
+          .toLowerCase();
         const existente = limpio.identificacion
           ? await repoClientes.findOne({
               where: { identificacion: limpio.identificacion },
@@ -287,7 +292,7 @@ export class ImportsService {
           nuevos++;
           nuevosEnLote.set(
             claveNuevo,
-            new Set(limpio.direccion ? [claveDir(limpio.direccion, limpio.ciudad)] : []),
+            new Set(limpio.direccion ? [claveDireccion(limpio.direccion, limpio.ciudad)] : []),
           );
           continue;
         }
@@ -304,22 +309,25 @@ export class ImportsService {
             });
             dirsCache.set(
               existente.id,
-              new Set(actuales.map((a) => claveDir(a.direccion, a.ciudad))),
+              new Set(actuales.map((a) => claveDireccion(a.direccion, a.ciudad))),
             );
           }
           conocidas = dirsCache.get(existente.id)!;
         } else {
           conocidas = nuevosEnLote.get(claveNuevo)!;
         }
-        const clave = claveDir(direccion, limpio.ciudad);
-        if (conocidas.has(clave)) {
+        if (direccionDuplicada(direccion, limpio.ciudad, conocidas)) {
           descartados++;
+        } else if (conocidas.size >= MAX_DIRECCIONES_CLIENTE) {
+          // I20: el preview también aplica el tope — antes podía mostrar
+          // "se agregará" una fila que al aprobar quedaría omitida.
+          omitidasMaximo++;
         } else {
-          conocidas.add(clave);
+          conocidas.add(claveDireccion(direccion, limpio.ciudad));
           direccionesAAgregar++;
         }
       }
-      return { nuevos, direccionesAAgregar, descartados };
+      return { nuevos, direccionesAAgregar, descartados, omitidasMaximo };
     }
     // COMERCIALES
     return { nuevos: validas.length, actualizados: 0 };
@@ -506,10 +514,6 @@ export class ImportsService {
     let direccionesAgregadas = 0;
     let descartados = 0;
     let omitidasMaximo = 0;
-    const norm = (v?: string | null) =>
-      (v ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
-    const claveDir = (direccion?: string | null, ciudad?: string | null) =>
-      `${norm(direccion)}|${norm(ciudad)}`;
 
     await this.dataSource.transaction(async (em) => {
       const repoClientes = em.getRepository(Client);
@@ -525,7 +529,7 @@ export class ImportsService {
           });
           dirsPorCliente.set(
             clienteId,
-            new Set(actuales.map((a) => claveDir(a.direccion, a.ciudad))),
+            new Set(actuales.map((a) => claveDireccion(a.direccion, a.ciudad))),
           );
         }
         return dirsPorCliente.get(clienteId)!;
@@ -556,7 +560,7 @@ export class ImportsService {
                 esPrincipal: true,
               }),
             );
-            (await dirsConocidas(cliente.id)).add(claveDir(direccion, ciudad));
+            (await dirsConocidas(cliente.id)).add(claveDireccion(direccion, ciudad));
           }
           continue;
         }
@@ -567,7 +571,8 @@ export class ImportsService {
           continue;
         }
         const conocidas = await dirsConocidas(cliente.id);
-        if (conocidas.has(claveDir(direccion, ciudad))) {
+        // I20: casi-duplicados (abreviatura, puntuación, tipeo) también descartan
+        if (direccionDuplicada(direccion, ciudad, conocidas)) {
           descartados++;
           continue;
         }
@@ -583,7 +588,7 @@ export class ImportsService {
             esPrincipal: conocidas.size === 0,
           }),
         );
-        conocidas.add(claveDir(direccion, ciudad));
+        conocidas.add(claveDireccion(direccion, ciudad));
         direccionesAgregadas++;
       }
     });

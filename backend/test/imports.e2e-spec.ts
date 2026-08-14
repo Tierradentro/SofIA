@@ -285,6 +285,89 @@ describe('Importaciones contables (e2e)', () => {
     ]);
   });
 
+  it('I20: casi-duplicados de dirección (puntuación, abreviaturas, "No.") se descartan; preview aplica el tope de 10', async () => {
+    const [previo] = await t.dataSource.query(
+      `INSERT INTO clients (id, nombre, identificacion, direccion, ciudad, telefonos)
+       VALUES (gen_random_uuid(), 'Casi Dup I20 S.A.S', '903.111.222-3', 'Calle 10 # 5-20', 'Bogotá', '3009998877')
+       RETURNING id`,
+    );
+    await t.dataSource.query(
+      `INSERT INTO client_addresses (id, client_id, direccion, ciudad, es_principal)
+       VALUES (gen_random_uuid(), $1, 'Calle 10 # 5-20', 'Bogotá', true)`,
+      [previo.id],
+    );
+
+    const fila = (direccion: string, ciudad = 'Bogotá') => ({
+      Nombre: 'Casi Dup I20 S.A.S', Nit: '903.111.222-3', 'Dirección': direccion, Ciudad: ciudad,
+    });
+    const buffer = xlsxBuffer([
+      fila('calle 10 #5-20'),        // minúsculas + espacio distinto
+      fila('CALLE 10 # 5 - 20'),     // mayúsculas + guion espaciado
+      fila('Cl. 10 # 5-20.'),        // abreviatura + punto
+      fila('Calle 10 No. 5-20'),     // No. ≡ #
+      fila('Carrera 45 # 128-30'),   // genuinamente distinta → se agrega
+      fila('Calle 10 # 5-20', 'Cali'), // misma dirección, OTRA ciudad → se agrega
+    ]);
+    const res = await t.http
+      .post('/api/v1/imports')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .field('tipo', 'CLIENTES')
+      .field('mapeo', JSON.stringify({
+        Nombre: 'nombre', Nit: 'identificacion', 'Dirección': 'direccion', Ciudad: 'ciudad',
+      }))
+      .attach('file', buffer, { filename: 'casi-dup.xlsx', contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    expect(res.status).toBe(201);
+    expect(res.body.resumen.validas).toBe(6);
+    expect(res.body.resumen.descartados).toBe(4);
+    expect(res.body.resumen.direccionesAAgregar).toBe(2);
+
+    const approve = await t.http
+      .post(`/api/v1/imports/${res.body.id}/approve`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(approve.body.resumen.aplicado).toMatchObject({
+      nuevos: 0, direccionesAgregadas: 2, descartados: 4, omitidasMaximo: 0,
+    });
+
+    // Sin redundancia: original + Carrera 45 (Bogotá) + Calle 10 (Cali)
+    const dirs = await t.dataSource.query(
+      `SELECT direccion, ciudad FROM client_addresses WHERE client_id=$1 AND activo=true ORDER BY created_at`,
+      [previo.id],
+    );
+    expect(dirs.length).toBe(3);
+    expect(dirs.map((d: any) => `${d.direccion}|${d.ciudad}`)).toEqual([
+      'Calle 10 # 5-20|Bogotá',
+      'Carrera 45 # 128-30|Bogotá',
+      'Calle 10 # 5-20|Cali',
+    ]);
+
+    // El preview sobre un cliente en el tope reporta omitidas, no promesas:
+    // llenar hasta 10 (tiene 3) y luego pedir una más.
+    const siete = [];
+    for (let i = 1; i <= 7; i++) siete.push(fila(`Diagonal ${i}0 # ${i}-0${i}`));
+    const jobLlenar = await t.http
+      .post('/api/v1/imports')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .field('tipo', 'CLIENTES')
+      .field('mapeo', JSON.stringify({
+        Nombre: 'nombre', Nit: 'identificacion', 'Dirección': 'direccion', Ciudad: 'ciudad',
+      }))
+      .attach('file', xlsxBuffer(siete), { filename: 'llenar.xlsx', contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    await t.http
+      .post(`/api/v1/imports/${jobLlenar.body.id}/approve`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    const jobExtra = await t.http
+      .post('/api/v1/imports')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .field('tipo', 'CLIENTES')
+      .field('mapeo', JSON.stringify({
+        Nombre: 'nombre', Nit: 'identificacion', 'Dirección': 'direccion', Ciudad: 'ciudad',
+      }))
+      .attach('file', xlsxBuffer([fila('Transversal 99 # 1-01')]), { filename: 'extra.xlsx', contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    expect(jobExtra.body.resumen.direccionesAAgregar).toBe(0);
+    expect(jobExtra.body.resumen.omitidasMaximo).toBe(1);
+  });
+
   it('HU-017: exportación CSV UTF-8 por empresa con trazabilidad (empresa en cada fila)', async () => {
     const res = await t.http
       .get(`/api/v1/exports/products.csv?empresaId=${ireId}`)
