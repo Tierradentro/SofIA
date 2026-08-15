@@ -49,12 +49,13 @@ const NAV_OPERACIONES: ItemNav[] = [
   { href: '/dashboard', etiqueta: 'Dashboard', icono: LayoutDashboard, roles: TODOS },
   { href: '/productos', etiqueta: 'Productos', icono: Package, roles: TODOS },
   { href: '/clientes', etiqueta: 'Clientes', icono: Users, roles: TODOS },
-  { href: '/comerciales', etiqueta: 'Comerciales', icono: Briefcase, roles: TODOS },
+  // I21: Comerciales y Movimientos ya no se ofrecen al perfil Operador
+  { href: '/comerciales', etiqueta: 'Comerciales', icono: Briefcase, roles: ['ADMINISTRADOR', 'GENERADOR', 'COMERCIAL'] },
   { href: '/ingresos', etiqueta: 'Ingresos', icono: Inbox, roles: GOA },
   { href: '/pedidos', etiqueta: 'Pedidos', icono: ShoppingCart, roles: GOCA },
   { href: '/despachos', etiqueta: 'Despachos', icono: Truck, roles: GOCA },
   { href: '/devoluciones', etiqueta: 'Devoluciones', icono: RotateCcw, roles: GOCA },
-  { href: '/movimientos', etiqueta: 'Movimientos', icono: ArrowLeftRight, roles: GOA },
+  { href: '/movimientos', etiqueta: 'Movimientos', icono: ArrowLeftRight, roles: ['ADMINISTRADOR', 'GENERADOR'] },
   { href: '/inventarios', etiqueta: 'Inventarios', icono: Warehouse, roles: GOA },
   { href: '/tablero', etiqueta: 'Mi tablero', icono: KanbanSquare, roles: ['COMERCIAL'] },
 ];

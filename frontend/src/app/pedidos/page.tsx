@@ -3,8 +3,10 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
+import { useAvisoEstadosPedidos } from '@/lib/sonido';
 import { AppShell } from '@/components/app-shell';
-import { EncabezadoPagina } from '@/components/ui';
+import { SelectorEmpresa } from '@/components/selector-empresa';
+import { COLORES_PESTANA, EncabezadoPagina } from '@/components/ui';
 
 
 interface Empresa { id: string; nombre: string; siglas: string }
@@ -79,6 +81,9 @@ function PedidosContenido() {
   const [pestana, setPestana] = useState<'ABIERTO' | 'ALISTADO' | 'APROBADO' | 'OTROS'>('ABIERTO');
   const [filtroEstado, setFiltroEstado] = useState('');
   const [pedido, setPedido] = useState<Pedido | null>(null);
+  // I21: sondeo de TODOS los estados de la empresa para el aviso sonoro
+  // (la lista visible está filtrada por pestaña y perdería la transición)
+  const [avisoPedidos, setAvisoPedidos] = useState<{ id: string; estado: string }[]>([]);
 
   const [itemsNuevos, setItemsNuevos] = useState<{ referencia: string; cantidad: string; valorUnidad: string }[]>([
     { referencia: '', cantidad: '1', valorUnidad: '' },
@@ -122,9 +127,21 @@ function PedidosContenido() {
   useEffect(() => {
     if (empresaId) {
       cargarLista();
+      const sondear = () =>
+        api<{ id: string; estado: string }[]>(`/orders?empresaId=${empresaId}`).then(
+          ({ status, body }) => {
+            if (status === 200) setAvisoPedidos(body);
+          },
+        );
+      sondear();
+      const sondeo = setInterval(sondear, 20000);
+      return () => clearInterval(sondeo);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empresaId, pestana, filtroEstado]);
+
+  // I21: aviso sonoro al cambiar el estado de un pedido (excepto CANCELADO)
+  useAvisoEstadosPedidos(avisoPedidos);
 
   async function cargarLista() {
     let estado = '';
@@ -266,37 +283,52 @@ function PedidosContenido() {
         {mensaje && <p className="mb-3 rounded bg-green-100 px-3 py-2 text-sm text-green-800">{mensaje}</p>}
         {error && <p className="mb-3 rounded bg-red-100 px-3 py-2 text-sm text-red-800">{error}</p>}
 
+        {/* I21: empresa como tarjetas-botón (mismo patrón de Productos) */}
+        <SelectorEmpresa empresas={empresas} empresaId={empresaId} onCambiar={setEmpresaId} />
+
         <section className="mb-4 rounded-lg bg-white p-5 shadow">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-3">
               <h2 className="font-semibold">Pedidos</h2>
-              <select value={empresaId} onChange={(e) => setEmpresaId(e.target.value)} className="rounded border px-2 py-1 text-sm">
-                {empresas.map((e) => (
-                  <option key={e.id} value={e.id}>{e.siglas} — {e.nombre}</option>
-                ))}
-              </select>
-              {/* QA Func. 3.1: secciones por estado (ciclo activo) + "Otros" */}
-              <div className="flex rounded border text-sm">
-                {(['ABIERTO', 'ALISTADO', 'APROBADO'] as const).map((v) => (
-                  <button
-                    key={v}
-                    onClick={() => setPestana(v)}
-                    className={`px-3 py-1 ${pestana === v ? 'bg-sofia-600 text-white' : 'bg-white hover:bg-slate-50'}`}
-                  >
-                    {ESTADOS[v]}s
-                  </button>
-                ))}
-                <button
-                  onClick={() => {
-                    setPestana('OTROS');
-                    // Al entrar a "Otros" siempre hay un estado concreto
-                    // preseleccionado: nunca muestra todos los pedidos
-                    if (!filtroEstado) setFiltroEstado('PENDIENTE_CORRECCION');
-                  }}
-                  className={`px-3 py-1 ${pestana === 'OTROS' ? 'bg-sofia-600 text-white' : 'bg-white hover:bg-slate-50'}`}
-                >
-                  Otros estados
-                </button>
+              {/* QA Func. 3.1: secciones por estado (ciclo activo) + "Otros".
+                  I21: color por estado, mismo código de la cola del dashboard */}
+              <div className="flex flex-wrap rounded border text-sm">
+                {(['ABIERTO', 'ALISTADO', 'APROBADO'] as const).map((v) => {
+                  const activa = pestana === v;
+                  const color = COLORES_PESTANA[v];
+                  return (
+                    <button
+                      key={v}
+                      onClick={() => setPestana(v)}
+                      className={`flex items-center gap-1.5 border-l-2 px-3 py-1 ${
+                        activa ? `${color.activa} font-semibold` : 'border-transparent bg-white hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className={`h-2 w-2 rounded-full ${color.punto}`} />
+                      {ESTADOS[v]}s
+                    </button>
+                  );
+                })}
+                {(() => {
+                  const color = COLORES_PESTANA[filtroEstado || 'PENDIENTE_CORRECCION'] ?? COLORES_PESTANA.OTROS;
+                  const activa = pestana === 'OTROS';
+                  return (
+                    <button
+                      onClick={() => {
+                        setPestana('OTROS');
+                        // Al entrar a "Otros" siempre hay un estado concreto
+                        // preseleccionado: nunca muestra todos los pedidos
+                        if (!filtroEstado) setFiltroEstado('PENDIENTE_CORRECCION');
+                      }}
+                      className={`flex items-center gap-1.5 border-l-2 px-3 py-1 ${
+                        activa ? `${color.activa} font-semibold` : 'border-transparent bg-white hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className={`h-2 w-2 rounded-full ${(activa ? color : COLORES_PESTANA.OTROS).punto}`} />
+                      Otros estados
+                    </button>
+                  );
+                })()}
               </div>
               {pestana === 'OTROS' && (
                 <select value={filtroEstado || 'PENDIENTE_CORRECCION'} onChange={(e) => setFiltroEstado(e.target.value)} className="rounded border px-2 py-1 text-sm">

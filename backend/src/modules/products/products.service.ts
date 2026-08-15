@@ -266,7 +266,9 @@ export class ProductsService {
     await this.assertEmpresa(empresaId);
     const where: any = { empresaId };
     if (soloActivos) where.estado = ProductStatus.ACTIVO;
-    const items = await this.products.find({ where, order: { codigo: 'ASC' }, take: 500 });
+    // Sin límite (I21): el formulario de pedido consume este listado y con
+    // take:500 los productos por encima de 500 no aparecían al buscarlos.
+    const items = await this.products.find({ where, order: { codigo: 'ASC' } });
     return Promise.all(items.map((p) => this.withBarcode(p)));
   }
 

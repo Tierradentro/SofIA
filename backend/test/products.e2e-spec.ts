@@ -166,6 +166,25 @@ describe('Productos (e2e)', () => {
     }
   });
 
+  it('I21: el listado por empresa NO se trunca (el pedido manual necesita el catálogo completo)', async () => {
+    // 510 productos directos en BD — con el antiguo tope de 500 el GET
+    // devolvía una lista incompleta y el producto "no aparecía" en el formulario
+    await t.dataSource.query(
+      `INSERT INTO products (id, empresa_id, codigo, descripcion)
+       SELECT gen_random_uuid(), $1, 'BULK-' || g, 'Producto masivo ' || g
+       FROM generate_series(1, 510) AS g`,
+      [ireId],
+    );
+    const res = await t.http
+      .get(`/api/v1/products?empresaId=${ireId}`)
+      .set('Authorization', `Bearer ${generadorToken}`);
+    expect(res.status).toBe(200);
+    const masivos = res.body.filter((p: any) => p.codigo.startsWith('BULK-'));
+    expect(masivos.length).toBe(510);
+    // El último del catálogo también llega (ordenado por código)
+    expect(res.body.some((p: any) => p.codigo === 'BULK-510')).toBe(true);
+  });
+
   it('Búsqueda por descripción (pg_trgm) filtrada por empresa desde el backend', async () => {
     const res = await t.http
       .get('/api/v1/products/search?q=filtro%20aceite&empresaId=' + ireId)

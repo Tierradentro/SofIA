@@ -61,6 +61,38 @@ const TONOS_INSIGNIA = {
   gris: 'bg-slate-100 text-slate-600',
 } as const;
 
+/**
+ * I21: color por estado de pedido en pestañas (cola del dashboard y vista
+ * de Pedidos y alistamiento). `activa` = borde + texto + fondo suave;
+ * `punto` = indicador circular.
+ */
+export const COLORES_PESTANA: Record<string, { activa: string; punto: string }> = {
+  ABIERTO: {
+    activa: 'border-amber-500 text-amber-700 bg-amber-50',
+    punto: 'bg-amber-500',
+  },
+  ALISTADO: {
+    activa: 'border-sky-500 text-sky-700 bg-sky-50',
+    punto: 'bg-sky-500',
+  },
+  APROBADO: {
+    activa: 'border-menta-600 text-menta-700 bg-menta-50',
+    punto: 'bg-menta-500',
+  },
+  PENDIENTE_CORRECCION: {
+    activa: 'border-red-500 text-red-700 bg-red-50',
+    punto: 'bg-red-500',
+  },
+  CANCELADO: {
+    activa: 'border-slate-400 text-slate-600 bg-slate-100',
+    punto: 'bg-slate-400',
+  },
+  OTROS: {
+    activa: 'border-sofia-700 text-sofia-700 bg-sofia-50',
+    punto: 'bg-sofia-700',
+  },
+};
+
 export type TonoInsignia = keyof typeof TONOS_INSIGNIA;
 
 /** Píldora de estado (PRINCIPAL, ABIERTO, Incompleto, etc.). */

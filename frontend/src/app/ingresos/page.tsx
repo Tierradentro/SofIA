@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 import { AppShell } from '@/components/app-shell';
+import { SelectorEmpresa } from '@/components/selector-empresa';
 import { EncabezadoPagina } from '@/components/ui';
 
 interface Empresa {
@@ -249,22 +250,14 @@ export default function IngresosPage() {
           <p className="mb-3 rounded bg-red-100 px-3 py-2 text-sm text-red-800">{error}</p>
         )}
 
+        {/* I21: empresa como tarjetas-botón (mismo patrón de Productos) */}
+        <SelectorEmpresa empresas={empresas} empresaId={empresaId} onCambiar={setEmpresaId} />
+
         {/* Lista de actividades */}
         <section className="mb-4 rounded-lg bg-white p-5 shadow">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <h2 className="font-semibold">Actividades de ingreso</h2>
-              <select
-                value={empresaId}
-                onChange={(e) => setEmpresaId(e.target.value)}
-                className="rounded border px-2 py-1 text-sm"
-              >
-                {empresas.map((e) => (
-                  <option key={e.id} value={e.id}>
-                    {e.siglas} — {e.nombre}
-                  </option>
-                ))}
-              </select>
             </div>
             {esGenerador && (
               <button

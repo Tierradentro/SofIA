@@ -12,9 +12,11 @@ import {
   Truck,
 } from 'lucide-react';
 import { api, obtenerSesion, Sesion } from '@/lib/api';
+import { useAvisoEstadosPedidos } from '@/lib/sonido';
 import { AppShell } from '@/components/app-shell';
 import {
   CLASES_TABLA,
+  COLORES_PESTANA,
   EncabezadoPagina,
   Insignia,
   Tarjeta,
@@ -64,6 +66,11 @@ const PESTANAS: { valor: PedidoCola['estado']; etiqueta: string }[] = [
   { valor: 'APROBADO', etiqueta: 'Aprobado' },
   { valor: 'PENDIENTE_CORRECCION', etiqueta: 'Pendiente corrección' },
 ];
+
+/**
+ * I21: color por estado en las pestañas de la cola — el mismo código de
+ * color se reutiliza en Pedidos y alistamiento (definido en ui.tsx).
+ */
 
 const TONOS_DESPACHO: Record<string, TonoInsignia> = {
   CREADO: 'gris',
@@ -196,9 +203,13 @@ export default function DashboardPage() {
       setStockTotal(total);
     });
 
-    api<PedidoCola[]>('/orders').then(({ status, body }) => {
-      if (status === 200) setPedidos(body);
-    });
+    // I21: sondeo cada 20 s para detectar cambios de estado y avisar en sonido
+    const cargarPedidos = () =>
+      api<PedidoCola[]>('/orders').then(({ status, body }) => {
+        if (status === 200) setPedidos(body);
+      });
+    cargarPedidos();
+    const sondeo = setInterval(cargarPedidos, 20000);
     api<DespachoTraza[]>('/dispatches').then(({ status, body }) => {
       if (status === 200) setDespachos(body);
     });
@@ -215,7 +226,11 @@ export default function DashboardPage() {
         setNombreClientes(mapa);
       }
     });
+    return () => clearInterval(sondeo);
   }, [router]);
+
+  // I21: aviso sonoro al cambiar el estado de un pedido (excepto CANCELADO)
+  useAvisoEstadosPedidos(pedidos);
 
   if (!sesion) return null;
   const hoy = new Date().toDateString();
@@ -296,16 +311,18 @@ export default function DashboardPage() {
           {PESTANAS.map((t) => {
             const n = pedidos.filter((p) => p.estado === t.valor).length;
             const activa = pestana === t.valor;
+            const color = COLORES_PESTANA[t.valor];
             return (
               <button
                 key={t.valor}
                 onClick={() => setPestana(t.valor)}
-                className={`-mb-px border-b-2 px-4 py-2 text-sm transition-colors ${
+                className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-2 text-sm transition-colors ${
                   activa
-                    ? 'border-sofia-700 font-semibold text-sofia-700'
+                    ? `${color.activa} font-semibold`
                     : 'border-transparent text-slate-500 hover:text-slate-700'
                 }`}
               >
+                <span className={`h-2 w-2 rounded-full ${color.punto}`} />
                 {t.etiqueta} <span className="text-xs text-slate-400">({n})</span>
               </button>
             );

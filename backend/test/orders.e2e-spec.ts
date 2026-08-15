@@ -182,6 +182,22 @@ describe('Pedidos y alistamiento (e2e)', () => {
     expect(sinDisp.body.message).toContain('Sin disponibilidad');
   });
 
+  it('I21: el listado de pedidos incluye el nombre del cliente (columna visible en la tabla)', async () => {
+    await crearProducto('ORD-CLI', 10);
+    const p = await crearPedido([{ referencia: 'ORD-CLI', cantidad: 1 }]);
+    expect(p.status).toBe(201);
+
+    const res = await t.http
+      .get(`/api/v1/orders?empresaId=${ireId}`)
+      .set('Authorization', `Bearer ${operadorToken}`);
+    expect(res.status).toBe(200);
+    const fila = res.body.find((x: any) => x.id === p.body.id);
+    expect(fila).toBeDefined();
+    expect(fila.cliente).toBeDefined();
+    expect(fila.cliente.nombre).toBeTruthy();
+    expect(typeof fila.cliente.nombre).toBe('string');
+  });
+
   it('QA Func. 4.1: el pedido escoge la dirección del despacho (principal por defecto, foto al crear)', async () => {
     // El cliente quedó con su dirección principal migrada del alta
     const direcciones = await t.http

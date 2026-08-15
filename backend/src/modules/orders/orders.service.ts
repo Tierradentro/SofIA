@@ -24,6 +24,7 @@ import { ProductBarcode } from '../products/entities/product-barcode.entity';
 import { ProductsService } from '../products/products.service';
 import { OcrDocument } from '../ocr/entities/ocr-document.entity';
 import { ClientAddress } from '../clients/entities/client-address.entity';
+import { Client } from '../clients/entities/client.entity';
 import { DocumentType } from '../../common/enums/document-type.enum';
 import { MovementsService } from '../movements/movements.service';
 import { MovementType } from '../../common/enums/movement-type.enum';
@@ -718,7 +719,29 @@ export class OrdersService {
     if (clienteId) where.clienteId = clienteId;
     // Tablero del comercial (M02): solo pedidos asociados a su comercial
     if (comercialId) where.comercialId = comercialId;
-    return this.orders.find({ where, order: { createdAt: 'DESC' }, take: 200 });
+    const pedidos = await this.orders.find({
+      where,
+      order: { createdAt: 'DESC' },
+      take: 200,
+    });
+    // I21: la tabla de pedidos necesita el nombre del cliente — el listado
+    // no cargaba la relación y la columna salía siempre vacía ("—").
+    const ids = [...new Set(pedidos.map((p) => p.clienteId))];
+    const clientes = ids.length
+      ? await this.dataSource.getRepository(Client).find({
+          where: ids.map((id) => ({ id })),
+        })
+      : [];
+    const porId = new Map(clientes.map((c) => [c.id, c]));
+    return pedidos.map((p) => {
+      const cliente = porId.get(p.clienteId);
+      return {
+        ...p,
+        cliente: cliente
+          ? { id: cliente.id, nombre: cliente.nombre, identificacion: cliente.identificacion }
+          : null,
+      };
+    });
   }
 
   async getDetalle(id: string, user?: Usuario) {
