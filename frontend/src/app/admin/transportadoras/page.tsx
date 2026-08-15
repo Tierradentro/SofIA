@@ -4,7 +4,13 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, obtenerSesion, mensajeError, Sesion } from '@/lib/api';
 import { AppShell } from '@/components/app-shell';
-import { EncabezadoPagina } from '@/components/ui';
+import {
+  CLASE_BOTON_PRIMARIO,
+  CLASES_TABLA,
+  EncabezadoPagina,
+  Insignia,
+  Tarjeta,
+} from '@/components/ui';
 
 interface Transportadora {
   id: string;
@@ -31,7 +37,9 @@ export default function TransportadorasPage() {
   }
 
   useEffect(() => {
-    if (!obtenerSesion()) return router.replace('/login');
+    const s = obtenerSesion();
+    if (!s) return router.replace('/login');
+    setSesion(s);
     cargar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
@@ -66,74 +74,100 @@ export default function TransportadorasPage() {
 
   return (
     <AppShell sesion={sesion}>
-      <EncabezadoPagina titulo="Transportadoras" />
+      <EncabezadoPagina
+        titulo="Transportadoras"
+        descripcion="Transportadoras internas y externas disponibles para los despachos."
+      />
 
-      <form onSubmit={crear} className="mb-6 grid max-w-3xl grid-cols-2 gap-3 rounded-lg bg-white p-5 shadow">
-        <input
-          placeholder="Nombre"
-          className="rounded border px-3 py-2"
-          value={form.nombre}
-          onChange={(e) => setForm({ ...form, nombre: e.target.value })}
-          required
-        />
-        <select
-          className="rounded border px-3 py-2"
-          value={form.tipo}
-          onChange={(e) => setForm({ ...form, tipo: e.target.value })}
-        >
-          <option value="EXTERNA">Externa (con guía)</option>
-          <option value="INTERNA">Interna (sin guía externa)</option>
-        </select>
-        <input
-          placeholder="Identificación (NIT)"
-          className="rounded border px-3 py-2"
-          value={form.identificacion}
-          onChange={(e) => setForm({ ...form, identificacion: e.target.value })}
-        />
-        <input
-          placeholder="Teléfonos"
-          className="rounded border px-3 py-2"
-          value={form.telefonos}
-          onChange={(e) => setForm({ ...form, telefonos: e.target.value })}
-        />
-        <button className="col-span-2 rounded bg-sofia-600 py-2 font-medium text-white hover:bg-sofia-700">
-          Crear transportadora
-        </button>
-        {error && <p className="col-span-2 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-        {mensaje && <p className="col-span-2 rounded bg-green-50 px-3 py-2 text-sm text-green-700">{mensaje}</p>}
-      </form>
+      <Tarjeta className="mb-6 max-w-3xl p-5">
+        <form onSubmit={crear} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <input
+            placeholder="Nombre"
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-sofia-500 focus:outline-none focus:ring-1 focus:ring-sofia-500"
+            value={form.nombre}
+            onChange={(e) => setForm({ ...form, nombre: e.target.value })}
+            required
+          />
+          <select
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-sofia-500 focus:outline-none focus:ring-1 focus:ring-sofia-500"
+            value={form.tipo}
+            onChange={(e) => setForm({ ...form, tipo: e.target.value })}
+          >
+            <option value="EXTERNA">Externa (con guía)</option>
+            <option value="INTERNA">Interna (sin guía externa)</option>
+          </select>
+          <input
+            placeholder="Identificación (NIT)"
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-sofia-500 focus:outline-none focus:ring-1 focus:ring-sofia-500"
+            value={form.identificacion}
+            onChange={(e) => setForm({ ...form, identificacion: e.target.value })}
+          />
+          <input
+            placeholder="Teléfonos"
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-sofia-500 focus:outline-none focus:ring-1 focus:ring-sofia-500"
+            value={form.telefonos}
+            onChange={(e) => setForm({ ...form, telefonos: e.target.value })}
+          />
+          <button className={`sm:col-span-2 ${CLASE_BOTON_PRIMARIO}`}>
+            Crear transportadora
+          </button>
+          {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 sm:col-span-2">{error}</p>}
+          {mensaje && <p className="rounded-lg bg-menta-50 px-3 py-2 text-sm text-menta-700 sm:col-span-2">{mensaje}</p>}
+        </form>
+      </Tarjeta>
 
-      <div className="overflow-x-auto">
-      <table className="w-full max-w-3xl rounded-lg bg-white text-sm shadow">
-        <thead>
-          <tr className="border-b text-left">
-            <th className="p-3">Nombre</th>
-            <th className="p-3">Tipo</th>
-            <th className="p-3">Identificación</th>
-            <th className="p-3">Estado</th>
-            <th className="p-3">Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((t) => (
-            <tr key={t.id} className="border-b last:border-0">
-              <td className="p-3">{t.nombre}</td>
-              <td className="p-3">{t.tipo}</td>
-              <td className="p-3">{t.identificacion}</td>
-              <td className="p-3">{t.activo ? 'Activa' : 'Inactiva'}</td>
-              <td className="p-3">
-                <button
-                  onClick={() => toggleActivo(t)}
-                  className={`rounded px-2 py-1 ${t.activo ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}
-                >
-                  {t.activo ? 'Desactivar' : 'Activar'}
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      </div>
+      <Tarjeta className="max-w-3xl overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className={CLASES_TABLA.tabla}>
+            <thead>
+              <tr className={CLASES_TABLA.cabecera}>
+                <th className={CLASES_TABLA.celdaCabecera}>Nombre</th>
+                <th className={CLASES_TABLA.celdaCabecera}>Tipo</th>
+                <th className={CLASES_TABLA.celdaCabecera}>Identificación</th>
+                <th className={CLASES_TABLA.celdaCabecera}>Estado</th>
+                <th className={CLASES_TABLA.celdaCabecera}>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((t) => (
+                <tr key={t.id} className={CLASES_TABLA.fila}>
+                  <td className={`${CLASES_TABLA.celda} font-medium text-slate-800`}>{t.nombre}</td>
+                  <td className={CLASES_TABLA.celda}>
+                    <Insignia tono={t.tipo === 'EXTERNA' ? 'azul' : 'gris'}>
+                      {t.tipo === 'EXTERNA' ? 'Externa' : 'Interna'}
+                    </Insignia>
+                  </td>
+                  <td className={`${CLASES_TABLA.celda} text-slate-500`}>{t.identificacion ?? '—'}</td>
+                  <td className={CLASES_TABLA.celda}>
+                    <Insignia tono={t.activo ? 'menta' : 'gris'}>
+                      {t.activo ? 'Activa' : 'Inactiva'}
+                    </Insignia>
+                  </td>
+                  <td className={CLASES_TABLA.celda}>
+                    <button
+                      onClick={() => toggleActivo(t)}
+                      className={`rounded-lg px-3 py-1 text-xs font-medium ${
+                        t.activo
+                          ? 'bg-red-50 text-red-700 hover:bg-red-100'
+                          : 'bg-menta-50 text-menta-700 hover:bg-menta-100'
+                      }`}
+                    >
+                      {t.activo ? 'Desactivar' : 'Activar'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {items.length === 0 && (
+                <tr>
+                  <td className={`${CLASES_TABLA.celda} text-slate-400`} colSpan={5}>
+                    Sin transportadoras registradas.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Tarjeta>
         </AppShell>
   );
 }

@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { OcrFieldParser } from './ocr-field-parser';
 import { DocumentType } from '../../common/enums/document-type.enum';
 
@@ -115,5 +117,49 @@ describe('OcrFieldParser', () => {
     const r = parser.parse(texto, DocumentType.FACTURA_IMPORTACION);
     expect(r.items).toHaveLength(1);
     expect(r.items[0].referencia).toBe('REF-3001');
+  });
+
+  it('I22: factura de venta colombiana real (FEIR10022, layout con columnas)', () => {
+    // Texto tal como lo devuelve `pdftotext -layout` del PDF adjunto por el
+    // usuario (Import Repuestos El Escarabajo — World Office)
+    const texto = readFileSync(
+      join(__dirname, '../../../test/fixtures/factura-venta-feir10022.txt'),
+      'utf8',
+    );
+    const r = parser.parse(texto, DocumentType.FACTURA_VENTA);
+    // Cabecera
+    expect(r.numeroFactura).toBe('FEIR10022');
+    expect(r.fecha).toBe('2026-08-14'); // "FECHA FACTURA 14-ago-26"
+    expect(r.cliente).toBe('REPUESTOS AUDIVAG S.A.S');
+    expect(r.direccion).toBe('CR 27A 67 15');
+    expect(r.total).toBe(429352);
+    // NIT del EMISOR (aparece primero en el documento) — se extrae, no null
+    expect(r.nit).toBeTruthy();
+    // Ítem: cantidad "4,00" y valores en formato colombiano
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0]).toEqual({
+      referencia: 'MCEVW1000MY',
+      descripcion: 'ESPIRAL DEL GOL SAVEIRO VOYAGE DIR HIDRAULICA 2009 COFAP',
+      cantidad: 4,
+      unidad: 'UND',
+      valorUnitario: 110000,
+      valorTotal: 440000,
+    });
+  });
+
+  it('I22: cantidad con decimales ("4,00") y formato colombiano de miles', () => {
+    const texto = [
+      'FACTURA DE VENTA No ABC-123',
+      'Item  Referencia  Descripción  Cant  Valor Unitario  Total',
+      '1  REF-9001 FILTRO ACEITE  2,00  45.500  91.000',
+      'TOTAL FACTURA  91.000',
+    ].join('\n');
+    const r = parser.parse(texto, DocumentType.FACTURA_VENTA);
+    expect(r.numeroFactura).toBe('ABC-123');
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0].cantidad).toBe(2);
+    expect(r.items[0].valorUnitario).toBe(45500);
+    expect(r.items[0].valorTotal).toBe(91000);
+    expect(r.total).toBe(91000);
   });
 });

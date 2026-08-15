@@ -81,8 +81,8 @@ function PedidosContenido() {
   const [pestana, setPestana] = useState<'ABIERTO' | 'ALISTADO' | 'APROBADO' | 'OTROS'>('ABIERTO');
   const [filtroEstado, setFiltroEstado] = useState('');
   const [pedido, setPedido] = useState<Pedido | null>(null);
-  // I21: sondeo de TODOS los estados de la empresa para el aviso sonoro
-  // (la lista visible está filtrada por pestaña y perdería la transición)
+  // I21/I22: sondeo de TODOS los estados de la empresa — alimenta el aviso
+  // sonoro y los contadores de cada pestaña
   const [avisoPedidos, setAvisoPedidos] = useState<{ id: string; estado: string }[]>([]);
 
   const [itemsNuevos, setItemsNuevos] = useState<{ referencia: string; cantidad: string; valorUnidad: string }[]>([
@@ -291,11 +291,12 @@ function PedidosContenido() {
             <div className="flex flex-wrap items-center gap-3">
               <h2 className="font-semibold">Pedidos</h2>
               {/* QA Func. 3.1: secciones por estado (ciclo activo) + "Otros".
-                  I21: color por estado, mismo código de la cola del dashboard */}
+                  I21/I22: color y contador por estado, como la cola del dashboard */}
               <div className="flex flex-wrap rounded border text-sm">
                 {(['ABIERTO', 'ALISTADO', 'APROBADO'] as const).map((v) => {
                   const activa = pestana === v;
                   const color = COLORES_PESTANA[v];
+                  const n = avisoPedidos.filter((p) => p.estado === v).length;
                   return (
                     <button
                       key={v}
@@ -305,13 +306,16 @@ function PedidosContenido() {
                       }`}
                     >
                       <span className={`h-2 w-2 rounded-full ${color.punto}`} />
-                      {ESTADOS[v]}s
+                      {ESTADOS[v]}s <span className="text-xs text-slate-400">({n})</span>
                     </button>
                   );
                 })}
                 {(() => {
                   const color = COLORES_PESTANA[filtroEstado || 'PENDIENTE_CORRECCION'] ?? COLORES_PESTANA.OTROS;
                   const activa = pestana === 'OTROS';
+                  const nOtros = avisoPedidos.filter((p) =>
+                    ['PENDIENTE_CORRECCION', 'CANCELADO'].includes(p.estado),
+                  ).length;
                   return (
                     <button
                       onClick={() => {
@@ -325,7 +329,7 @@ function PedidosContenido() {
                       }`}
                     >
                       <span className={`h-2 w-2 rounded-full ${(activa ? color : COLORES_PESTANA.OTROS).punto}`} />
-                      Otros estados
+                      Otros estados <span className="text-xs text-slate-400">({nOtros})</span>
                     </button>
                   );
                 })()}

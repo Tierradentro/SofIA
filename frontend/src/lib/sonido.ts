@@ -58,44 +58,54 @@ function campanada(frecuencia: number) {
   }
 }
 
-/** Frecuencia por estado destino: cada transición suena distinto. */
+/**
+ * I22: el aviso suena SOLO en los tres hitos del pedido — creado (ABIERTO),
+ * alistado y aprobado. Pendiente de corrección y cancelado quedan en
+ * silencio, y una lista que "re-aparece" tras cambiar de pestaña no suena
+ * (los estados se siembran globalmente y la primera vista de un pedido ya
+ * existente no es un evento).
+ */
 const TONO_POR_ESTADO: Record<string, number> = {
-  ABIERTO: 523, // do
-  ALISTADO: 659, // mi
-  APROBADO: 784, // sol
-  PENDIENTE_CORRECCION: 392, // sol grave (alerta)
+  ABIERTO: 523, // do — pedido creado
+  ALISTADO: 659, // mi — pedido alistado
+  APROBADO: 784, // sol — pedido aprobado
 };
 
-/** Avisa el cambio de estado de un pedido. CANCELADO queda en silencio. */
-export function avisarEstadoPedido(estado: string) {
-  if (estado === 'CANCELADO') return;
-  const tono = TONO_POR_ESTADO[estado] ?? 587;
-  campanada(tono);
+function avisarHitoPedido(estado: string) {
+  const tono = TONO_POR_ESTADO[estado];
+  if (tono) campanada(tono);
 }
 
+/** Estados conocidos en toda la app (sobrevive a cambios de lista/pestaña). */
+const estadosConocidos = new Map<string, string>();
+let sembradoGlobal = false;
+
 /**
- * Hook: observa una lista de pedidos y emite el aviso cuando alguno cambia
- * de estado entre sondeos. La primera carga no suena (solo siembra).
+ * Hook: observa una lista de pedidos y emite el aviso cuando alguno ENTRA a
+ * ABIERTO/ALISTADO/APROBADO por primera vez o cambia entre esos hitos.
  */
 export function useAvisoEstadosPedidos(
   pedidos: { id: string; estado: string }[],
 ) {
-  const previos = useRef<Map<string, string> | null>(null);
+  const primeraLista = useRef(true);
 
   useEffect(() => {
     prepararConGesto();
   }, []);
 
   useEffect(() => {
-    const actuales = new Map(pedidos.map((p) => [p.id, p.estado]));
-    const antes = previos.current;
-    if (antes !== null) {
-      actuales.forEach((estado, id) => {
-        const anterior = antes.get(id);
-        // Suena al cambiar de estado; también cuando aparece un pedido nuevo
-        if (anterior !== estado) avisarEstadoPedido(estado);
-      });
+    for (const p of pedidos) {
+      const anterior = estadosConocidos.get(p.id);
+      if (anterior === undefined) {
+        // Pedido no visto antes: solo suena como "nuevo" si la app ya había
+        // sembrado su primera lista (si no, es carga inicial → silencio)
+        if (sembradoGlobal && !primeraLista.current) avisarHitoPedido(p.estado);
+      } else if (anterior !== p.estado) {
+        avisarHitoPedido(p.estado);
+      }
+      estadosConocidos.set(p.id, p.estado);
     }
-    previos.current = actuales;
+    primeraLista.current = false;
+    sembradoGlobal = true;
   }, [pedidos]);
 }

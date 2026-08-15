@@ -12,6 +12,38 @@ import { OcrExtractionResult } from './ocr-strategy.interface';
 
 type FetchFn = typeof fetch;
 
+/** Campos de cabecera con sus alias frecuentes en inglés (I22). */
+const ALIAS_CABECERA: Record<string, string[]> = {
+  numeroFactura: ['invoice_number', 'invoiceNumber', 'invoice_no', 'invoice', 'factura', 'folio'],
+  fecha: ['date', 'invoice_date', 'invoiceDate', 'fechaFactura'],
+  proveedor: ['supplier', 'vendor', 'remitente'],
+  cliente: ['customer', 'buyer', 'destinatario', 'consignee'],
+  nit: ['tax_id', 'taxId', 'vat', 'identificacion', 'nit_cliente', 'customer_nit'],
+  telefono: ['phone', 'telephone', 'celular'],
+  direccion: ['address', 'direccion_cliente'],
+  numeroGuia: ['tracking', 'tracking_number', 'shipment', 'guia'],
+  transportadora: ['carrier', 'transportista'],
+  total: ['grand_total', 'total_amount', 'totalAmount', 'total_factura', 'totalFactura'],
+  observaciones: ['notes', 'remarks', 'observations'],
+};
+
+const ALIAS_ITEM: Record<string, string[]> = {
+  referencia: ['reference', 'ref', 'sku', 'code', 'codigo', 'item', 'part_number'],
+  descripcion: ['description', 'desc', 'detalle'],
+  cantidad: ['quantity', 'qty', 'cant'],
+  unidad: ['unit', 'unit_of_measure'],
+  valorUnitario: ['unit_price', 'unitPrice', 'price', 'precio_unitario', 'valor_unitario'],
+  valorTotal: ['line_total', 'lineTotal', 'amount', 'valor_total'],
+};
+
+/** Toma el primer alias presente (y no vacío) del objeto. */
+function porAlias(obj: any, aliases: string[]): any {
+  for (const k of aliases) {
+    if (obj?.[k] !== undefined && obj?.[k] !== null && obj?.[k] !== '') return obj[k];
+  }
+  return undefined;
+}
+
 const CAMPOS_JSON = `{
   "numeroFactura": string|null, "fecha": "YYYY-MM-DD"|null,
   "proveedor": string|null, "cliente": string|null,
@@ -80,11 +112,18 @@ export class OcrLlmStrategy {
     tipo: DocumentType,
     provider: OcrProvider,
   ): Promise<OcrExtractionResult> {
+    // I22: algunos modelos responden mejor cuando el esquema se lista
+    // campo por campo con sus nombres exactos, no como firma TypeScript
     const prompt =
       `Eres un extractor de datos de documentos logísticos (${tipo}). ` +
       instruccionPorTipo(tipo) +
-      ` Responde ÚNICAMENTE con JSON válido, sin markdown, con esta forma exacta: ${CAMPOS_JSON}. ` +
-      `Si un campo no aparece usa null. cantidad debe ser entero. unidad por defecto "UND".`;
+      ` Responde ÚNICAMENTE con JSON válido, sin markdown, sin texto adicional, ` +
+      `usando EXACTAMENTE estos nombres de campo (en español, con mayúsculas y minúsculas como se indican):\n` +
+      `- Cabecera: numeroFactura, fecha (formato YYYY-MM-DD), proveedor, cliente, nit, telefono, ` +
+      `direccion, numeroGuia, transportadora, total (número), observaciones.\n` +
+      `- items: lista de objetos con referencia, descripcion, cantidad (entero), unidad ("UND" por defecto), ` +
+      `valorUnitario (número) y valorTotal (número).\n` +
+      `Si un campo no aparece en el documento usa null. Ejemplo de forma: ${CAMPOS_JSON}.`;
     const base64 = buffer.toString('base64');
 
     let contenido: string;
@@ -210,31 +249,57 @@ export class OcrLlmStrategy {
         'El proveedor LLM no devolvió JSON válido; corrija manualmente o reintente',
       );
     }
-    const items = Array.isArray(raw.items) ? raw.items : [];
-    const numero = (v: any): number | null =>
-      Number.isFinite(Number(v)) ? Number(v) : null;
+    const items = Array.isArray(raw.items)
+      ? raw.items
+      : Array.isArray(raw.line_items) // I22: alias frecuente en inglés
+        ? raw.line_items
+        : [];
+    // I22: números tolerantes — acepta "429.352", "110,000.00", "$ 429352"
+    const numero = (v: any): number | null => {
+      if (v === null || v === undefined || v === '') return null;
+      if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+      const limpio = String(v)
+        .replace(/[^\d.,-]/g, '')
+        .replace(/\.(?=\d{3}\b)/g, '') // puntos de miles
+        .replace(',', '.');
+      const n = Number(limpio);
+      return Number.isFinite(n) ? n : null;
+    };
+    const texto = (v: any): string | null =>
+      v === null || v === undefined || v === '' ? null : String(v);
+    const cab = (campo: string): any =>
+      porAlias(raw, [campo, ...ALIAS_CABECERA[campo]]);
+    const itemsMapeados = items
+      .map((i: any) => {
+        const ref = porAlias(i, ['referencia', ...ALIAS_ITEM.referencia]);
+        return {
+          referencia: ref ? String(ref) : '',
+          descripcion: texto(porAlias(i, ALIAS_ITEM.descripcion)),
+          cantidad: numero(porAlias(i, ALIAS_ITEM.cantidad)) ?? 0,
+          unidad: texto(porAlias(i, ALIAS_ITEM.unidad)) ?? 'UND',
+          valorUnitario: numero(porAlias(i, ALIAS_ITEM.valorUnitario)),
+          valorTotal: numero(porAlias(i, ALIAS_ITEM.valorTotal)),
+        };
+      })
+      .filter((i) => i.referencia);
+    if (items.length > 0 && itemsMapeados.length === 0) {
+      this.logger.warn(
+        `LLM devolvió ${items.length} ítems sin referencia reconocible: ${JSON.stringify(items[0]).slice(0, 200)}`,
+      );
+    }
     return {
-      numeroFactura: raw.numeroFactura ?? null,
-      fecha: raw.fecha ?? null,
-      proveedor: raw.proveedor ?? null,
-      cliente: raw.cliente ?? null,
-      nit: raw.nit ?? null,
-      telefono: raw.telefono ?? null,
-      direccion: raw.direccion ?? null,
-      numeroGuia: raw.numeroGuia ?? null,
-      transportadora: raw.transportadora ?? null,
-      total: numero(raw.total),
-      observaciones: raw.observaciones ?? null,
-      items: items
-        .filter((i: any) => i && i.referencia)
-        .map((i: any) => ({
-          referencia: String(i.referencia),
-          descripcion: i.descripcion ?? null,
-          cantidad: Number.isFinite(Number(i.cantidad)) ? Math.trunc(Number(i.cantidad)) : 0,
-          unidad: i.unidad ?? 'UND',
-          valorUnitario: numero(i.valorUnitario),
-          valorTotal: numero(i.valorTotal),
-        })),
+      numeroFactura: texto(cab('numeroFactura')),
+      fecha: texto(cab('fecha')),
+      proveedor: texto(cab('proveedor')),
+      cliente: texto(cab('cliente')),
+      nit: texto(cab('nit')),
+      telefono: texto(cab('telefono')),
+      direccion: texto(cab('direccion')),
+      numeroGuia: texto(cab('numeroGuia')),
+      transportadora: texto(cab('transportadora')),
+      total: numero(cab('total')),
+      observaciones: texto(cab('observaciones')),
+      items: itemsMapeados.map((i) => ({ ...i, cantidad: Math.trunc(i.cantidad) })),
     };
   }
 }

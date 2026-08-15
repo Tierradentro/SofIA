@@ -200,6 +200,67 @@ describe('OCR configurable (e2e)', () => {
     expect(doc[0].es_temporal).toBe(false);
   });
 
+  it('I22: el LLM que responde con alias en inglés o números formateados NO devuelve null', async () => {
+    // Respuesta típica de un modelo que "traduce" el esquema (la causa de
+    // los campos null reportados): claves en inglés y montos como texto
+    llmStrategy.fetchFn = (async () =>
+      ({
+        ok: true,
+        json: async () => ({
+          choices: [{
+            message: {
+              content: '```json\n' + JSON.stringify({
+                invoice_number: 'FEIR10022',
+                date: '2026-08-14',
+                customer: 'REPUESTOS AUDIVAG S.A.S',
+                tax_id: '901529974',
+                address: 'CR 27A 67 15',
+                total_amount: '429.352',
+                line_items: [{
+                  sku: 'MCEVW1000MY',
+                  description: 'ESPIRAL DEL GOL SAVEIRO',
+                  quantity: 4,
+                  unit_price: '110.000',
+                  line_total: '440.000',
+                }],
+              }) + '\n```',
+            },
+          }],
+        }),
+        text: async () => '',
+      }) as any) as any;
+
+    const lista = await t.http
+      .get('/api/v1/ocr-providers')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const openai = lista.body.find((p: any) => p.proveedor === 'OPENAI');
+    await t.http
+      .post(`/api/v1/ocr-providers/${openai.id}/activate`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    await t.http
+      .post('/api/v1/ocr/engine')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ engine: 'OCR_LLM' });
+
+    const res = await t.http
+      .post('/api/v1/ocr/documents')
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .field('tipoDocumento', 'FACTURA_VENTA')
+      .attach('file', PDF, { filename: 'FEIR10022.pdf', contentType: 'application/pdf' });
+    expect(res.status).toBe(201);
+    const d = res.body.datosExtraidos;
+    expect(d.numeroFactura).toBe('FEIR10022');
+    expect(d.fecha).toBe('2026-08-14');
+    expect(d.cliente).toBe('REPUESTOS AUDIVAG S.A.S');
+    expect(d.direccion).toBe('CR 27A 67 15');
+    expect(d.total).toBe(429352);
+    expect(d.items).toHaveLength(1);
+    expect(d.items[0].referencia).toBe('MCEVW1000MY');
+    expect(d.items[0].cantidad).toBe(4);
+    expect(d.items[0].valorUnitario).toBe(110000);
+    expect(d.items[0].valorTotal).toBe(440000);
+  });
+
   it('CU-009: falla del LLM → error explícito y contingencia a OCR local', async () => {
     mockLlmFalla();
     const res = await t.http
