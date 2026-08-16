@@ -38,6 +38,8 @@ export default function ParametrosPage() {
   const router = useRouter();
   const [sesion, setSesion] = useState<Sesion | null>(null);
   const [params, setParams] = useState<Param[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState('');
   const [editando, setEditando] = useState<string | null>(null);
   const [form, setForm] = useState<Record<string, any>>({});
   const [motivo, setMotivo] = useState('');
@@ -45,9 +47,21 @@ export default function ParametrosPage() {
   const [error, setError] = useState('');
 
   async function cargar() {
-    const { status, body } = await api<Param[]>('/admin/params');
-    if (status === 200) setParams(body);
-    else if (status === 403) router.replace('/dashboard');
+    setCargando(true);
+    setErrorCarga('');
+    try {
+      const { status, body } = await api<Param[]>('/admin/params');
+      if (status === 200) setParams(body);
+      else if (status === 403) return router.replace('/dashboard');
+      // I23: cualquier otro estado (500, 502, etc.) debe ser visible,
+      // no un área en blanco sin pistas
+      else setErrorCarga('No se pudieron cargar los parámetros. Intente de nuevo.');
+    } catch {
+      // Falla de red o API no disponible (p. ej. backend sin conexión a la BD)
+      setErrorCarga('No hay comunicación con el servidor. Verifique la conexión e intente de nuevo.');
+    } finally {
+      setCargando(false);
+    }
   }
 
   useEffect(() => {
@@ -95,7 +109,30 @@ export default function ParametrosPage() {
       {error && <p className="mb-4 max-w-2xl rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
       <div className="max-w-3xl space-y-4">
-        {params.map((p) => {
+        {cargando && (
+          <Tarjeta className="p-5">
+            <p className="text-sm text-slate-500">Cargando parámetros…</p>
+          </Tarjeta>
+        )}
+
+        {!cargando && errorCarga && (
+          <Tarjeta className="p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-red-700">{errorCarga}</p>
+              <button onClick={cargar} className={CLASE_BOTON_SECUNDARIO}>
+                Reintentar
+              </button>
+            </div>
+          </Tarjeta>
+        )}
+
+        {!cargando && !errorCarga && params.length === 0 && (
+          <Tarjeta className="p-5">
+            <p className="text-sm text-slate-500">No hay parámetros configurados.</p>
+          </Tarjeta>
+        )}
+
+        {!cargando && !errorCarga && params.map((p) => {
           const config = PARAMS_EDITABLES[p.clave];
           const enEdicion = editando === p.clave;
           return (

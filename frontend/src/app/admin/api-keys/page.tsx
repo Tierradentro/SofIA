@@ -35,18 +35,26 @@ export default function ApiKeysPage() {
   const [sesion, setSesion] = useState<Sesion | null>(null);
   const [keys, setKeys] = useState<ApiKeyItem[]>([]);
   const [usuariosApi, setUsuariosApi] = useState<UsuarioApi[]>([]);
+  const [errorCarga, setErrorCarga] = useState('');
   const [form, setForm] = useState({ userId: '', nombre: '' });
   const [claveNueva, setClaveNueva] = useState('');
   const [error, setError] = useState('');
 
   async function cargar() {
-    const { status, body } = await api<ApiKeyItem[]>('/api-keys');
-    if (status === 200) setKeys(body);
-    else if (status === 403) return router.replace('/dashboard');
+    setErrorCarga('');
+    try {
+      const { status, body } = await api<ApiKeyItem[]>('/api-keys');
+      if (status === 200) setKeys(body);
+      else if (status === 403) return router.replace('/dashboard');
+      // I23: un fallo de carga no debe disfrazarse de lista vacía
+      else setErrorCarga('No se pudieron cargar las API keys. Intente de nuevo.');
 
-    const users = await api<UsuarioApi[]>('/users');
-    if (users.status === 200) {
-      setUsuariosApi(users.body.filter((u) => u.rol === 'API'));
+      const users = await api<UsuarioApi[]>('/users');
+      if (users.status === 200) {
+        setUsuariosApi(users.body.filter((u) => u.rol === 'API'));
+      }
+    } catch {
+      setErrorCarga('No hay comunicación con el servidor. Verifique la conexión e intente de nuevo.');
     }
   }
 
@@ -185,10 +193,20 @@ export default function ApiKeysPage() {
                   </td>
                 </tr>
               ))}
-              {keys.length === 0 && (
+              {keys.length === 0 && !errorCarga && (
                 <tr>
                   <td className={`${CLASES_TABLA.celda} text-slate-400`} colSpan={5}>
                     Sin API keys creadas.
+                  </td>
+                </tr>
+              )}
+              {errorCarga && (
+                <tr>
+                  <td className={`${CLASES_TABLA.celda} text-red-700`} colSpan={5}>
+                    {errorCarga}{' '}
+                    <button onClick={cargar} className="ml-2 font-medium text-sofia-700 underline hover:text-sofia-800">
+                      Reintentar
+                    </button>
                   </td>
                 </tr>
               )}

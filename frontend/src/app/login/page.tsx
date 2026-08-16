@@ -18,13 +18,24 @@ export default function LoginPage() {
     e.preventDefault();
     setCargando(true);
     setError('');
-    const { status, body } = await login(username, password);
-    setCargando(false);
-    if (status === 200) {
-      guardarSesion({ token: body.access_token, usuario: body.usuario });
-      router.replace(body.usuario.debeCambiarClave ? '/cambiar-clave' : '/dashboard');
-    } else {
-      setError(mensajeError(body, 'Usuario o contraseña incorrectos'));
+    try {
+      const { status, body } = await login(username, password);
+      if (status === 200) {
+        guardarSesion({ token: body.access_token, usuario: body.usuario });
+        router.replace(body.usuario.debeCambiarClave ? '/cambiar-clave' : '/dashboard');
+      } else if (status === 401) {
+        setError(mensajeError(body, 'Usuario o contraseña incorrectos'));
+      } else {
+        // I23: 5xx u otro estado — el servidor respondió pero con falla
+        // (p. ej. backend sin conexión a la base de datos tras un redeploy)
+        setError('El servicio no está disponible en este momento. Intente de nuevo en unos minutos.');
+      }
+    } catch {
+      // I23: falla de red o API inalcanzable — no dejar el botón cargando
+      // en silencio ni sugerir que las credenciales están mal
+      setError('No hay comunicación con el servidor. Verifique su conexión e intente de nuevo.');
+    } finally {
+      setCargando(false);
     }
   }
 

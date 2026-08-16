@@ -26,14 +26,22 @@ export default function TransportadorasPage() {
   const router = useRouter();
   const [sesion, setSesion] = useState<Sesion | null>(null);
   const [items, setItems] = useState<Transportadora[]>([]);
+  const [errorCarga, setErrorCarga] = useState('');
   const [form, setForm] = useState({ nombre: '', tipo: 'EXTERNA', identificacion: '', telefonos: '' });
   const [mensaje, setMensaje] = useState('');
   const [error, setError] = useState('');
 
   async function cargar() {
-    const { status, body } = await api<Transportadora[]>('/carriers');
-    if (status === 200) setItems(body);
-    else if (status === 403) router.replace('/dashboard');
+    setErrorCarga('');
+    try {
+      const { status, body } = await api<Transportadora[]>('/carriers');
+      if (status === 200) setItems(body);
+      else if (status === 403) return router.replace('/dashboard');
+      // I23: un fallo de carga no debe disfrazarse de lista vacía
+      else setErrorCarga('No se pudieron cargar las transportadoras. Intente de nuevo.');
+    } catch {
+      setErrorCarga('No hay comunicación con el servidor. Verifique la conexión e intente de nuevo.');
+    }
   }
 
   useEffect(() => {
@@ -157,10 +165,20 @@ export default function TransportadorasPage() {
                   </td>
                 </tr>
               ))}
-              {items.length === 0 && (
+              {items.length === 0 && !errorCarga && (
                 <tr>
                   <td className={`${CLASES_TABLA.celda} text-slate-400`} colSpan={5}>
                     Sin transportadoras registradas.
+                  </td>
+                </tr>
+              )}
+              {errorCarga && (
+                <tr>
+                  <td className={`${CLASES_TABLA.celda} text-red-700`} colSpan={5}>
+                    {errorCarga}{' '}
+                    <button onClick={cargar} className="ml-2 font-medium text-sofia-700 underline hover:text-sofia-800">
+                      Reintentar
+                    </button>
                   </td>
                 </tr>
               )}
