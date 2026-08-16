@@ -12,10 +12,21 @@ import {
 } from 'class-validator';
 import { TransportType } from '../entities/dispatch.entity';
 
-/** HU-033: crear despacho a partir del primer pedido APROBADO del cliente. */
+/**
+ * HU-033: crear despacho a partir de pedidos APROBADOS del cliente.
+ * I24: acepta varios pedidos del mismo cliente de una vez (`orderIds`);
+ * `orderId` se conserva por compatibilidad con el flujo original.
+ */
 export class CreateDispatchDto {
+  @IsOptional()
   @IsUUID()
-  orderId: string;
+  orderId?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsUUID('4', { each: true })
+  orderIds?: string[];
 }
 
 /** HU-034: asociar más pedidos APROBADOS del mismo cliente. */

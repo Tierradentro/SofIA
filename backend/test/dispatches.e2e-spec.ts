@@ -321,6 +321,62 @@ describe('Despachos y cajas (e2e)', () => {
       .send({ motivo: 'Solo prueba de consecutivo' });
   });
 
+  it('I24: crea despacho con varios pedidos del mismo cliente de una vez (orderIds)', async () => {
+    const p1 = await crearPedidoAprobado(ireId, [
+      { referencia: 'DSP-001', cantidad: 1, scanCode: '7509001' },
+    ]);
+    const p2 = await crearPedidoAprobado(icvId, [
+      { referencia: 'DSP-003', cantidad: 2, scanCode: '7509003' },
+    ]);
+
+    // Dos pedidos del mismo cliente (distinta empresa) → un solo despacho
+    const multi = await t.http
+      .post('/api/v1/dispatches')
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ orderIds: [p1.id, p2.id] });
+    expect(multi.status).toBe(201);
+    expect(multi.body.pedidos).toHaveLength(2);
+    expect(multi.body.clienteId).toBe(clienteId);
+    const numeros = multi.body.pedidos.map((p: any) => p.numero);
+    expect(numeros).toContain(p1.numero);
+    expect(numeros).toContain(p2.numero);
+    await t.http
+      .post(`/api/v1/dispatches/${multi.body.id}/cancelar`)
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ motivo: 'Solo prueba I24' });
+
+    // Pedidos de clientes distintos → 409 (p1 quedó libre tras la cancelación)
+    const pOtro = await crearPedidoAprobado(
+      ireId,
+      [{ referencia: 'DSP-001', cantidad: 1, scanCode: '7509001' }],
+      cliente2Id,
+    );
+    const mezcla = await t.http
+      .post('/api/v1/dispatches')
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ orderIds: [p1.id, pOtro.id] });
+    expect(mezcla.status).toBe(409);
+    expect(mezcla.body.message).toContain('mismo cliente');
+    // Limpieza: pOtro queda disponible para no afectar pruebas posteriores
+    const limpieza = await t.http
+      .post('/api/v1/dispatches')
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ orderId: pOtro.id });
+    if (limpieza.status === 201) {
+      await t.http
+        .post(`/api/v1/dispatches/${limpieza.body.id}/cancelar`)
+        .set('Authorization', `Bearer ${generadorToken}`)
+        .send({ motivo: 'Limpieza I24' });
+    }
+
+    // Sin pedidos → 400
+    const vacio = await t.http
+      .post('/api/v1/dispatches')
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({});
+    expect(vacio.status).toBe(400);
+  });
+
   it('M09 paso 2: aprobar → ABIERTO; devolver → PENDIENTE_CORRECCION; re-aprobar', async () => {
     const d1 = (global as any).__dispatch1;
 

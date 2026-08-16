@@ -87,9 +87,27 @@ export class DispatchesService {
   // HU-033: crear despacho (Generador)
   // ------------------------------------------------------------------
   async create(dto: CreateDispatchDto, user: Usuario) {
-    const order = await this.dataSource.getRepository(Order).findOne({ where: { id: dto.orderId } });
-    if (!order) throw new NotFoundException('Pedido no encontrado');
-    await this.assertOrderAsociable(order);
+    // I24: uno o varios pedidos del mismo cliente en una sola operación
+    const ids = [...new Set(dto.orderIds?.length ? dto.orderIds : dto.orderId ? [dto.orderId] : [])];
+    if (ids.length === 0) {
+      throw new BadRequestException('Debe indicar al menos un pedido aprobado (orderId u orderIds)');
+    }
+    const ordersRepo = this.dataSource.getRepository(Order);
+    const pedidos: Order[] = [];
+    for (const id of ids) {
+      const order = await ordersRepo.findOne({ where: { id } });
+      if (!order) throw new NotFoundException(`Pedido ${id} no encontrado`);
+      await this.assertOrderAsociable(order);
+      pedidos.push(order);
+    }
+    const clienteId = pedidos[0].clienteId;
+    const deOtroCliente = pedidos.find((o) => o.clienteId !== clienteId);
+    if (deOtroCliente) {
+      // Misma regla que HU-034: el despacho consolida pedidos del mismo cliente
+      throw new ConflictException(
+        `El pedido ${deOtroCliente.numero} es de otro cliente; el despacho consolida pedidos del mismo cliente`,
+      );
+    }
 
     const dispatchId = await this.dataSource.transaction(async (em) => {
       // B-1: despacho GLOBAL — consecutivo compartido por todas las empresas;
@@ -99,19 +117,21 @@ export class DispatchesService {
         em.create(Dispatch, {
           empresaId: null,
           numero,
-          clienteId: order.clienteId,
+          clienteId,
           estado: DispatchStatus.CREADO,
-          direccionDespacho: order.direccionDespacho ?? null,
+          direccionDespacho: pedidos[0].direccionDespacho ?? null,
           createdBy: user.id,
         }),
       );
-      await em.save(
-        em.create(DispatchOrder, {
-          dispatchId: dispatch.id,
-          orderId: order.id,
-          empresaId: order.empresaId,
-        }),
-      );
+      for (const order of pedidos) {
+        await em.save(
+          em.create(DispatchOrder, {
+            dispatchId: dispatch.id,
+            orderId: order.id,
+            empresaId: order.empresaId,
+          }),
+        );
+      }
       await this.audit.log(
         {
           usuarioId: user.id,
@@ -119,7 +139,11 @@ export class DispatchesService {
           accion: 'DESPACHO_CREADO',
           tabla: TABLA,
           registroId: dispatch.id,
-          valorNuevo: { numero, clienteId: order.clienteId, pedido: order.numero },
+          valorNuevo: {
+            numero,
+            clienteId,
+            pedidos: pedidos.map((o) => o.numero),
+          },
         },
         em,
       );

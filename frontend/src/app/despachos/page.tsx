@@ -1,12 +1,19 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { CheckCircle2, Clock, Package } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 import { AppShell } from '@/components/app-shell';
-import { CLASE_BOTON_PRIMARIO, CLASE_BOTON_SECUNDARIO, EncabezadoPagina } from '@/components/ui';
+import { CLASE_BOTON_PRIMARIO, CLASE_BOTON_SECUNDARIO, EncabezadoPagina, Insignia } from '@/components/ui';
 
-interface PedidoAprobado { id: string; numero: string; clienteId: string }
+interface PedidoAprobado {
+  id: string;
+  numero: string;
+  clienteId: string;
+  createdAt: string;
+  cliente?: { id: string; nombre: string } | null;
+}
 interface Carrier { id: string; nombre: string; tipo: 'EXTERNA' | 'INTERNA' }
 
 interface Pendiente {
@@ -72,6 +79,15 @@ interface Despacho {
   };
 }
 
+/** Minutos transcurridos en lenguaje natural (igual que en el Dashboard). */
+function haceMinutos(fechaIso: string): string {
+  const min = Math.max(0, Math.floor((Date.now() - new Date(fechaIso).getTime()) / 60000));
+  if (min < 1) return 'hace un momento';
+  if (min < 60) return `hace ${min} min`;
+  const horas = Math.floor(min / 60);
+  return `hace ${horas} h`;
+}
+
 const ESTADOS: Record<Despacho['estado'], string> = {
   CREADO: 'Creado',
   ABIERTO: 'Abierto',
@@ -105,7 +121,8 @@ export default function DespachosPage() {
 
   // Creación / asociación
   const [pedidosAprobados, setPedidosAprobados] = useState<PedidoAprobado[]>([]);
-  const [pedidoSel, setPedidoSel] = useState('');
+  // I24: selección múltiple de pedidos del mismo cliente (tarjetas)
+  const [pedidosSel, setPedidosSel] = useState<string[]>([]);
   const [mostrarCrear, setMostrarCrear] = useState(false);
   const [pedidoAsociar, setPedidoAsociar] = useState('');
 
@@ -146,9 +163,7 @@ export default function DespachosPage() {
     if (s.usuario.rol === 'API') return router.replace('/dashboard');
     setSesion(s);
     cargarLista();
-    api<PedidoAprobado[]>('/orders?estado=APROBADO').then(({ status, body }) => {
-      if (status === 200) setPedidosAprobados(body);
-    });
+    cargarAprobados();
     api<Carrier[]>('/carriers/activas').then(({ status, body }) => {
       if (status === 200) setCarriers(body);
     });
@@ -161,6 +176,19 @@ export default function DespachosPage() {
   function limpiarAvisos() {
     setMensaje('');
     setError('');
+  }
+
+  async function cargarAprobados() {
+    const { status, body } = await api<PedidoAprobado[]>('/orders?estado=APROBADO');
+    if (status === 200) setPedidosAprobados(body);
+  }
+
+  /** I24: alterna la tarjeta; solo se pueden combinar pedidos del mismo cliente. */
+  function alternarPedido(p: PedidoAprobado) {
+    limpiarAvisos();
+    setPedidosSel((sel) =>
+      sel.includes(p.id) ? sel.filter((x) => x !== p.id) : [...sel, p.id],
+    );
   }
 
   async function cargarLista() {
@@ -188,15 +216,21 @@ export default function DespachosPage() {
 
   async function crear() {
     limpiarAvisos();
-    if (!pedidoSel) return setError('Seleccione el pedido aprobado inicial');
+    if (pedidosSel.length === 0) return setError('Seleccione al menos un pedido aprobado');
     const { status, body } = await api<any>('/dispatches', {
       method: 'POST',
-      body: JSON.stringify({ orderId: pedidoSel }),
+      body: JSON.stringify({ orderIds: pedidosSel }),
     });
     if (status === 201) {
-      setMensaje(`Despacho ${body.numero} creado`);
+      setMensaje(
+        pedidosSel.length > 1
+          ? `Despacho ${body.numero} creado con ${pedidosSel.length} pedidos`
+          : `Despacho ${body.numero} creado`,
+      );
       setMostrarCrear(false);
+      setPedidosSel([]);
       cargarLista();
+      cargarAprobados();
       cargarDetalle(body.id);
     } else setError(mensajeError(body, 'No se pudo crear el despacho'));
   }
@@ -622,7 +656,14 @@ export default function DespachosPage() {
         titulo="Despachos"
         acciones={
           esGenerador ? (
-            <button onClick={() => setMostrarCrear(!mostrarCrear)} className={CLASE_BOTON_PRIMARIO}>
+            <button
+              onClick={() => {
+                limpiarAvisos();
+                setPedidosSel([]);
+                setMostrarCrear(!mostrarCrear);
+              }}
+              className={CLASE_BOTON_PRIMARIO}
+            >
               Nuevo despacho
             </button>
           ) : undefined
@@ -634,14 +675,82 @@ export default function DespachosPage() {
 
       {mostrarCrear && (
         <section className="mb-4 rounded-lg bg-white p-4 shadow">
-          <h2 className="mb-2 font-semibold">Crear despacho</h2>
-          <p className="mb-2 text-sm text-slate-500">Se consolida a partir de un pedido APROBADO; la empresa del pedido define el consecutivo SIGLAS-####.</p>
-          <div className="flex gap-2">
-            <select value={pedidoSel} onChange={(e) => setPedidoSel(e.target.value)} className="flex-1 rounded border px-2 py-1 text-sm">
-              <option value="">Pedido aprobado…</option>
-              {pedidosAprobados.map((p) => <option key={p.id} value={p.id}>{p.numero}</option>)}
-            </select>
-            <button onClick={crear} className="rounded bg-sofia-600 px-4 py-1 text-sm text-white">Crear</button>
+          <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-semibold">Crear despacho</h2>
+            {pedidosSel.length > 0 && (
+              <button onClick={() => setPedidosSel([])} className="text-sm text-slate-500 hover:underline">
+                Limpiar selección
+              </button>
+            )}
+          </div>
+          <p className="mb-3 text-sm text-slate-500">
+            Seleccione uno o varios pedidos APROBADOS del mismo cliente; el despacho los consolida.
+          </p>
+          {(() => {
+            const clienteSel =
+              pedidosSel.length > 0
+                ? pedidosAprobados.find((x) => x.id === pedidosSel[0])?.clienteId ?? null
+                : null;
+            return pedidosAprobados.length === 0 ? (
+              <p className="py-6 text-center text-sm text-slate-400">
+                No hay pedidos aprobados pendientes por despachar.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {pedidosAprobados.map((p) => {
+                  const seleccionado = pedidosSel.includes(p.id);
+                  const inhabilitado = !seleccionado && clienteSel !== null && p.clienteId !== clienteSel;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      disabled={inhabilitado}
+                      onClick={() => alternarPedido(p)}
+                      title={inhabilitado ? 'El despacho consolida pedidos del mismo cliente' : undefined}
+                      className={`rounded-xl border p-4 text-left transition-shadow ${
+                        seleccionado
+                          ? 'border-sofia-600 bg-sofia-50 ring-2 ring-sofia-600'
+                          : inhabilitado
+                            ? 'cursor-not-allowed border-slate-200 bg-slate-50/60 opacity-40'
+                            : 'border-slate-200 bg-slate-50/60 hover:shadow-md'
+                      }`}
+                    >
+                      <div className="mb-6 flex items-start justify-between">
+                        <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-sofia-700">
+                          <Package size={18} />
+                        </span>
+                        {seleccionado ? (
+                          <CheckCircle2 size={20} className="text-sofia-700" />
+                        ) : (
+                          <Insignia tono="menta">Prioridad</Insignia>
+                        )}
+                      </div>
+                      <p className="font-semibold text-slate-800">{p.numero}</p>
+                      <p className="truncate text-sm font-medium text-sofia-700">
+                        {p.cliente?.nombre ?? 'Sin cliente'}
+                      </p>
+                      <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-400">
+                        <Clock size={13} /> {haceMinutos(p.createdAt)}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })()}
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button
+              onClick={crear}
+              disabled={pedidosSel.length === 0}
+              className={`${CLASE_BOTON_PRIMARIO}${pedidosSel.length === 0 ? ' cursor-not-allowed opacity-50' : ''}`}
+            >
+              Crear despacho{pedidosSel.length > 1 ? ` con ${pedidosSel.length} pedidos` : ''}
+            </button>
+            {pedidosSel.length > 0 && (
+              <span className="text-sm text-slate-500">
+                {pedidosSel.length} pedido{pedidosSel.length > 1 ? 's' : ''} seleccionado{pedidosSel.length > 1 ? 's' : ''}
+              </span>
+            )}
           </div>
         </section>
       )}
