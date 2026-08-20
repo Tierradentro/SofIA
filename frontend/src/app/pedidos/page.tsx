@@ -40,7 +40,7 @@ interface Pedido {
   comercialId: string | null;
   notas: string | null;
   numeroFactura: string | null;
-  estado: 'ABIERTO' | 'ALISTADO' | 'APROBADO' | 'PENDIENTE_CORRECCION' | 'CANCELADO';
+  estado: 'ABIERTO' | 'ALISTADO' | 'APROBADO' | 'PENDIENTE_CORRECCION' | 'CANCELADO' | 'DESPACHADO';
   createdAt: string;
   createdBy: string;
   items: OrderItem[];
@@ -63,6 +63,7 @@ const ESTADOS: Record<Pedido['estado'], string> = {
   APROBADO: 'Aprobado',
   PENDIENTE_CORRECCION: 'Pendiente corrección',
   CANCELADO: 'Cancelado',
+  DESPACHADO: 'Despachado',
 };
 
 /**
@@ -78,7 +79,7 @@ function PedidosContenido() {
   const [empresaId, setEmpresaId] = useState('');
   const [lista, setLista] = useState<Pedido[]>([]);
   // QA Func. 3.1: pestañas principales (ciclo activo) + "Otros estados" secundario
-  const [pestana, setPestana] = useState<'ABIERTO' | 'ALISTADO' | 'APROBADO' | 'OTROS'>('ABIERTO');
+  const [pestana, setPestana] = useState<'ABIERTO' | 'ALISTADO' | 'APROBADO' | 'DESPACHADO' | 'OTROS'>('ABIERTO');
   const [filtroEstado, setFiltroEstado] = useState('');
   const [pedido, setPedido] = useState<Pedido | null>(null);
   // I21/I22: sondeo de TODOS los estados de la empresa — alimenta el aviso
@@ -293,7 +294,7 @@ function PedidosContenido() {
               {/* QA Func. 3.1: secciones por estado (ciclo activo) + "Otros".
                   I21/I22: color y contador por estado, como la cola del dashboard */}
               <div className="flex flex-wrap rounded border text-sm">
-                {(['ABIERTO', 'ALISTADO', 'APROBADO'] as const).map((v) => {
+                {(['ABIERTO', 'ALISTADO', 'APROBADO', 'DESPACHADO'] as const).map((v) => {
                   const activa = pestana === v;
                   const color = COLORES_PESTANA[v];
                   const n = avisoPedidos.filter((p) => p.estado === v).length;

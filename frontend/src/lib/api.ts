@@ -3,7 +3,7 @@
  * aquí solo se gestiona el token, la navegación y el manejo robusto de
  * respuestas (H-8: 401 → cierre de sesión; JSON protegido por content-type).
  */
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 
 export interface Sesion {
   token: string;

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   NotFoundException,
   Param,
@@ -79,6 +80,19 @@ export class PqrsController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.pqrs.addSupport(id, meta, file, user);
+  }
+
+  /**
+   * I25: el Generador (o el Administrador) retira un soporte cargado por
+   * error. Solo en casos abiertos; queda en auditoría.
+   */
+  @Delete('soportes/:supportId')
+  @Roles(Role.GENERADOR, Role.ADMINISTRADOR)
+  removeSupport(
+    @Param('supportId', ParseUUIDPipe) supportId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.pqrs.removeSupport(supportId, user);
   }
 
   /** Descarga de soporte (imagen almacenada). */

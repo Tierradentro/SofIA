@@ -50,19 +50,25 @@ export class DocumentsController {
   }
 
   /**
-   * HU-007: página de etiqueta 50×30 mm lista para el diálogo de impresión
-   * del navegador. Recibe el código y el QR como data URL (el QR contiene
-   * únicamente el box_id — verificación en I8).
+   * HU-007 / I25: página de etiqueta 50×30 mm lista para el diálogo de
+   * impresión del navegador. Recibe el código de la caja y el código de
+   * barras como data URL (el barras contiene únicamente el box_id), más el
+   * número de despacho y la(s) empresa(s) para el encabezado.
    */
   @Get('label')
   @Header('Content-Type', 'text/html; charset=utf-8')
-  label(@Query('boxCode') boxCode: string, @Query('qr') qr: string) {
-    if (!boxCode || !qr) {
-      throw new BadRequestException('boxCode y qr son requeridos');
+  label(
+    @Query('boxCode') boxCode: string,
+    @Query('barcode') barcode: string,
+    @Query('despacho') despacho?: string,
+    @Query('empresas') empresas?: string,
+  ) {
+    if (!boxCode || !barcode) {
+      throw new BadRequestException('boxCode y barcode son requeridos');
     }
-    if (!qr.startsWith('data:image/')) {
-      throw new BadRequestException('El QR debe ser un data URL de imagen');
+    if (!barcode.startsWith('data:image/')) {
+      throw new BadRequestException('El código de barras debe ser un data URL de imagen');
     }
-    return this.documents.buildLabelHtml(boxCode, qr);
+    return this.documents.buildLabelHtml(boxCode, barcode, despacho, empresas);
   }
 }

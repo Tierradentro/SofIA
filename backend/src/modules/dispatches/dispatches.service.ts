@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
-import * as QRCode from 'qrcode';
+import * as bwip from 'bwip-js';
 import { Dispatch, DispatchStatus, TransportType } from './entities/dispatch.entity';
 import { DispatchOrder } from './entities/dispatch-order.entity';
 import { Box, BoxStatus } from './entities/box.entity';
@@ -714,18 +714,38 @@ export class DispatchesService {
     return this.etiqueta(dispatchId, box.id);
   }
 
-  /** HU-038: etiqueta con QR que contiene únicamente el box_id (reimpresión). */
+  /**
+   * HU-038 / I25: etiqueta con código de barras CODE-128 que contiene
+   * únicamente el box_id (reimpresión). Incluye la(s) empresa(s) del despacho
+   * para imprimirla en la etiqueta 50x30 mm.
+   */
   async etiqueta(dispatchId: string, boxPk: string) {
     const box = await this.findBox(dispatchId, boxPk);
     const dispatch = await this.findDispatch(dispatchId);
-    const qrDataUrl = await QRCode.toDataURL(box.boxId, { width: 220, margin: 1 });
+    const png = await bwip.toBuffer({
+      bcid: 'code128',
+      text: box.boxId,
+      scale: 3,
+      height: 12,
+      includetext: false,
+    });
+    const empresas = (await this.dataSource.query(
+      `SELECT DISTINCT c.nombre AS nombre
+         FROM dispatch_orders do2
+         JOIN companies c ON c.id = do2.empresa_id
+        WHERE do2.dispatch_id = $1
+        ORDER BY c.nombre`,
+      [dispatchId],
+    )) as Array<{ nombre: string }>;
     return {
       boxId: box.boxId,
       numeroEnDespacho: box.numeroEnDespacho,
       estado: box.estado,
       despachoNumero: dispatch.numero,
-      /** QR 50x30 mm en la etiqueta impresa; contiene SOLO el box_id. */
-      qrDataUrl,
+      /** Empresas del despacho (una o ambas si el envío es mixto). */
+      empresas: empresas.map((e) => e.nombre),
+      /** Código de barras CODE-128 50x30 mm; contiene SOLO el box_id. */
+      barcodeDataUrl: `data:image/png;base64,${png.toString('base64')}`,
     };
   }
 
@@ -842,6 +862,24 @@ export class DispatchesService {
     dispatch.despachadoPor = user.id;
     dispatch.despachadoAt = new Date();
     await this.dataSource.getRepository(Dispatch).save(dispatch);
+
+    // I25: los pedidos del despacho salen de APROBADO → DESPACHADO solo si
+    // ya no tienen unidades pendientes (despachos parciales los mantienen
+    // APROBADO hasta que el despacho adicional los complete).
+    const [pedidosCompletos] = (await this.dataSource.query(
+      `UPDATE orders o
+          SET estado = 'DESPACHADO'
+        WHERE o.id IN (SELECT order_id FROM dispatch_orders WHERE dispatch_id = $1)
+          AND o.estado = 'APROBADO'
+          AND NOT EXISTS (
+            SELECT 1 FROM order_items oi
+             WHERE oi.order_id = o.id
+               AND (oi.cantidad_alistada - oi.cantidad_despachada) > 0
+          )
+        RETURNING o.numero`,
+      [id],
+    )) as [Array<{ numero: string }>, number];
+
     await this.audit.log({
       usuarioId: user.id,
       usuarioUsername: user.username,
@@ -853,6 +891,9 @@ export class DispatchesService {
         transporte: dispatch.nombreTransporte,
         guia: dispatch.guia,
         estado: DispatchStatus.DESPACHADO,
+        ...(pedidosCompletos.length > 0
+          ? { pedidosDespachados: pedidosCompletos.map((p) => p.numero) }
+          : {}),
       },
     });
     return this.get(id);

@@ -11,7 +11,7 @@ interface Despacho { id: string; numero: string; estado: string; nombreTransport
 interface Caso { id: string; codigo: string; estado: string; motivoCodigo: string; cantidad: number; clienteNombre: string }
 
 const ESTADO_PEDIDO: Record<string, string> = {
-  ABIERTO: 'Abierto', ALISTADO: 'Alistado', APROBADO: 'Aprobado',
+  ABIERTO: 'Abierto', ALISTADO: 'Alistado', APROBADO: 'Aprobado', DESPACHADO: 'Despachado',
   FACTURA_CON_DIFERENCIAS: 'Factura con diferencias', CANCELADO: 'Cancelado',
 };
 const ESTADO_DESPACHO: Record<string, string> = {

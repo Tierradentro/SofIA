@@ -16,6 +16,7 @@ import { InboundMatcher } from '../inbound/inbound-matcher';
 import { MovementsService } from '../movements/movements.service';
 import { MovementType } from '../../common/enums/movement-type.enum';
 import { AuditService } from '../audit/audit.service';
+import { User } from '../users/entities/user.entity';
 import { DocumentsService, UploadedFilePayload } from '../documents/documents.service';
 import { resolverFacturaCaso, validarReingreso } from './pqrs-helpers';
 import { DocumentType } from '../../common/enums/document-type.enum';
@@ -277,6 +278,42 @@ export class PqrsService {
     return soporte;
   }
 
+  /**
+   * I25: el Generador (o el Administrador) retira un soporte cargado por
+   * error. Solo en casos abiertos (ABIERTA o PENDIENTE_CORRECCION); el
+   * retiro elimina el archivo físico y queda en auditoría.
+   */
+  async removeSupport(supportId: string, user: Usuario) {
+    const soporte = await this.dataSource
+      .getRepository(PqrsSupport)
+      .findOne({ where: { id: supportId } });
+    if (!soporte) throw new NotFoundException('Soporte no encontrado');
+    const caso = await this.findCase(soporte.caseId);
+    if (caso.estado !== PqrsStatus.ABIERTA && caso.estado !== PqrsStatus.PENDIENTE_CORRECCION) {
+      throw new BadRequestException(
+        `No se pueden retirar soportes de un caso en estado ${caso.estado}`,
+      );
+    }
+    const doc = (await this.dataSource
+      .getRepository('documents')
+      .findOne({ where: { id: soporte.documentId } })) as any;
+    await this.dataSource.getRepository(PqrsSupport).remove(soporte);
+    if (doc) await this.documents.removeFile(doc);
+    await this.audit.log({
+      usuarioId: user.id,
+      usuarioUsername: user.username,
+      accion: 'PQRS_SOPORTE_ELIMINADO',
+      tabla: TABLA,
+      registroId: caso.id,
+      valorAnterior: {
+        soporteId: soporte.id,
+        tipo: soporte.tipo,
+        nombre: doc?.nombreOriginal ?? null,
+      },
+    });
+    return this.get(caso.id);
+  }
+
   /** Descarga de un soporte (imagen almacenada). */
   async getSupportFile(supportId: string) {
     const soporte = await this.dataSource
@@ -515,7 +552,26 @@ export class PqrsService {
       );
       despacho = despacho[0] ?? null;
     }
-    return { ...caso, cliente, comercial, motivo, soportes: soportesDetalle, pedido, despacho };
+    // I25: trazabilidad del caso — quién lo creó/recibió y quién lo atendió
+    const usersRepo = this.dataSource.getRepository(User);
+    const creadoPor = caso.createdBy
+      ? await usersRepo.findOne({ where: { id: caso.createdBy } })
+      : null;
+    const atendidoPor = caso.cerradoPor
+      ? await usersRepo.findOne({ where: { id: caso.cerradoPor } })
+      : null;
+    const publico = (u: User | null) =>
+      u ? { id: u.id, username: u.username, nombre: u.nombre, rol: u.rol } : null;
+    return {
+      ...caso,
+      cliente,
+      comercial,
+      motivo,
+      soportes: soportesDetalle,
+      pedido,
+      despacho,
+      trazabilidad: { creadoPor: publico(creadoPor), atendidoPor: publico(atendidoPor) },
+    };
   }
 
   // ------------------------------------------------------------------

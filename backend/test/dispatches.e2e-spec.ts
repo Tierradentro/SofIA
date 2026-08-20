@@ -12,7 +12,8 @@ import {
  * HU-033/034 (crear y asociar pedidos del mismo cliente, multiempresa,
  * consecutivo GLOBAL DES-###### B-1), HU-035/036/037 (cajas CJA-######
  * globales, escaneo con conteo y excedentes, cierre con descuento
- * transaccional de Cantidad y bloqueada), HU-038 (etiqueta QR con solo
+ * transaccional de Cantidad y bloqueada), HU-038/I25 (etiqueta con código de
+ * barras CODE-128 con solo
  * box_id), HU-039/040 (transporte externa/interna), HU-041 (aprobación
  * de parcial con motivo), HU-042/D-06 (despacho adicional), cancelación
  * con reversión de movimientos, M10 (consulta de caja por box_id).
@@ -498,7 +499,8 @@ describe('Despachos y cajas (e2e)', () => {
       .set('Authorization', `Bearer ${operadorToken}`);
     expect(cierre1.status).toBe(201);
     expect(cierre1.body.estado).toBe('CERRADA');
-    expect(cierre1.body.qrDataUrl).toMatch(/^data:image\/png;base64,/);
+    // I25: la etiqueta ahora trae código de barras CODE-128 (ya no QR)
+    expect(cierre1.body.barcodeDataUrl).toMatch(/^data:image\/png;base64,/);
 
     despues = await stock('DSP-001', ireId);
     expect(despues.cantidad).toBe(antes.cantidad - 2);
@@ -547,7 +549,7 @@ describe('Despachos y cajas (e2e)', () => {
     (global as any).__boxes = { b1: b1.body, b2: b2.body, b3: b3.body };
   });
 
-  it('HU-038 + M10: etiqueta QR con solo box_id, reimpresión y consulta de caja', async () => {
+  it('HU-038 + M10 + I25: etiqueta con código de barras CODE-128 (solo box_id), empresas, reimpresión y consulta de caja', async () => {
     const d1 = (global as any).__dispatch1;
     const { b1 } = (global as any).__boxes;
 
@@ -557,9 +559,12 @@ describe('Despachos y cajas (e2e)', () => {
     expect(etq.status).toBe(200);
     expect(etq.body.boxId).toBe('CJA-000001');
     expect(etq.body.despachoNumero).toBe('DES-000001');
-    expect(etq.body.qrDataUrl).toMatch(/^data:image\/png;base64,/);
+    expect(etq.body.barcodeDataUrl).toMatch(/^data:image\/png;base64,/);
+    expect(etq.body.qrDataUrl).toBeUndefined();
+    // I25: el despacho mezcla pedidos de IRE e ICV → ambas empresas
+    expect(etq.body.empresas).toHaveLength(2);
 
-    // Reimpresión (HU-038): mismo boxId, nuevo QR
+    // Reimpresión (HU-038): mismo boxId, nuevo código de barras
     const reimp = await t.http
       .get(`/api/v1/dispatches/${d1.id}/boxes/${b1.id}/etiqueta`)
       .set('Authorization', `Bearer ${generadorToken}`);
@@ -633,6 +638,22 @@ describe('Despachos y cajas (e2e)', () => {
     expect(ok.body.nombreTransporte).toBe('Transportes Rápidos');
     expect(ok.body.guia).toBe('TR-887766');
     expect(ok.body.fechaSalida).toBeTruthy();
+
+    // I25: los pedidos del despacho salen de APROBADO → DESPACHADO
+    const pedidoA = (global as any).__pedidoA;
+    const pedidoIcv = (global as any).__pedidoIcv;
+    for (const ped of [pedidoA, pedidoIcv]) {
+      const r = await t.http
+        .get(`/api/v1/orders/${ped.id}`)
+        .set('Authorization', `Bearer ${generadorToken}`);
+      expect(r.body.estado).toBe('DESPACHADO');
+    }
+    // Ya no son asociables a otro despacho
+    const reuso = await t.http
+      .post('/api/v1/dispatches')
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ orderId: pedidoA.id });
+    expect(reuso.status).toBe(400);
   });
 
   it('HU-041 + HU-039/040: parcial requiere aprobación con motivo y sale por INTERNA', async () => {
@@ -707,6 +728,13 @@ describe('Despachos y cajas (e2e)', () => {
     expect(ok.status).toBe(201);
     expect(ok.body.estado).toBe('DESPACHADO');
     expect(ok.body.nombreTransporte).toBe('Flota Propia');
+
+    // I25: el despacho fue PARCIAL y el pedido aún tiene pendientes:
+    // permanece APROBADO hasta que el despacho adicional lo complete
+    const estadoParcial = await t.http
+      .get(`/api/v1/orders/${pedidoP.id}`)
+      .set('Authorization', `Bearer ${generadorToken}`);
+    expect(estadoParcial.body.estado).toBe('APROBADO');
   });
 
   it('HU-042/D-06: despacho adicional completa el parcial', async () => {
@@ -753,6 +781,13 @@ describe('Despachos y cajas (e2e)', () => {
     );
     expect(oi[0].cantidad_alistada).toBe(5);
     expect(oi[0].cantidad_despachada).toBe(5);
+
+    // I25: sin pendientes, el despacho adicional despachado completa el
+    // pedido → DESPACHADO
+    const estadoFinal = await t.http
+      .get(`/api/v1/orders/${pedidoP.id}`)
+      .set('Authorization', `Bearer ${generadorToken}`);
+    expect(estadoFinal.body.estado).toBe('DESPACHADO');
 
     // Ya no hay pendientes: completar de nuevo → 400
     const otraVez = await t.http

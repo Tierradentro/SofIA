@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckCircle2, Plus, Search } from 'lucide-react';
+import { CheckCircle2, Filter, Plus, Search, X } from 'lucide-react';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 import { AppShell } from '@/components/app-shell';
 import {
@@ -89,6 +89,11 @@ export default function ProductosPage() {
   const [empresaId, setEmpresaId] = useState('');
   const [productos, setProductos] = useState<Producto[]>([]);
   const [consulta, setConsulta] = useState(''); // QA Func. 2.4: búsqueda parcial
+  // I25: filtros de la tabla (marca, ubicación y existencia)
+  const [mostrarFiltros, setMostrarFiltros] = useState(false);
+  const [filtroMarca, setFiltroMarca] = useState('');
+  const [filtroUbicacion, setFiltroUbicacion] = useState('');
+  const [filtroExistencia, setFiltroExistencia] = useState<'todas' | 'con' | 'sin'>('todas');
   const [mostrarForm, setMostrarForm] = useState(false);
   const [form, setForm] = useState<FormProducto>(FORM_VACIO);
   const [ficha, setFicha] = useState<Producto | null>(null); // QA Func. 2.2
@@ -273,6 +278,17 @@ export default function ProductosPage() {
 
   if (!sesion) return null;
 
+  // I25: se aplican sobre la lista ya cargada (empresa + búsqueda parcial)
+  const filtrosActivos =
+    filtroMarca.trim() !== '' || filtroUbicacion.trim() !== '' || filtroExistencia !== 'todas';
+  const productosFiltrados = productos.filter((p) => {
+    if (filtroMarca.trim() && !(p.marca ?? '').toLowerCase().includes(filtroMarca.trim().toLowerCase())) return false;
+    if (filtroUbicacion.trim() && !(p.ubicacion ?? '').toLowerCase().includes(filtroUbicacion.trim().toLowerCase())) return false;
+    if (filtroExistencia === 'con' && !(Number(p.cantidad) > 0)) return false;
+    if (filtroExistencia === 'sin' && Number(p.cantidad) > 0) return false;
+    return true;
+  });
+
   return (
     <AppShell sesion={sesion}>
       <EncabezadoPagina
@@ -352,6 +368,18 @@ export default function ProductosPage() {
           </div>
           <div className="flex gap-2">
             <button className={CLASE_BOTON_PRIMARIO}>Buscar</button>
+            <button
+              type="button"
+              onClick={() => setMostrarFiltros((v) => !v)}
+              className={`flex items-center gap-1 rounded-lg px-4 text-sm ${
+                mostrarFiltros || filtrosActivos
+                  ? 'bg-sofia-100 font-medium text-sofia-700 hover:bg-sofia-200'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+              title="Filtrar la tabla por marca, ubicación o existencia"
+            >
+              <Filter size={14} /> Filtrar
+            </button>
             {consulta && (
               <button
                 type="button"
@@ -363,6 +391,49 @@ export default function ProductosPage() {
             )}
           </div>
         </form>
+        {mostrarFiltros && (
+          <div className="mt-3 flex flex-col gap-2 border-t border-slate-100 pt-3 sm:flex-row sm:items-end">
+            <label className="flex-1 text-xs font-medium text-slate-500">
+              Marca
+              <input
+                className={`${CLASE_INPUT} mt-1`}
+                placeholder="Ej.: SKF"
+                value={filtroMarca}
+                onChange={(e) => setFiltroMarca(e.target.value)}
+              />
+            </label>
+            <label className="flex-1 text-xs font-medium text-slate-500">
+              Ubicación
+              <input
+                className={`${CLASE_INPUT} mt-1`}
+                placeholder="Ej.: A-01-03"
+                value={filtroUbicacion}
+                onChange={(e) => setFiltroUbicacion(e.target.value)}
+              />
+            </label>
+            <label className="text-xs font-medium text-slate-500">
+              Existencia
+              <select
+                className={`${CLASE_INPUT} mt-1`}
+                value={filtroExistencia}
+                onChange={(e) => setFiltroExistencia(e.target.value as 'todas' | 'con' | 'sin')}
+              >
+                <option value="todas">Todas</option>
+                <option value="con">Con existencias</option>
+                <option value="sin">Sin existencias</option>
+              </select>
+            </label>
+            {filtrosActivos && (
+              <button
+                type="button"
+                onClick={() => { setFiltroMarca(''); setFiltroUbicacion(''); setFiltroExistencia('todas'); }}
+                className="flex items-center gap-1 rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-600 hover:bg-slate-200"
+              >
+                <X size={14} /> Quitar filtros
+              </button>
+            )}
+          </div>
+        )}
       </Tarjeta>
 
       {/* Consulta exacta por código de barras (no se toca: match exacto) */}
@@ -575,7 +646,7 @@ export default function ProductosPage() {
               </tr>
             </thead>
             <tbody>
-              {productos.map((p) => (
+              {productosFiltrados.map((p) => (
                 <tr key={p.id} className={CLASES_TABLA.fila}>
                   <td className={`${CLASES_TABLA.celda} font-medium`}>
                     {p.codigo}
@@ -629,19 +700,21 @@ export default function ProductosPage() {
                   </td>
                 </tr>
               ))}
-              {productos.length === 0 && (
+              {productosFiltrados.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-4 py-8 text-center text-sm text-slate-400">
-                    Sin productos en esta empresa
+                    {productos.length === 0
+                      ? 'Sin productos en esta empresa'
+                      : 'Ningún producto coincide con los filtros'}
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
-        {productos.length > 0 && (
+        {productosFiltrados.length > 0 && (
           <p className="border-t border-slate-100 px-4 py-2.5 text-xs text-slate-400">
-            Mostrando {productos.length} resultado{productos.length === 1 ? '' : 's'}
+            Mostrando {productosFiltrados.length} de {productos.length} resultado{productos.length === 1 ? '' : 's'}
           </p>
         )}
       </Tarjeta>

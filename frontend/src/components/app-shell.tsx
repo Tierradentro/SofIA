@@ -6,6 +6,8 @@ import {
   ArrowLeftRight,
   Briefcase,
   Building2,
+  ChevronDown,
+  ChevronUp,
   ClipboardList,
   Container,
   FileUp,
@@ -122,6 +124,7 @@ function SeccionMenu({
   ruta,
   colapsado,
   alNavegar,
+  plegable,
 }: {
   titulo: string;
   items: ItemNav[];
@@ -129,27 +132,45 @@ function SeccionMenu({
   ruta: string;
   colapsado: boolean;
   alNavegar?: () => void;
+  /** I25: permite recoger/desplegar la lista de opciones de la sección. */
+  plegable?: boolean;
 }) {
+  const [recogida, setRecogida] = useState(false);
   const visibles = items.filter((i) => i.roles.includes(rol));
   if (!visibles.length) return null;
+  const mostrarItems = !recogida || colapsado;
   return (
     <div className="mb-4">
       {!colapsado && (
-        <p className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-sofia-200/70">
-          {titulo}
-        </p>
+        plegable ? (
+          <button
+            type="button"
+            onClick={() => setRecogida((v) => !v)}
+            aria-expanded={!recogida}
+            className="mb-1 flex w-full items-center justify-between px-3 text-[11px] font-semibold uppercase tracking-wider text-sofia-200/70 hover:text-white"
+          >
+            {titulo}
+            {recogida ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+          </button>
+        ) : (
+          <p className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-sofia-200/70">
+            {titulo}
+          </p>
+        )
       )}
-      <div className="space-y-0.5">
-        {visibles.map((item) => (
-          <ItemMenu
-            key={item.href}
-            item={item}
-            activo={esActivo(ruta, item.href)}
-            colapsado={colapsado}
-            alNavegar={alNavegar}
-          />
-        ))}
-      </div>
+      {mostrarItems && (
+        <div className="space-y-0.5">
+          {visibles.map((item) => (
+            <ItemMenu
+              key={item.href}
+              item={item}
+              activo={esActivo(ruta, item.href)}
+              colapsado={colapsado}
+              alNavegar={alNavegar}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -189,7 +210,7 @@ function ContenidoSidebar({
       {/* Menú */}
       <nav className={`flex-1 overflow-y-auto px-2 py-4 ${colapsado ? 'px-1.5' : ''}`}>
         <SeccionMenu titulo="Operaciones" items={NAV_OPERACIONES} rol={rol} ruta={ruta} colapsado={colapsado} alNavegar={alNavegar} />
-        <SeccionMenu titulo="Administración" items={NAV_ADMIN} rol={rol} ruta={ruta} colapsado={colapsado} alNavegar={alNavegar} />
+        <SeccionMenu titulo="Administración" items={NAV_ADMIN} rol={rol} ruta={ruta} colapsado={colapsado} alNavegar={alNavegar} plegable />
       </nav>
 
       {/* Pie: usuario + sesión */}

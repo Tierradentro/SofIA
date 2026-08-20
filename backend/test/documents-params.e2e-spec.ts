@@ -88,16 +88,16 @@ describe('Documentos y parámetros (e2e)', () => {
 
   it('HU-007: etiqueta 50×30 mm para el diálogo de impresión del navegador', async () => {
     const res = await t.http
-      .get('/api/v1/documents/label?boxCode=CAJA-0001&qr=data:image/png;base64,AAA')
+      .get('/api/v1/documents/label?boxCode=CAJA-0001&barcode=data:image/png;base64,AAA')
       .set('Authorization', `Bearer ${operadorToken}`);
     expect(res.status).toBe(200);
     expect(res.text).toContain('size: 50mm 30mm');
     expect(res.text).toContain('window.print()');
     expect(res.text).toContain('CAJA-0001');
 
-    // QR inválido (no es data URL de imagen) → 400
+    // Imagen inválida (no es data URL de imagen) → 400
     const bad = await t.http
-      .get('/api/v1/documents/label?boxCode=CAJA-0001&qr=http://evil')
+      .get('/api/v1/documents/label?boxCode=CAJA-0001&barcode=http://evil')
       .set('Authorization', `Bearer ${operadorToken}`);
     expect(bad.status).toBe(400);
   });

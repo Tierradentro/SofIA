@@ -87,6 +87,10 @@ export const COLORES_PESTANA: Record<string, { activa: string; punto: string }> 
     activa: 'border-slate-400 text-slate-600 bg-slate-100',
     punto: 'bg-slate-400',
   },
+  DESPACHADO: {
+    activa: 'border-emerald-600 text-emerald-700 bg-emerald-50',
+    punto: 'bg-emerald-500',
+  },
   OTROS: {
     activa: 'border-sofia-700 text-sofia-700 bg-sofia-50',
     punto: 'bg-sofia-700',

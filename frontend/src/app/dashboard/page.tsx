@@ -8,7 +8,7 @@ import {
   Download,
   MapPin,
   Package,
-  Percent,
+  ShoppingCart,
   Truck,
 } from 'lucide-react';
 import { api, obtenerSesion, Sesion } from '@/lib/api';
@@ -34,7 +34,7 @@ interface Empresa {
 interface PedidoCola {
   id: string;
   numero: string;
-  estado: 'ABIERTO' | 'ALISTADO' | 'APROBADO' | 'PENDIENTE_CORRECCION' | 'CANCELADO';
+  estado: 'ABIERTO' | 'ALISTADO' | 'APROBADO' | 'PENDIENTE_CORRECCION' | 'CANCELADO' | 'DESPACHADO';
   createdAt: string;
   clienteId: string;
 }
@@ -64,6 +64,7 @@ const PESTANAS: { valor: PedidoCola['estado']; etiqueta: string }[] = [
   { valor: 'ABIERTO', etiqueta: 'Abierto' },
   { valor: 'ALISTADO', etiqueta: 'Alistado' },
   { valor: 'APROBADO', etiqueta: 'Aprobado' },
+  { valor: 'DESPACHADO', etiqueta: 'Despachado' },
   { valor: 'PENDIENTE_CORRECCION', etiqueta: 'Pendiente corrección' },
 ];
 
@@ -176,6 +177,8 @@ export default function DashboardPage() {
   const [pedidos, setPedidos] = useState<PedidoCola[]>([]);
   const [despachos, setDespachos] = useState<DespachoTraza[]>([]);
   const [stockTotal, setStockTotal] = useState<number | null>(null);
+  // I25: además de las unidades, cuántos productos tienen existencias (> 0)
+  const [productosConStock, setProductosConStock] = useState<number | null>(null);
   const [recibosPendientes, setRecibosPendientes] = useState<number | null>(null);
   const [nombreClientes, setNombreClientes] = useState<Record<string, string>>({});
   const [pestana, setPestana] = useState<PedidoCola['estado']>('ABIERTO');
@@ -194,13 +197,19 @@ export default function DashboardPage() {
         body.map((e) => api<ProductoStock[]>(`/products?empresaId=${e.id}`)),
       );
       let total = 0;
+      let conExistencias = 0;
       for (const { status: st, body: prods } of listas) {
         if (st !== 200) continue;
         for (const p of prods) {
-          if (p.estado === 'ACTIVO') total += Number(p.cantidad) || 0;
+          if (p.estado === 'ACTIVO') {
+            const und = Number(p.cantidad) || 0;
+            total += und;
+            if (und > 0) conExistencias += 1;
+          }
         }
       }
       setStockTotal(total);
+      setProductosConStock(conExistencias);
     });
 
     // I21: sondeo cada 20 s para detectar cambios de estado y avisar en sonido
@@ -234,6 +243,10 @@ export default function DashboardPage() {
 
   if (!sesion) return null;
   const hoy = new Date().toDateString();
+  // I25: indicador Pedidos hoy (creados en la fecha actual)
+  const pedidosHoy = pedidos.filter(
+    (p) => p.createdAt && new Date(p.createdAt).toDateString() === hoy,
+  ).length;
   const despachosHoy = despachos.filter(
     (d) => d.fechaSalida && new Date(d.fechaSalida).toDateString() === hoy,
   ).length;
@@ -269,21 +282,28 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* KPIs operativos */}
+      {/* KPIs operativos (I25): Stock total muestra arriba la cantidad de
+          productos con existencias y debajo las unidades; Recibos pendientes
+          va de último en la fila */}
       <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <TarjetaStat
           icono={Package}
           etiqueta="Stock total"
-          valor={stockTotal === null ? '…' : stockTotal.toLocaleString('es-CO')}
-          unidad="und"
+          valor={productosConStock === null ? '…' : productosConStock.toLocaleString('es-CO')}
+          unidad="productos"
+          detalle={
+            stockTotal === null
+              ? undefined
+              : `${stockTotal.toLocaleString('es-CO')} unidades`
+          }
           tono="azul"
         />
         <TarjetaStat
-          icono={Download}
-          etiqueta="Recibos pendientes"
-          valor={recibosPendientes === null ? '…' : String(recibosPendientes)}
-          unidad="Lotes"
-          tono="menta"
+          icono={ShoppingCart}
+          etiqueta="Pedidos hoy"
+          valor={String(pedidosHoy)}
+          unidad="Pedidos"
+          tono="rosa"
         />
         <TarjetaStat
           icono={Truck}
@@ -293,11 +313,11 @@ export default function DashboardPage() {
           tono="marino"
         />
         <TarjetaStat
-          icono={Percent}
-          etiqueta="Tasa devoluciones"
-          valor="—"
-          detalle="Disponible con el módulo PQRS"
-          tono="rosa"
+          icono={Download}
+          etiqueta="Recibos pendientes"
+          valor={recibosPendientes === null ? '…' : String(recibosPendientes)}
+          unidad="Lotes"
+          tono="menta"
         />
       </div>
 

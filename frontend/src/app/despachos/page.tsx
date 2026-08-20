@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { CheckCircle2, Clock, Package } from 'lucide-react';
+import { CheckCircle2, Clock, Package, Printer } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
+import { api, API_URL, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 import { AppShell } from '@/components/app-shell';
 import { CLASE_BOTON_PRIMARIO, CLASE_BOTON_SECUNDARIO, EncabezadoPagina, Insignia } from '@/components/ui';
 
@@ -130,7 +130,12 @@ export default function DespachosPage() {
   const [codigoScan, setCodigoScan] = useState('');
   const [cantidadScan, setCantidadScan] = useState('1');
   const [cajaSel, setCajaSel] = useState('');
-  const [etiqueta, setEtiqueta] = useState<{ boxId: string; qrDataUrl: string; despachoNumero: string } | null>(null);
+  const [etiqueta, setEtiqueta] = useState<{
+    boxId: string;
+    barcodeDataUrl: string;
+    despachoNumero: string;
+    empresas?: string[];
+  } | null>(null);
 
   // QA Func. 4.1: ajuste de dirección de entrega
   const [editandoDireccion, setEditandoDireccion] = useState(false);
@@ -334,6 +339,18 @@ export default function DespachosPage() {
     else setError(mensajeError(body, 'No se pudo generar la etiqueta'));
   }
 
+  /** I25: envía la etiqueta al diálogo de impresión (POS) en formato 50×30. */
+  function imprimirEtiqueta() {
+    if (!etiqueta) return;
+    const params = new URLSearchParams({
+      boxCode: etiqueta.boxId,
+      barcode: etiqueta.barcodeDataUrl,
+      despacho: etiqueta.despachoNumero,
+      empresas: etiqueta.empresas?.join(' + ') ?? '',
+    });
+    window.open(`${API_URL}/documents/label?${params.toString()}`, '_blank');
+  }
+
   async function consultarCaja() {
     limpiarAvisos();
     setConsultaCaja(null);
@@ -492,7 +509,7 @@ export default function DespachosPage() {
                     {c.estado === 'ABIERTA' ? (
                       <button onClick={() => cerrarCaja(c.id)} className="rounded bg-amber-600 px-2 py-1 text-xs text-white">Cerrar caja</button>
                     ) : (
-                      <button onClick={() => verEtiqueta(c.id)} className="rounded bg-slate-600 px-2 py-1 text-xs text-white">Etiqueta QR</button>
+                      <button onClick={() => verEtiqueta(c.id)} className="rounded bg-slate-600 px-2 py-1 text-xs text-white">Etiqueta</button>
                     )}
                   </span>
                 </li>
@@ -534,7 +551,7 @@ export default function DespachosPage() {
                     )}
                   </span>
                   {c.estado === 'CERRADA' && (
-                    <button onClick={() => verEtiqueta(c.id)} className="rounded bg-slate-600 px-2 py-1 text-xs text-white">Etiqueta QR</button>
+                    <button onClick={() => verEtiqueta(c.id)} className="rounded bg-slate-600 px-2 py-1 text-xs text-white">Etiqueta</button>
                   )}
                 </li>
               ))}
@@ -629,17 +646,43 @@ export default function DespachosPage() {
           </section>
         )}
 
-        {/* Etiqueta QR (HU-038): el QR contiene SOLO el box_id */}
+        {/* Etiqueta de caja (HU-038 / I25): código de barras CODE-128 con
+            SOLO el box_id + empresa(s); lista para enviar al POS */}
         {etiqueta && (
           <section className="mb-4 rounded-lg bg-white p-4 shadow">
             <div className="flex items-center justify-between">
               <h2 className="font-semibold">Etiqueta de caja (50 × 30 mm)</h2>
-              <button onClick={() => setEtiqueta(null)} className="text-sm text-slate-500 hover:underline">Cerrar</button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={imprimirEtiqueta}
+                  className="flex items-center gap-1 rounded bg-sofia-600 px-3 py-1 text-sm text-white hover:bg-sofia-700"
+                  title="Enviar la etiqueta al diálogo de impresión (POS)"
+                >
+                  <Printer size={14} /> Imprimir
+                </button>
+                <button onClick={() => setEtiqueta(null)} className="text-sm text-slate-500 hover:underline">Cerrar</button>
+              </div>
             </div>
-            <div className="mt-2 inline-block rounded border-2 border-dashed p-3 text-center" style={{ width: '50mm', minHeight: '30mm' }}>
-              <img src={etiqueta.qrDataUrl} alt={`QR ${etiqueta.boxId}`} className="mx-auto h-24 w-24" />
-              <p className="mt-1 text-xs font-bold">{etiqueta.boxId}</p>
-              <p className="text-xs text-slate-500">Despacho {etiqueta.despachoNumero}</p>
+            <div
+              className="mt-2 flex flex-col items-center justify-between rounded border-2 border-dashed p-2 text-center"
+              style={{ width: '50mm', height: '30mm' }}
+            >
+              {etiqueta.empresas && etiqueta.empresas.length > 0 && (
+                <p
+                  className="w-full truncate font-bold uppercase"
+                  style={{ fontSize: '8px' }}
+                  title={etiqueta.empresas.join(' + ')}
+                >
+                  {etiqueta.empresas.join(' + ')}
+                </p>
+              )}
+              <img
+                src={etiqueta.barcodeDataUrl}
+                alt={`Código de barras ${etiqueta.boxId}`}
+                className="w-[40mm] object-fill"
+              />
+              <p className="font-bold" style={{ fontSize: '10px' }}>{etiqueta.boxId}</p>
+              <p className="text-slate-500" style={{ fontSize: '8px' }}>Despacho {etiqueta.despachoNumero}</p>
             </div>
           </section>
         )}

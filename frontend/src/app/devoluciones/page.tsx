@@ -47,6 +47,11 @@ interface Caso {
   soportes?: Soporte[];
   createdAt: string;
   cerradaAt: string | null;
+  /** I25: quién creó/recibió el caso y quién lo atendió */
+  trazabilidad?: {
+    creadoPor: { id: string; username: string; nombre: string; rol: string } | null;
+    atendidoPor: { id: string; username: string; nombre: string; rol: string } | null;
+  };
 }
 
 interface Busqueda {
@@ -165,6 +170,25 @@ export default function DevolucionesPage() {
   async function cargarDetalle(id: string) {
     const { status, body } = await api<Caso>(`/pqrs/${id}`);
     if (status === 200) setCaso(body);
+  }
+
+  /** I25: el Generador retira un soporte cargado por error (casos abiertos). */
+  async function eliminarSoporte(soporteId: string, nombre: string) {
+    if (!caso) return;
+    if (!window.confirm(`¿Retirar el soporte "${nombre}"? Esta acción no se puede deshacer.`)) return;
+    limpiarAvisos();
+    const ses = obtenerSesion();
+    const res = await fetch(`${API_BASE}/pqrs/soportes/${soporteId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${ses?.token}` },
+    });
+    if (res.ok) {
+      setMensaje('Soporte retirado');
+      cargarDetalle(caso.id);
+    } else {
+      const body = await res.json().catch(() => null);
+      setError(body?.message ?? 'No se pudo retirar el soporte');
+    }
   }
 
   async function buscar() {
@@ -298,6 +322,20 @@ export default function DevolucionesPage() {
             {caso.pedido && <p><b>Pedido:</b> {caso.pedido.numero}</p>}
             {caso.despacho && <p><b>Despacho:</b> {caso.despacho.numero}{caso.boxId ? ` · caja ${caso.boxId}` : ''}</p>}
             {caso.solucionCaso && <p className="sm:col-span-2"><b>Solución:</b> {caso.solucionCaso}</p>}
+            {/* I25: trazabilidad del caso */}
+            {caso.trazabilidad?.creadoPor && (
+              <p className="sm:col-span-2 text-slate-500">
+                <b className="text-slate-600">Trazabilidad:</b>{' '}
+                Creado/recibido por {caso.trazabilidad.creadoPor.nombre} ({caso.trazabilidad.creadoPor.username})
+                {' · '}{new Date(caso.createdAt).toLocaleString('es-CO')}
+                {caso.trazabilidad.atendidoPor && (
+                  <>
+                    {' · '}Atendido por {caso.trazabilidad.atendidoPor.nombre} ({caso.trazabilidad.atendidoPor.username})
+                    {caso.cerradaAt && <> {' · '}{new Date(caso.cerradaAt).toLocaleString('es-CO')}</>}
+                  </>
+                )}
+              </p>
+            )}
           </div>
         </section>
 
@@ -312,23 +350,34 @@ export default function DevolucionesPage() {
                   <span className="text-slate-500"> · {s.tipo === 'RECEPCION' ? 'Recepción' : 'Solución'}</span>
                   {s.observacion && <span className="text-slate-500"> · {s.observacion}</span>}
                 </span>
-                <a
-                  href={`${API_BASE}/pqrs/soportes/${s.id}/archivo`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-sofia-700 hover:underline"
-                  onClick={async (e) => {
-                    e.preventDefault();
-                    const ses = obtenerSesion();
-                    const res = await fetch(`${API_BASE}/pqrs/soportes/${s.id}/archivo`, {
-                      headers: { Authorization: `Bearer ${ses?.token}` },
-                    });
-                    const blob = await res.blob();
-                    window.open(URL.createObjectURL(blob), '_blank');
-                  }}
-                >
-                  Ver
-                </a>
+                <span className="flex items-center gap-3">
+                  <a
+                    href={`${API_BASE}/pqrs/soportes/${s.id}/archivo`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-sofia-700 hover:underline"
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      const ses = obtenerSesion();
+                      const res = await fetch(`${API_BASE}/pqrs/soportes/${s.id}/archivo`, {
+                        headers: { Authorization: `Bearer ${ses?.token}` },
+                      });
+                      const blob = await res.blob();
+                      window.open(URL.createObjectURL(blob), '_blank');
+                    }}
+                  >
+                    Ver
+                  </a>
+                  {esGenerador && (caso.estado === 'ABIERTA' || caso.estado === 'PENDIENTE_CORRECCION') && (
+                    <button
+                      onClick={() => eliminarSoporte(s.id, s.nombreOriginal ?? 'soporte')}
+                      className="text-red-600 hover:underline"
+                      title="Retirar el soporte cargado por error"
+                    >
+                      Retirar
+                    </button>
+                  )}
+                </span>
               </li>
             ))}
           </ul>

@@ -155,11 +155,19 @@ export class DocumentsService {
   }
 
   /**
-   * HU-007: genera la página de etiqueta 50×30 mm. El sistema envía la
+   * HU-007 / I25: genera la página de etiqueta 50×30 mm. El sistema envía la
    * etiqueta al diálogo de impresión del navegador con ese formato; la
    * impresora (XPrinter XP-58) se selecciona en el sistema operativo.
+   * La etiqueta lleva el código de barras CODE-128 de la caja, el nombre de
+   * la empresa (o ambas si el envío es mixto), el código de la caja y el
+   * número del despacho.
    */
-  buildLabelHtml(boxCode: string, qrDataUrl: string): string {
+  buildLabelHtml(
+    boxCode: string,
+    barcodeDataUrl: string,
+    despachoNumero?: string,
+    empresas?: string,
+  ): string {
     return `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -170,18 +178,27 @@ export class DocumentsService {
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { width: 50mm; height: 30mm; }
   .etiqueta {
-    width: 50mm; height: 30mm;
-    display: flex; align-items: center; justify-content: center; gap: 2mm;
-    font-family: Arial, sans-serif;
+    width: 50mm; height: 30mm; padding: 1mm 2mm;
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: space-between;
+    font-family: Arial, sans-serif; text-align: center;
   }
-  .etiqueta img { width: 22mm; height: 22mm; }
-  .codigo { font-size: 8pt; font-weight: bold; word-break: break-all; max-width: 22mm; text-align: center; }
+  .empresa {
+    font-size: 6pt; font-weight: bold; text-transform: uppercase;
+    max-width: 46mm; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .etiqueta img { width: 40mm; height: 11mm; object-fit: fill; }
+  .codigo { font-size: 7pt; font-weight: bold; letter-spacing: 0.5pt; }
+  .despacho { font-size: 5.5pt; color: #333; }
 </style>
 </head>
 <body onload="window.print()">
   <div class="etiqueta">
-    <img src="${qrDataUrl}" alt="QR">
+    ${empresas ? `<div class="empresa">${empresas}</div>` : ''}
+    <img src="${barcodeDataUrl}" alt="Código de barras">
     <div class="codigo">${boxCode}</div>
+    ${despachoNumero ? `<div class="despacho">Despacho ${despachoNumero}</div>` : ''}
   </div>
 </body>
 </html>`;

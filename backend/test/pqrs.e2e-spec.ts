@@ -354,6 +354,51 @@ describe('Devoluciones PQRS (e2e)', () => {
     expect(archivo.headers['content-type']).toContain('image/png');
   });
 
+  it('I25: el Generador retira un soporte cargado por error; el caso muestra su trazabilidad', async () => {
+    const caso1 = (global as any).__caso1;
+
+    // Operador adjunta un soporte "por error"
+    const sopNuevo = await t.http
+      .post(`/api/v1/pqrs/${caso1.id}/soportes`)
+      .set('Authorization', `Bearer ${operadorToken}`)
+      .field('observacion', 'Cargado por error')
+      .attach('file', PNG_SOPORTE, { filename: 'error.png', contentType: 'image/png' });
+    expect(sopNuevo.status).toBe(201);
+
+    // Operador no puede retirar soportes → 403
+    const prohibido = await t.http
+      .delete(`/api/v1/pqrs/soportes/${sopNuevo.body.id}`)
+      .set('Authorization', `Bearer ${operadorToken}`);
+    expect(prohibido.status).toBe(403);
+
+    // Generador lo retira (caso ABIERTA) y queda en auditoría
+    const retiro = await t.http
+      .delete(`/api/v1/pqrs/soportes/${sopNuevo.body.id}`)
+      .set('Authorization', `Bearer ${generadorToken}`);
+    expect(retiro.status).toBe(200);
+    const ids = retiro.body.soportes.map((s: any) => s.id);
+    expect(ids).not.toContain(sopNuevo.body.id);
+    expect(retiro.body.soportes).toHaveLength(2);
+
+    const audit = await t.dataSource.query(
+      `SELECT accion FROM audit_logs WHERE accion='PQRS_SOPORTE_ELIMINADO' ORDER BY fecha_hora DESC LIMIT 1`,
+    );
+    expect(audit.length).toBe(1);
+
+    // Trazabilidad visible: quién creó/recibió el caso
+    const detalle = await t.http
+      .get(`/api/v1/pqrs/${caso1.id}`)
+      .set('Authorization', `Bearer ${generadorToken}`);
+    expect(detalle.body.trazabilidad.creadoPor.username).toBe('operador.i9');
+    expect(detalle.body.trazabilidad.atendidoPor).toBeNull();
+
+    // Caso inexistente → 404
+    const noExiste = await t.http
+      .delete(`/api/v1/pqrs/soportes/00000000-0000-4000-8000-000000000000`)
+      .set('Authorization', `Bearer ${generadorToken}`);
+    expect(noExiste.status).toBe(404);
+  });
+
   it('M11 corrección: solicitar → PENDIENTE_CORRECCION; Generador corrige → ABIERTA', async () => {
     const caso2 = (global as any).__caso2;
 

@@ -14,6 +14,8 @@ export enum OrderStatus {
   APROBADO = 'APROBADO',
   PENDIENTE_CORRECCION = 'PENDIENTE_CORRECCION',
   CANCELADO = 'CANCELADO',
+  /** I25: el pedido salió despachado por completo (ya no es asociable). */
+  DESPACHADO = 'DESPACHADO',
 }
 
 /**
