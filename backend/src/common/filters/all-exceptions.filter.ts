@@ -43,12 +43,39 @@ export class AllExceptionsFilter implements ExceptionFilter {
       exception instanceof Error ? exception.stack : String(exception),
     );
 
+    // I28: si la BD no está disponible (corte tras redespliegue o deploy
+    // frío), la respuesta honesta es 503 — la petición puede reintentarse y
+    // se recupera sola cuando el pool vuelve a conectar.
+    if (esErrorConexionBd(exception)) {
+      res.status(503).json({
+        statusCode: 503,
+        message:
+          'La base de datos no está disponible en este momento; reintente en unos segundos.',
+        error: 'Servicio no disponible',
+      });
+      return;
+    }
+
     res.status(500).json({
       statusCode: 500,
       message: mensajeInfraestructura(exception),
       error: 'Error interno',
     });
   }
+}
+
+/** Errores de conectividad con Postgres (driver o TypeORM), no de datos. */
+function esErrorConexionBd(exception: unknown): boolean {
+  if (!(exception instanceof Error)) return false;
+  if (exception.name === 'ConnectionNotFoundError') return true; // pool nunca inicializó
+  const code = String((exception as { code?: string }).code ?? '');
+  const msg = exception.message ?? '';
+  return (
+    ['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE', '57P01'].includes(code) ||
+    msg.includes('Connection terminated') ||
+    msg.includes('Connection timeout') ||
+    msg.includes('timeout exceeded when trying to connect')
+  );
 }
 
 /** Mensaje amigable según el código de error de Postgres, sin detalle interno. */

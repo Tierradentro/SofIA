@@ -92,4 +92,24 @@ describe('AllExceptionsFilter (QA Func. 1.4)', () => {
     expect(res.body.message).toContain('error inesperado');
     expect(JSON.stringify(res.body)).not.toContain('nbtinsert');
   });
+
+  it('I28: pool sin conexión (ConnectionNotFoundError) → 503 reintentable', () => {
+    const { host, res } = hostFalso();
+    const ex = new Error('ConnectionNotFoundError: Connection "default" was not found.');
+    ex.name = 'ConnectionNotFoundError';
+    filter.catch(ex, host);
+    expect(res.statusCode).toBe(503);
+    expect(res.body.message).toContain('base de datos no está disponible');
+  });
+
+  it('I28: corte de BD en caliente (ECONNREFUSED / Connection terminated) → 503', () => {
+    const { host, res } = hostFalso();
+    const ex = new Error('connect ECONNREFUSED 10.0.0.2:5432') as Error & { code?: string };
+    ex.code = 'ECONNREFUSED';
+    filter.catch(ex, host);
+    expect(res.statusCode).toBe(503);
+    const { host: host2, res: res2 } = hostFalso();
+    filter.catch(new Error('Connection terminated unexpectedly'), host2);
+    expect(res2.statusCode).toBe(503);
+  });
 });

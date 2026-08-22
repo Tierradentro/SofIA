@@ -25,10 +25,16 @@ import { PqrsModule } from './modules/pqrs/pqrs.module';
 import { InventoriesModule } from './modules/inventories/inventories.module';
 import { ExternalApiModule } from './modules/external-api/external-api.module';
 
+
 /**
  * Guards globales (JWT + RBAC) se registran en AuthModule, donde están
  * disponibles sus dependencias. El RBAC se enforcea siempre en backend
  * (regla transversal).
+ *
+ * I28: main.ts conecta el AppDataSource con reintentos antes de crear la
+ * app; TypeOrmModule crea su propio DataSource con las mismas opciones
+ * (incluye keep-alive y reciclaje de pool). Si la BD no está al crear la
+ * app (caso RUN_MIGRATIONS=false), @nestjs/typeorm reintenta solo (9 × 3s).
  */
 @Module({
   imports: [
