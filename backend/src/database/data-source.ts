@@ -112,7 +112,27 @@ export function buildDataSourceOptions(): DataSourceOptions {
     synchronize: false,
     logging: false,
     // PGlite (entorno de pruebas) atiende una conexión a la vez
-    extra: isTest ? { max: 1 } : { max: 10 },
+    extra: isTest
+      ? { max: 1 }
+      : {
+          max: 10,
+          // I28: tras un redeploy el pool de pg conserva sockets que el
+          // balanceador/proxy ya cerró; sin keep-alive el primer uso de un
+          // socket muerto lanzaba ECONNRESET ("base de datos desconectada").
+          // keepAlive + keepAliveInitialDelayMillis hacen que el SO detecte
+          // y descarte esos sockets antes de reutilizarlos.
+          keepAlive: true,
+          keepAliveInitialDelayMillis: 10_000,
+          // Una conexión ociosa no vive más de 30 s ni más de 10 min en
+          // total: los proxies de PaaS (EasyPanel) reciclan conexiones TCP
+          // en redespliegues y el pool se renueva solo.
+          idleTimeoutMillis: 30_000,
+          maxLifetimeSeconds: 600,
+          // Si la BD tarda en responder (arranque simultáneo de servicios),
+          // el intento de conexión espera hasta 10 s en vez de fallar de
+          // inmediato.
+          connectionTimeoutMillis: 10_000,
+        },
   };
 }
 
