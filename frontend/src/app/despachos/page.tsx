@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { CheckCircle2, Clock, Package, Printer } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { api, API_URL, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
+import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 import { AppShell } from '@/components/app-shell';
 import { CLASE_BOTON_PRIMARIO, CLASE_BOTON_SECUNDARIO, EncabezadoPagina, Insignia } from '@/components/ui';
 
@@ -339,16 +339,32 @@ export default function DespachosPage() {
     else setError(mensajeError(body, 'No se pudo generar la etiqueta'));
   }
 
-  /** I25: envía la etiqueta al diálogo de impresión (POS) en formato 50×30. */
-  function imprimirEtiqueta() {
+  /** I25/I27: envía la etiqueta al diálogo de impresión (POS) en formato
+   * 50×30. Se pide el HTML por fetch autenticado (POST, el barras viaja en
+   * el cuerpo) y se abre como blob: window.open a la URL directa no puede
+   * enviar el token y recibía 401. */
+  async function imprimirEtiqueta() {
     if (!etiqueta) return;
-    const params = new URLSearchParams({
-      boxCode: etiqueta.boxId,
-      barcode: etiqueta.barcodeDataUrl,
-      despacho: etiqueta.despachoNumero,
-      empresas: etiqueta.empresas?.join(' + ') ?? '',
+    limpiarAvisos();
+    const { status, body } = await api<string>('/documents/label', {
+      method: 'POST',
+      body: JSON.stringify({
+        boxCode: etiqueta.boxId,
+        barcode: etiqueta.barcodeDataUrl,
+        despacho: etiqueta.despachoNumero,
+        empresas: etiqueta.empresas?.join(' + ') ?? '',
+      }),
     });
-    window.open(`${API_URL}/documents/label?${params.toString()}`, '_blank');
+    if ((status === 200 || status === 201) && typeof body === 'string') {
+      const url = URL.createObjectURL(new Blob([body], { type: 'text/html;charset=utf-8' }));
+      const ventana = window.open(url, '_blank');
+      if (!ventana) {
+        URL.revokeObjectURL(url);
+        setError('El navegador bloqueó la ventana de impresión; permite las ventanas emergentes para este sitio.');
+      } else {
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      }
+    } else setError(mensajeError(body, 'No se pudo generar la etiqueta para impresión'));
   }
 
   async function consultarCaja() {

@@ -102,6 +102,35 @@ describe('Documentos y parámetros (e2e)', () => {
     expect(bad.status).toBe(400);
   });
 
+  it('I27: impresión de etiqueta por POST autenticado (barras en el cuerpo)', async () => {
+    const payload = {
+      boxCode: 'CAJA-0002',
+      barcode: 'data:image/png;base64,AAA',
+      despacho: 'DESP-0001',
+      empresas: 'IRE + ICV',
+    };
+    const res = await t.http
+      .post('/api/v1/documents/label')
+      .set('Authorization', `Bearer ${operadorToken}`)
+      .send(payload);
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('size: 50mm 30mm');
+    expect(res.text).toContain('window.print()');
+    expect(res.text).toContain('CAJA-0002');
+    expect(res.text).toContain('IRE + ICV');
+
+    // Sin token → 401 (el botón Imprimir usa fetch autenticado, no window.open)
+    const sinToken = await t.http.post('/api/v1/documents/label').send(payload);
+    expect(sinToken.status).toBe(401);
+
+    // Barras que no es data URL de imagen → 400
+    const bad = await t.http
+      .post('/api/v1/documents/label')
+      .set('Authorization', `Bearer ${operadorToken}`)
+      .send({ ...payload, barcode: 'http://evil' });
+    expect(bad.status).toBe(400);
+  });
+
   it('M14: consulta y actualización de parámetros con validación y auditoría', async () => {
     const list = await t.http
       .get('/api/v1/admin/params')
