@@ -33,6 +33,7 @@ interface UsuarioTraz {
 
 interface Pedido {
   id: string;
+  empresaId?: string;
   numero: string;
   ordenPedido: string | null;
   ciudad: string | null;
@@ -89,6 +90,10 @@ function PedidosContenido() {
   const [itemsNuevos, setItemsNuevos] = useState<{ referencia: string; cantidad: string; valorUnidad: string }[]>([
     { referencia: '', cantidad: '1', valorUnidad: '' },
   ]);
+  // I26: la corrección escoge productos de la lista de códigos (con existencias)
+  const [productosEdit, setProductosEdit] = useState<
+    { id: string; codigo: string; descripcion: string; marca: string | null; precio: string | number; cantidad: number }[]
+  >([]);
 
   // Alistamiento
   const [modo, setModo] = useState<'COMPLETO' | 'INICIAL'>('COMPLETO');
@@ -173,6 +178,15 @@ function PedidosContenido() {
       })),
     );
     setEditando(true);
+    // I26: lista de códigos con existencias para escoger (como al crear).
+    // Se usa la empresa del propio pedido: al abrir por ?abrir= el estado
+    // empresaId del selector aún puede estar vacío.
+    const emp = p.empresaId ?? empresaId;
+    if (emp) {
+      api<any[]>(`/products?empresaId=${emp}&conStock=true`).then(({ status, body }) => {
+        if (status === 200) setProductosEdit(body);
+      });
+    }
   }
 
   async function uploadOcr(tipo: string, file: File): Promise<string> {
@@ -262,6 +276,21 @@ function PedidosContenido() {
       setError('El pedido debe tener al menos un producto');
       return;
     }
+    // I26: las referencias se escogen de la lista de códigos con existencias
+    // (se toleran los códigos que ya tenía el pedido aunque hoy no tengan stock)
+    const codigosOriginales = new Set(pedido.items.map((i) => i.codigo.toUpperCase()));
+    const codigosValidos = new Set(productosEdit.map((p) => p.codigo.toUpperCase()));
+    const invalida = items.find(
+      (i) =>
+        !codigosValidos.has(i.referencia.toUpperCase()) &&
+        !codigosOriginales.has(i.referencia.toUpperCase()),
+    );
+    if (invalida) {
+      setError(
+        `La referencia ${invalida.referencia} no está en la lista de productos con existencias; escógala de la lista`,
+      );
+      return;
+    }
     const exito = await accion(
       () => api(`/orders/${pedido.id}`, { method: 'PATCH', body: JSON.stringify({ items }) }),
       'Pedido corregido: vuelve a estado Abierto.',
@@ -271,6 +300,11 @@ function PedidosContenido() {
 
   const productosConPendiente = useMemo(
     () => pedido?.items.filter((i) => i.pendiente > 0) ?? [],
+    [pedido],
+  );
+  // I26: total de unidades pendientes, visible en grande durante el alistamiento
+  const totalPendientes = useMemo(
+    () => pedido?.items.reduce((acc, i) => acc + i.pendiente, 0) ?? 0,
     [pedido],
   );
 
@@ -428,6 +462,20 @@ function PedidosContenido() {
             {/* HU-029/030: panel del Operador */}
             {esOperador && pedido.estado === 'ABIERTO' && !editando && (
               <div className="mb-4 rounded bg-slate-50 p-3">
+                {/* I26: pendientes en tamaño grande para lectura rápida en piso */}
+                <div className="mb-3 flex items-center gap-4 rounded-lg border-2 border-sofia-200 bg-white px-5 py-3">
+                  <span className="text-5xl font-extrabold leading-none text-sofia-900">
+                    {totalPendientes}
+                  </span>
+                  <div>
+                    <p className="text-sm font-semibold text-sofia-800">
+                      unidades pendientes de alistamiento
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {productosConPendiente.length} referencia(s) por completar
+                    </p>
+                  </div>
+                </div>
                 <div className="mb-2 flex flex-wrap items-center gap-3">
                   <span className="text-sm font-medium">Alistamiento (escaneo):</span>
                   <label className="text-sm">
@@ -494,7 +542,7 @@ function PedidosContenido() {
                     <td>{i.marca ?? '—'}</td>
                     <td>{i.cantidad}</td>
                     <td className={i.cantidadAlistada === i.cantidad ? 'text-green-700' : ''}>{i.cantidadAlistada}</td>
-                    <td className={i.pendiente > 0 ? 'font-semibold text-amber-700' : ''}>{i.pendiente}</td>
+                    <td className={i.pendiente > 0 ? 'text-lg font-bold text-amber-700' : ''}>{i.pendiente}</td>
                     <td>${Number(i.valorUnidad).toLocaleString()}</td>
                     <td>${Number(i.valorTotal).toLocaleString()}</td>
                   </tr>
@@ -512,15 +560,55 @@ function PedidosContenido() {
                   </button>
                 ) : (
                   <>
-                    <p className="mb-2 text-sm font-medium">Edite las líneas (agregue o elimine productos):</p>
-                    {itemsNuevos.map((it, idx) => (
-                      <div key={idx} className="mb-1 flex gap-2">
-                        <input type="text" value={it.referencia} onChange={(e) => setItemsNuevos(itemsNuevos.map((x, i) => (i === idx ? { ...x, referencia: e.target.value } : x)))} className="w-48 rounded border px-2 py-1 text-sm" />
-                        <input type="number" min={1} value={it.cantidad} onChange={(e) => setItemsNuevos(itemsNuevos.map((x, i) => (i === idx ? { ...x, cantidad: e.target.value } : x)))} className="w-24 rounded border px-2 py-1 text-sm" />
-                        <input type="number" min={0} step="0.01" value={it.valorUnidad} onChange={(e) => setItemsNuevos(itemsNuevos.map((x, i) => (i === idx ? { ...x, valorUnidad: e.target.value } : x)))} className="w-32 rounded border px-2 py-1 text-sm" />
-                        <button onClick={() => setItemsNuevos(itemsNuevos.filter((_, i) => i !== idx))} className="text-red-700 hover:underline">✕</button>
-                      </div>
-                    ))}
+                    <p className="mb-2 text-sm font-medium">
+                      Edite las líneas: escoja el producto de la lista de códigos (solo con existencias), ajuste cantidades o elimine:
+                    </p>
+                    {itemsNuevos.map((it, idx) => {
+                      const encontrado = productosEdit.find(
+                        (p) => p.codigo.toLowerCase() === it.referencia.trim().toLowerCase(),
+                      );
+                      return (
+                        <div key={idx} className="mb-1 flex flex-wrap items-center gap-2">
+                          <input
+                            type="text"
+                            value={it.referencia}
+                            list="productos-ref-edit"
+                            placeholder="Código / ref."
+                            onChange={(e) => {
+                              const valor = e.target.value;
+                              setItemsNuevos(itemsNuevos.map((x, i) => {
+                                if (i !== idx) return x;
+                                const prod = productosEdit.find(
+                                  (p) => p.codigo.toLowerCase() === valor.trim().toLowerCase(),
+                                );
+                                return {
+                                  ...x,
+                                  referencia: valor,
+                                  valorUnidad: prod && !x.valorUnidad ? String(Number(prod.precio) || '') : x.valorUnidad,
+                                };
+                              }));
+                            }}
+                            className="w-48 rounded border px-2 py-1 text-sm"
+                          />
+                          {encontrado && (
+                            <span className="max-w-64 truncate text-xs text-slate-500" title={encontrado.descripcion}>
+                              {encontrado.descripcion} · disp. {encontrado.cantidad}
+                            </span>
+                          )}
+                          <input type="number" min={1} value={it.cantidad} onChange={(e) => setItemsNuevos(itemsNuevos.map((x, i) => (i === idx ? { ...x, cantidad: e.target.value } : x)))} className="w-24 rounded border px-2 py-1 text-sm" title="Cantidad" />
+                          <input type="number" min={0} step="0.01" value={it.valorUnidad} onChange={(e) => setItemsNuevos(itemsNuevos.map((x, i) => (i === idx ? { ...x, valorUnidad: e.target.value } : x)))} className="w-32 rounded border px-2 py-1 text-sm" title="Valor unitario" />
+                          <button onClick={() => setItemsNuevos(itemsNuevos.filter((_, i) => i !== idx))} className="text-red-700 hover:underline">✕</button>
+                        </div>
+                      );
+                    })}
+                    {/* I26: misma lista de códigos de la creación, solo con existencias */}
+                    <datalist id="productos-ref-edit">
+                      {productosEdit.map((p) => (
+                        <option key={p.id} value={p.codigo}>
+                          {p.descripcion} — disp. {p.cantidad}
+                        </option>
+                      ))}
+                    </datalist>
                     <button onClick={() => setItemsNuevos([...itemsNuevos, { referencia: '', cantidad: '1', valorUnidad: '' }])} className="mb-2 text-sm text-sofia-700 hover:underline">
                       + Agregar producto
                     </button>

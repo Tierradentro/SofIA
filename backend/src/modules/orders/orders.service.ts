@@ -327,15 +327,27 @@ export class OrdersService {
       item = items.find((i) => i.productId === dto.productId);
       if (!item) throw new BadRequestException('El producto seleccionado no está en el pedido');
       // HU-031/CU-002: asociar código si el producto no tiene barcode
-      const tieneBarcode = await this.dataSource
+      const registrados = await this.dataSource
         .getRepository(ProductBarcode)
-        .findOne({ where: { productId: item.productId } });
-      if (!tieneBarcode) {
+        .find({ where: { productId: item.productId } });
+      if (registrados.length === 0) {
         await this.products.assignBarcode(
           item.productId,
           { barcode: dto.codigo.trim(), origen: BarcodeOrigin.MANUAL },
           user,
         );
+      } else if (
+        // I26: una vez registrado el código, las siguientes unidades del mismo
+        // producto solo cuentan si la lectura coincide con lo registrado
+        !registrados.some(
+          (b) => b.barcode.trim().toUpperCase() === dto.codigo.trim().toUpperCase(),
+        )
+      ) {
+        throw new BadRequestException({
+          statusCode: 400,
+          code: 'CODIGO_NO_COINCIDE',
+          message: `El código leído no coincide con el código de barras registrado para ${item.codigo}; verifique la etiqueta`,
+        });
       }
     } else {
       // MODO COMPLETO: ubicar por barcode; si no, por código/OE/cruzadas
@@ -352,6 +364,20 @@ export class OrdersService {
       } else {
         const matcher = await this.buildMatcher(order.empresaId);
         const { producto } = matcher.match(dto.codigo);
+        if (producto) {
+          // I26: si el producto ya tiene código(s) de barras registrado(s),
+          // solo esos códigos descuentan — cualquier otro se rechaza
+          const registrados = await this.dataSource
+            .getRepository(ProductBarcode)
+            .findOne({ where: { productId: producto.id } });
+          if (registrados) {
+            throw new BadRequestException({
+              statusCode: 400,
+              code: 'CODIGO_NO_COINCIDE',
+              message: `El producto ${producto.codigo} ya tiene código de barras registrado; lea el código de la etiqueta`,
+            });
+          }
+        }
         if (!producto) {
           // HU-030: código no asociado → seleccionar el producto correspondiente
           throw new BadRequestException({

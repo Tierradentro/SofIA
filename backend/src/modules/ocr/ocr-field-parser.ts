@@ -107,10 +107,34 @@ const MESES_ES: Record<string, number> = {
  */
 const PATRONES_FOLIO: RegExp[] = [
   /factura\s+electr[oó]nica(?:\s+de\s+venta)?[^A-Z0-9]{0,10}(?:n[°.o:]?\s*)?([A-Z]{1,6}[- ]?\d{3,})/i,
+  // I26: prefijo y número separados por muchos espacios (layout de columnas):
+  // "FACTURA ELECTRÓNICA FE                                  9832"
+  /factura\s+electr[oó]nica\b[^0-9]{0,40}?([A-Z]{1,6}\s{2,}\d{3,})\b/i,
   /factura\s+de\s+venta[^A-Z0-9]{0,10}(?:n[°.o:]?\s*)?([A-Z]{1,6}[- ]?\d{3,})/i,
   /factura\s*(?:n(?:ro|um|úmero)?[°#.:]*)?\s*[:#-]?\s*([A-Z0-9][A-Z0-9-]{2,24})/i,
   /\b(?:n[°o]|no\.?|#)\s*([A-Z]{1,6}[- ]?\d{3,})\b/i,
+  // I26 (ICV): el folio va en línea propia: "FECV              No. 3440"
+  /\b([A-Z]{2,6}\s{1,20}(?:NO\.?|N[°O])\s*\.?\s*\d{3,6})\b/i,
 ];
+
+/** I26: normaliza el folio capturado (quita el rótulo "No." interno y espacios). */
+function normalizarFolio(bruto: string): string {
+  return bruto
+    .replace(/(?:NO\.?|N[°O])\s*\.?/i, '')
+    .replace(/\s+/g, '')
+    .toUpperCase();
+}
+
+/** Referencia de producto válida (I26: admite '/' — p. ej. "10086/10094"). */
+const REF_RE = /^[A-Z0-9][A-Z0-9\-_./]{2,24}$/i;
+
+/** Rótulos de cabecera/tabla que NUNCA son referencias de producto. */
+const ROTULOS_RE =
+  /^(NIT|CLIENTE|DIRECCION|TELEFONO|CIUDAD|FECHA|VENDEDOR|FORMA|ITEM|REFERENCIA|SUBTOTAL|TOTAL|FACTURA|ACTIVIDAD|NO|CODIGO|DESCRIPCION|CANTIDAD|VALOR|VENCE|RESPONSABLE|MEDIOS|PAGO)$/i;
+
+function capturarRef(token: string): string | null {
+  return REF_RE.test(token) && !ROTULOS_RE.test(token) ? token : null;
+}
 
 function empty(): OcrExtractedData {
   return {
@@ -157,12 +181,84 @@ export class OcrFieldParser {
       .map((l) => l.trim())
       .filter((l) => l.length > 0);
 
+    let previa: string | null = null;
+    let pendienteFilaDir = false;
+    let ultimoItem: OcrItem | null = null;
     for (const linea of lineas) {
+      // I26 (ICV): fila de rótulos "DIRECCIÓN  CIUDAD  TELÉFONO" con los
+      // valores en la línea siguiente (layout de dos líneas)
+      if (pendienteFilaDir) {
+        pendienteFilaDir = false;
+        this.aplicarFilaDireccion(linea, data, esquema.cabecera);
+      } else if (/^DIRECCI[OÓ]N\s{2,}CIUDAD\s{2,}TEL[EÉ]FONO/i.test(linea)) {
+        pendienteFilaDir = true;
+        previa = linea;
+        continue; // la fila de rótulos no es dato
+      }
+      // I26 (IRE): "TELEFONO" queda solo como rótulo; el número está en la
+      // primera columna de la línea anterior
+      if (
+        /^TELEFONO$/i.test(linea) &&
+        previa &&
+        !data.telefono &&
+        esquema.cabecera.includes('telefono')
+      ) {
+        const cols = previa.split(/\s{2,}/).map((c) => c.trim()).filter(Boolean);
+        const m = /^([0-9][0-9+()\- ]{6,18})/.exec(cols[0] ?? '');
+        if (m) data.telefono = m[1].trim();
+      }
       this.parseCabecera(linea, data, esquema.cabecera);
       const item = this.parseLineaItem(linea, conValor);
-      if (item) data.items.push(item);
+      if (item) {
+        data.items.push(item);
+        ultimoItem = item;
+      } else if (ultimoItem && this.esContinuacionDescripcion(linea)) {
+        // I26 (ICV): la descripción puede continuar en la línea siguiente
+        ultimoItem.descripcion = ultimoItem.descripcion
+          ? `${ultimoItem.descripcion} ${linea}`
+          : linea;
+      } else {
+        ultimoItem = null;
+      }
+      previa = linea;
     }
     return data;
+  }
+
+  /** I26: valores bajo los rótulos DIRECCIÓN / CIUDAD / TELÉFONO. */
+  private aplicarFilaDireccion(
+    linea: string,
+    data: OcrExtractedData,
+    cabecera: string[],
+  ) {
+    const cols = linea.split(/\s{2,}/).map((c) => c.trim()).filter(Boolean);
+    if (!cols.length) return;
+    if (!data.direccion && cabecera.includes('direccion')) {
+      let dir = cols[0];
+      // La ciudad puede venir pegada a la dirección ("…A 44Sincelejo")
+      const pegada = /^(.*\d)\s*([A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,})$/.exec(dir);
+      if (pegada) dir = pegada[1];
+      if (dir.trim()) data.direccion = dir.trim();
+    }
+    if (!data.telefono && cabecera.includes('telefono')) {
+      const tel = cols.find((c) => {
+        const digitos = c.replace(/\D/g, '');
+        return digitos.length >= 7 && digitos.length <= 12;
+      });
+      if (tel) data.telefono = tel.trim();
+    }
+  }
+
+  /**
+   * I26: ¿la línea es continuación de la descripción del ítem anterior?
+   * (solo palabras, sin valores monetarios ni rótulos conocidos)
+   */
+  private esContinuacionDescripcion(l: string): boolean {
+    if (!/^[A-ZÁÉÍÓÚÑ(]/i.test(l)) return false;
+    if (/\d{1,3}[.,]\d{3}/.test(l)) return false; // valores de miles
+    if (/\d{3,}/.test(l)) return false; // CUFE, teléfonos, cuentas
+    if (l.length > 70) return false;
+    return !/VALOR EN LETRAS|SUBTOTAL|TOTAL|DESCUENTO|RETE|IVA\b|CLIENTE|NIT\b|DIRECCION|CIUDAD|TELEFONO|FECHA|VENDEDOR|FORMA DE PAGO|FAVOR|DAVIVIENDA|RECIBIDO|FIRMA|CUFE|PESOS|CHEQUE|FABRICANTE|REPRESENTACI|ITEM|REFERENCIA|DESCRIPCI|VENCE|MEDIOS DE PAGO/i.test(l);
   }
 
   // ---------------------------------------------------------------
@@ -179,8 +275,13 @@ export class OcrFieldParser {
     if (!data.numeroFactura) {
       for (const patron of PATRONES_FOLIO) {
         const m = patron.exec(l);
-        if (m && !/^\d{1,2}[/-]\d{1,2}[/-]/.test(m[1]) && !/^(FACT|INVOICE)$/i.test(m[1])) {
-          data.numeroFactura = m[1].replace(/\s+/g, '').toUpperCase();
+        if (
+          m &&
+          /\d/.test(m[1]) && // un folio siempre tiene dígitos (evita "FECHA", "ELECTR")
+          !/^\d{1,2}[/-]\d{1,2}[/-]/.test(m[1]) &&
+          !/^(FACT|INVOICE|ELECTR.*|VENTA|DE)$/i.test(m[1])
+        ) {
+          data.numeroFactura = normalizarFolio(m[1]);
           break;
         }
       }
@@ -204,13 +305,22 @@ export class OcrFieldParser {
       const lat = /(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})/.exec(l);
       const textoMes =
         /(\d{1,2})\s*[-/]\s*([a-záéíóú]{3,5})\.?\s*[-/]\s*(\d{2,4})/i.exec(l);
-      if (iso) {
+      // I26: la fecha ISO también exige contexto — "Vence 2027-07-13" del
+      // encabezado DIAN no es la fecha de la factura
+      if (iso && /fecha|date|generaci|expedici|emisi/i.test(l)) {
         data.fecha = toIso(iso[3], iso[2], iso[1]);
       } else if (textoMes && /fecha|date|factura/i.test(l)) {
         const mes = MESES_ES[textoMes[2].toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')];
         if (mes) data.fecha = toIso(textoMes[1], String(mes), textoMes[3]);
       } else if (lat && /fecha|date/i.test(l)) {
         data.fecha = toIso(lat[1], lat[2], lat[3]);
+      } else {
+        // I26 (ICV): los valores van bajo los rótulos — una línea que
+        // ARRANCA con una fecha es la fila de valores ("20/08/2026  19/09/2026 …")
+        const iniIso = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:\s|$)/.exec(l);
+        const iniLat = /^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})(?:\s|$)/.exec(l);
+        if (iniIso) data.fecha = toIso(iniIso[3], iniIso[2], iniIso[1]);
+        else if (iniLat) data.fecha = toIso(iniLat[1], iniLat[2], iniLat[3]);
       }
     }
 
@@ -233,7 +343,10 @@ export class OcrFieldParser {
     if (!data.cliente && aplica('cliente')) {
       const v =
         campo(new RegExp(`(?:^|\\s)(?:cliente|customer|destinatario|consignado)\\s*[:.-]\\s*(.+?)\\s*(?=${CORTE}\\s|$)`, 'i')) ??
-        campo(/(?:^|\s)(?:cliente|customer|destinatario|consignado)\s{2,}(\S(?:.+?))\s*(?=FECHA|VENDEDOR|FORMA|$)/i);
+        campo(/(?:^|\s)(?:cliente|customer|destinatario|consignado)\s{2,}(\S(?:.+?))\s*(?=FECHA|VENDEDOR|FORMA|$)/i) ??
+        // I26 (ICV): "CLIENTE SOMOS CHEVROLET… POR CONCEPTO DE" — un solo
+        // espacio tras el rótulo y el texto de otra columna pegado al final
+        campo(/^\s*(?:cliente|customer)\s+(\S(?:.*?))\s*(?:\s{2,}|\bPOR CONCEPTO\b(?:\s*DE)?|\bFACTURA\b|$)/i);
       if (v) data.cliente = v;
     }
     // QA Func. 2.5: NIT/identificación y teléfono (ventas)
@@ -263,7 +376,8 @@ export class OcrFieldParser {
     // monetario de la línea
     if ((data.total === null || data.total === undefined) && aplica('total')) {
       const linea = /total\s*(?:factura|a\s*pagar)?\s*[:$]?\s*(.*)/i.exec(l);
-      if (linea && !/subtotal|rete|iva\b/i.test(l.replace(/total factura/i, ''))) {
+      // I26: "TOTAL MENOS RETENCIONES" sí es total; "RETEFUENTE/RETEIVA/RETEICA" no
+      if (linea && !/subtotal|\brete(?:fuente|iva|ica)\b|iva\b/i.test(l.replace(/total factura/i, ''))) {
         const moneda = [...linea[1].matchAll(/\$?\s*(\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?|\d+[.,]\d{2})/g)];
         if (moneda.length) {
           const ultimo = moneda[moneda.length - 1][1];
@@ -290,16 +404,25 @@ export class OcrFieldParser {
       // y sin separador entre referencia y descripción
       let ref = partes[0];
       let resto = partes.slice(1);
-      if (/^\d{1,3}$/.test(ref) && resto.length >= 2 && resto[0].includes(' ')) {
-        const [ref2, ...desc] = resto[0].split(/\s+/);
-        if (/^[A-Z0-9][A-Z0-9-_.]{2,24}$/i.test(ref2)) {
-          ref = ref2;
-          resto = [desc.join(' '), ...resto.slice(1)];
+      if (/^\d{1,3}$/.test(ref) && resto.length >= 1) {
+        if (resto[0].includes(' ')) {
+          const [ref2, ...desc] = resto[0].split(/\s+/);
+          const ok = capturarRef(ref2);
+          if (ok) {
+            ref = ok;
+            resto = [desc.join(' '), ...resto.slice(1)];
+          }
+        } else if (resto.length >= 2) {
+          // I26: layout de columnas anchas — referencia y descripción quedan
+          // en columnas separadas ("1   N1063   AXIAL R/L …   3,00  24.000  72.000")
+          const ok = capturarRef(resto[0]);
+          if (ok) {
+            ref = ok;
+            resto = resto.slice(1);
+          }
         }
       }
-      if (!/^[A-Z0-9][A-Z0-9-_.]{2,24}$/i.test(ref)) return null;
-      // I22: rótulos de cabecera nunca son referencias de producto
-      if (/^(NIT|CLIENTE|DIRECCION|TELEFONO|CIUDAD|FECHA|VENDEDOR|FORMA|ITEM|REFERENCIA|SUBTOTAL|TOTAL|FACTURA)$/i.test(ref)) return null;
+      if (!capturarRef(ref)) return null;
       // I22: en documentos de venta las columnas son …cantidad, valorUnitario,
       // valorTotal. La cantidad puede tener decimales ("4,00") y el patrón
       // monetario se la traga; por eso se extraen los números del FINAL de la
@@ -310,6 +433,34 @@ export class OcrFieldParser {
       };
       let textoResto = resto.join(' ');
       if (conValor) {
+        // I26 (ICV): layout con columna de unidad — "… 3  Und.  68.000 19%  10.982  204.000".
+        // La cantidad va ANTES de la unidad; detrás van unitario, IVA% y total.
+        const idxUnidad = resto.findIndex((p) =>
+          UNIDADES.includes(p.replace(/\./g, '').toUpperCase()),
+        );
+        if (idxUnidad > 0) {
+          const antes = resto.slice(0, idxUnidad).join(' ');
+          const mCant = /^(.*?)\s+(\d{1,6}(?:[.,]\d{1,2})?)$/.exec(antes);
+          if (mCant) {
+            const despues = resto.slice(idxUnidad + 1).join(' ');
+            const nums = [
+              ...despues.matchAll(
+                /(\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?|\d+[.,]\d{1,2}|\d+)/g,
+              ),
+            ].map((m) => Number(m[1].replace(/\./g, '').replace(',', '.')));
+            const cantidad = Math.round(Number(mCant[2].replace(',', '.')));
+            if (cantidad > 0) {
+              return {
+                referencia: ref.toUpperCase(),
+                descripcion: mCant[1].trim() || null,
+                cantidad,
+                unidad: 'UND',
+                valorUnitario: nums.length >= 2 ? nums[0] : null,
+                valorTotal: nums.length ? nums[nums.length - 1] : null,
+              } as OcrItem;
+            }
+          }
+        }
         const extraidos = this.extraerColaNumerica(textoResto);
         if (extraidos) {
           return {
@@ -349,7 +500,7 @@ export class OcrFieldParser {
 
     // Línea plana: REF DESCRIPCION CANTIDAD [UNIDAD]
     const m =
-      /^([A-Z0-9][A-Z0-9-_.]{2,24})\s+(.+?)\s+(\d{1,6})(?:\s+([A-Z]{2,7}))?$/i.exec(linea);
+      /^([A-Z0-9][A-Z0-9\-_./]{2,24})\s+(.+?)\s+(\d{1,6})(?:\s+([A-Z]{2,7}))?$/i.exec(linea);
     if (!m) return null;
     const unidad = m[4] && UNIDADES.includes(m[4].toUpperCase()) ? m[4].toUpperCase() : m[4] ? null : 'UND';
     if (m[4] && unidad === null) {
@@ -357,8 +508,8 @@ export class OcrFieldParser {
       return null;
     }
     const ref = m[1].toUpperCase();
-    // Evitar falsos positivos de cabeceras
-    if (/^(FACTURA|INVOICE|FECHA|DATE|GUIA|TOTAL)$/i.test(ref)) return null;
+    // Evitar falsos positivos de cabeceras (I26: lista ampliada de rótulos)
+    if (ROTULOS_RE.test(ref) || /^(INVOICE|DATE|GUIA)$/i.test(ref)) return null;
     return {
       referencia: ref,
       descripcion: m[2].trim(),

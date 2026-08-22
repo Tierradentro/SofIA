@@ -326,6 +326,80 @@ describe('Pedidos y alistamiento (e2e)', () => {
       .send({});
   });
 
+  it('I26: una vez registrado el código del producto, las siguientes lecturas se validan contra él', async () => {
+    // Producto SIN barcode: la primera lectura (modo INICIAL) lo registra
+    await crearProducto('ORD-005', 5);
+    const pedido = await crearPedido([{ referencia: 'ORD-005', cantidad: 3 }]);
+    const id = pedido.body.id;
+    const item = pedido.body.items[0];
+
+    const primera = await t.http
+      .post(`/api/v1/orders/${id}/scan`)
+      .set('Authorization', `Bearer ${operadorToken}`)
+      .send({ modo: 'INICIAL', productId: item.productId, codigo: '7505005' });
+    expect(primera.status).toBe(201); // registra 7505005 y cuenta 1
+
+    // Segunda unidad con OTRO código → se rechaza, no descuenta
+    const otra = await t.http
+      .post(`/api/v1/orders/${id}/scan`)
+      .set('Authorization', `Bearer ${operadorToken}`)
+      .send({ modo: 'INICIAL', productId: item.productId, codigo: '9999888' });
+    expect(otra.status).toBe(400);
+    expect(otra.body.code).toBe('CODIGO_NO_COINCIDE');
+    expect(otra.body.message).toContain('no coincide con el código de barras registrado');
+    const det = await t.http
+      .get(`/api/v1/orders/${id}`)
+      .set('Authorization', `Bearer ${operadorToken}`);
+    expect(det.body.items[0].cantidadAlistada).toBe(1); // no descontó
+
+    // Segunda unidad con el código registrado → cuenta
+    const buena = await t.http
+      .post(`/api/v1/orders/${id}/scan`)
+      .set('Authorization', `Bearer ${operadorToken}`)
+      .send({ modo: 'INICIAL', productId: item.productId, codigo: '7505005' });
+    expect(buena.status).toBe(201);
+    expect(buena.body.items[0].cantidadAlistada).toBe(2);
+
+    // Modo COMPLETO con el código INTERNO del producto (ya tiene barcode) → rechazado
+    const interno = await t.http
+      .post(`/api/v1/orders/${id}/scan`)
+      .set('Authorization', `Bearer ${operadorToken}`)
+      .send({ modo: 'COMPLETO', codigo: 'ORD-005' });
+    expect(interno.status).toBe(400);
+    expect(interno.body.code).toBe('CODIGO_NO_COINCIDE');
+
+    // Modo COMPLETO con el barcode registrado → cuenta (completa la línea)
+    const completo = await t.http
+      .post(`/api/v1/orders/${id}/scan`)
+      .set('Authorization', `Bearer ${operadorToken}`)
+      .send({ modo: 'COMPLETO', codigo: '7505005' });
+    expect(completo.status).toBe(201);
+    expect(completo.body.items[0].cantidadAlistada).toBe(3);
+
+    // Producto con barcode de fábrica: el modo INICIAL exige ese mismo código
+    const pedido2 = await crearPedido([{ referencia: 'ORD-001', cantidad: 1 }]); // barcode 7501001
+    const item2 = pedido2.body.items[0];
+    const errado = await t.http
+      .post(`/api/v1/orders/${pedido2.body.id}/scan`)
+      .set('Authorization', `Bearer ${operadorToken}`)
+      .send({ modo: 'INICIAL', productId: item2.productId, codigo: '1234567' });
+    expect(errado.status).toBe(400);
+    expect(errado.body.code).toBe('CODIGO_NO_COINCIDE');
+    const correcto = await t.http
+      .post(`/api/v1/orders/${pedido2.body.id}/scan`)
+      .set('Authorization', `Bearer ${operadorToken}`)
+      .send({ modo: 'INICIAL', productId: item2.productId, codigo: '7501001' });
+    expect(correcto.status).toBe(201);
+
+    // Limpieza
+    for (const pid of [id, pedido2.body.id]) {
+      await t.http
+        .post(`/api/v1/orders/${pid}/cancel`)
+        .set('Authorization', `Bearer ${generadorToken}`)
+        .send({});
+    }
+  });
+
   it('Corrección: reportar → Pendiente_Corrección → corregir (libera bloqueos) → Abierto → alistar', async () => {
     const pedido = await crearPedido([
       { referencia: 'ORD-001', cantidad: 2 },

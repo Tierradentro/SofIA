@@ -49,6 +49,8 @@ interface ProductoLite {
   descripcion: string;
   marca?: string | null;
   precio: string | number;
+  /** I26: existencias disponibles (la lista llega filtrada con conStock=true) */
+  cantidad?: string | number;
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
@@ -501,9 +503,17 @@ export function NuevoPedido({
             </div>
             <datalist id="productos-ref">
               {productos.map((p) => (
-                <option key={p.id} value={p.codigo}>{p.descripcion}</option>
+                <option key={p.id} value={p.codigo}>
+                  {p.descripcion}{p.cantidad !== undefined ? ` — disp. ${p.cantidad}` : ''}
+                </option>
               ))}
             </datalist>
+            {/* I26: la lista solo trae productos con existencias */}
+            {productos.length === 0 && (
+              <p className="mt-2 text-xs text-amber-700">
+                No hay productos con existencias en esta empresa; registre ingresos primero.
+              </p>
+            )}
             <button type="button" onClick={() => setItems([...items, { ...ITEM_VACIO }])}
               className="mt-2 text-sm text-sofia-700 hover:underline">
               + Agregar producto

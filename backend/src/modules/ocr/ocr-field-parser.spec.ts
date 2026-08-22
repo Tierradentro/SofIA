@@ -147,6 +147,80 @@ describe('OcrFieldParser', () => {
     });
   });
 
+  it('I26: factura IRE con 16 ítems en columnas anchas (FE9832)', () => {
+    const texto = readFileSync(
+      join(__dirname, '../../../test/fixtures/factura-venta-fe9832.txt'),
+      'utf8',
+    );
+    const r = parser.parse(texto, DocumentType.FACTURA_VENTA);
+    expect(r.numeroFactura).toBe('FE9832');
+    expect(r.fecha).toBe('2026-06-24');
+    expect(r.cliente).toBe('EUROREPUESTOS DUITAMA');
+    expect(r.direccion).toBe('CR 19 12A 15');
+    expect(r.telefono).toBe('3115966545');
+    expect(r.total).toBe(1882402);
+    // El reporte del usuario: IRE traía el cliente pero NINGÚN producto
+    expect(r.items).toHaveLength(16);
+    expect(r.items[0]).toEqual({
+      referencia: 'N1063',
+      descripcion: 'AXIAL R/L GOLF4/JETTA/NEW BEETLE/AUDI A3 NAKATA',
+      cantidad: 3,
+      unidad: 'UND',
+      valorUnitario: 24000,
+      valorTotal: 72000,
+    });
+    // Referencias con "/" y números dentro de la descripción no rompen la cola
+    const sachs = r.items.find((i) => i.referencia === '3000954268/6561');
+    expect(sachs).toMatchObject({ cantidad: 1, valorUnitario: 345000, valorTotal: 345000 });
+    const frena = r.items.find((i) => i.referencia === '861440');
+    expect(frena).toMatchObject({ cantidad: 1, valorTotal: 80000 });
+  });
+
+  it('I26: factura IRE con referencia compuesta (FEIR10043: "10086/10094")', () => {
+    const texto = readFileSync(
+      join(__dirname, '../../../test/fixtures/factura-venta-feir10043.txt'),
+      'utf8',
+    );
+    const r = parser.parse(texto, DocumentType.FACTURA_VENTA);
+    expect(r.numeroFactura).toBe('FEIR10043');
+    expect(r.cliente).toBe('VOLKSWAGEN SAGER SAS');
+    expect(r.fecha).toBe('2026-08-21');
+    expect(r.total).toBe(487900);
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0]).toEqual({
+      referencia: '10086/10094',
+      descripcion: 'BOMBA ACEITE CON TUBO GOL 1.6 1.8 GOLF3 VENTO SCHADEK',
+      cantidad: 4,
+      unidad: 'UND',
+      valorUnitario: 125000,
+      valorTotal: 500000,
+    });
+  });
+
+  it('I26: factura ICV (FECV3440) — layout distinto ya no queda truncado', () => {
+    const texto = readFileSync(
+      join(__dirname, '../../../test/fixtures/factura-venta-fecv3440.txt'),
+      'utf8',
+    );
+    const r = parser.parse(texto, DocumentType.FACTURA_VENTA);
+    expect(r.numeroFactura).toBe('FECV3440');
+    expect(r.fecha).toBe('2026-08-20'); // valores bajo los rótulos FECHA FACTURA
+    expect(r.cliente).toBe('SOMOS CHEVROLET Y HYUNDAI SANDRA DEL CARMEN');
+    expect(r.direccion).toBe('AV LUIS CARLOS GALAN 22 A 44'); // ciudad pegada se separa
+    expect(r.telefono).toBe('2748741');
+    expect(r.total).toBe(206346); // TOTAL MENOS RETENCIONES
+    // Ítem con columna de unidad, IVA% y descripción en dos líneas
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0]).toEqual({
+      referencia: 'RK9310',
+      descripcion: 'KIT REPARTICION CORSA 1.4 8 VALVULAS RANALLE',
+      cantidad: 3,
+      unidad: 'UND',
+      valorUnitario: 68000,
+      valorTotal: 204000,
+    });
+  });
+
   it('I22: cantidad con decimales ("4,00") y formato colombiano de miles', () => {
     const texto = [
       'FACTURA DE VENTA No ABC-123',

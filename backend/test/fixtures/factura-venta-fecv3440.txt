@@ -1,0 +1,49 @@
+                                                                                                   Factura Electrónica De Venta No
+                                                                                             .               FECV              No. 3440
+                                                                                                    Documento Oficial de Autorización de Numeración
+                                                                                                 Facturación Electrónica No. 18764105865627 que habilita
+                                                                                                   desde FECV 3127 hasta FECV 5000. Vence 2027-02-13
+                                                                                                            Responsable de IVA- No somos Agentes de
+ IMPORTADORA CASA VOLSKWAGEN SAS                                                                                        Retención de IVA
+
+ Nit          830135446 2                                                                                       No somos Grandes Contribuyentes
+                                                                                                            Actividad Económica ICA 5030 4.00 X 1000
+
+  CLIENTE SOMOS CHEVROLET Y HYUNDAI SANDRA DEL CARMEN POR CONCEPTO DE
+  NIT       50922464                                  FACTURA DE VENTA SEGÚN COTIZACIÓN No 1248
+         DIRECCIÓN          CIUDAD     TELÉFONO
+AV LUIS CARLOS GALAN 22 A 44Sincelejo   2748741
+               FECHA FACTURA                                 FECHA VENCIMIENTO                                    VENDEDOR
+                    20/08/2026                                   19/09/2026                            HERNAN DARIO RESTREPO CARVAJAL
+ Item    Código                          Descripción                                   Cantidad U Medida Valor Unitario IVA                       Valor IVA            Total
+ 1    RK9310                  KIT REPARTICION CORSA 1.4 8                                 3       Und.          68.000 19%                           10.982               204.000
+                              VALVULAS RANALLE
+
+
+
+
+ Valor en Letras
+
+ DOSCIENTOS SEIS MIL TRESCIENTOS CUARENTA Y SEIS PESOS M/CTE                                                       SUBTOTAL                                               204.000
+                                                                                                                   DESCUENTO                                               30.600
+                                                                                                                   IVA                                                     32.946
+     FAVOR GIRAR CHEQUE CRUZADO A NOMBRE DE IMPORTADORA CASA                                                       RETEFUENTE                                                   0
+     VOLKSWAGEN S.A.S. EN CASO DE TRANSFERENCIA O CONSIGNACION                                                     RETEIVA                                                      0
+                                                                                                                   RETEICA                                                      0
+      DAVIVIENDA CTA CTE No. 000969998343
+                                                                                                                   TOTAL MENOS RETENCIONES                                206.346
+ .
+
+
+
+
+                                                              Representación Gráfica de la Factura de Venta Electrónica
+                                                 Fecha y Hora de Generación: 20/08/2026 12:15:38
+                                                 Medios de Pago: Acuerdo mutuo
+
+
+                                          km 2,5 via Cota Parcelas Portos Sabana 80 bdga 55 Teléfono 601 0242407
+                                                         Correo Electrónico gerencia@importrepuestos.com.co
+      Fabricante y Proveedor Tecnológico: World Office Colombia SAS NIT 900534356-3 Software: World Office (wo_2)
+      CUFE: b47f1fd8194c7ac7cb206e16fefee8b8b6d48cb1f8ce041b77c007b73cacef0eac6db7185132fa183c7dc2fe5d026357 --Fecha y Hora de Expedición : 20/08/2026 4:45:22 p. m.
+

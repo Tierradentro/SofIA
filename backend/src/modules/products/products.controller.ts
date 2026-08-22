@@ -36,10 +36,13 @@ export class ProductsController {
     return this.products.create(dto, user);
   }
 
-  /** Listado por empresa (dashboard de existencias). */
+  /** Listado por empresa (dashboard de existencias). I26: conStock=true limita a productos con existencias (creación/edición de pedidos). */
   @Get()
-  findByEmpresa(@Query('empresaId') empresaId: string) {
-    return this.products.findByEmpresa(empresaId);
+  findByEmpresa(
+    @Query('empresaId') empresaId: string,
+    @Query('conStock') conStock?: string,
+  ) {
+    return this.products.findByEmpresa(empresaId, true, conStock === 'true');
   }
 
   /** HU-013: consulta por código de barras, código, OE o referencia cruzada. */

@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, MoreThan, Repository } from 'typeorm';
 import { Product } from './entities/product.entity';
 import { ProductBarcode } from './entities/product-barcode.entity';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -262,10 +262,12 @@ export class ProductsService {
   }
 
   /** Listado por empresa (dashboard: existencias por empresa). */
-  async findByEmpresa(empresaId: string, soloActivos = true) {
+  async findByEmpresa(empresaId: string, soloActivos = true, conStock = false) {
     await this.assertEmpresa(empresaId);
     const where: any = { empresaId };
     if (soloActivos) where.estado = ProductStatus.ACTIVO;
+    // I26: crear/modificar pedidos solo ofrece productos con existencias
+    if (conStock) where.cantidad = MoreThan(0);
     // Sin límite (I21): el formulario de pedido consume este listado y con
     // take:500 los productos por encima de 500 no aparecían al buscarlos.
     const items = await this.products.find({ where, order: { codigo: 'ASC' } });

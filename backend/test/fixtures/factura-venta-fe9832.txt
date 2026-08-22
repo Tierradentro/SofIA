@@ -1,0 +1,59 @@
+                                                              FACTURA ELECTRÓNICA FE                                            9832
+                                                                       DE VENTA No
+                                                Documento Oficial de Autorización de Numeración Facturación Electrónica No. 18764104512733
+                                                que habilita desde FE 9099 hasta FE 10000. Vence 2027-07-13
+
+                                                 NIT 900.349.362-5 Resposables de IVA. Act Econ. 4530. Tarifa 5*1000. Esta factura se
+                                                   asimila en todos sus efectos a una letra de cambio. (Art 774 del c.c.) Régimen de
+                                                                             Tributación Simple Código 47
+                                                                         Fecha y Hora de Generación: 24/06/2026 16:17:39
+
+
+CLIENTE            EUROREPUESTOS DUITAMA
+                                                                          FECHA FACTURA                                      24-jun-26
+NIT                23809515
+                                                                          FECHA VENCIMIENTO                                  24-jul-26
+DIRECCION          CR 19 12A 15
+                   3115966545                                             VENDEDOR                               LUIS ALBERTO OLIVEROS
+TELEFONO
+CIUDAD             Duitama                                                FORMA DE PAGO                          Credito 30 DIAS
+
+Item         Referencia                                    Descripción                                              Cant     Valor Unitario     Total
+ 1        N1063               AXIAL R/L GOLF4/JETTA/NEW BEETLE/AUDI A3 NAKATA                                         3,00          24.000       72.000
+ 2        N1082               BARRA DIRECCION HIDRAULICA GOL NAKATA                                                   2,00          55.000      110.000
+ 3        CXC01125            BASE AMORTIGUADOR DEL GOL 2002 COFAP                                                    2,00          35.000       70.000
+ 4        CXC01119            BASE AMORTIGUADOR DEL GOL 98 GOLF3 COFAP                                                4,00          32.000      128.000
+ 5        016036              BASE CONTROL BARRA CAMBIOS GOL 2005 BROKITS BRASIL                                      2,00          25.000       50.000
+ 6        016011              BASE CONTROL BARRA CAMBIOS GOL 98 BROKITS BRASIL                                        1,00          24.000       24.000
+ 7        861440              CABLE FRENO MANO GOL 1.6 1.8 98 FANIA BRASIL                                            1,00          80.000       80.000
+ 8        CVMV2502            INSTALACION ALTA FOX POLO SEDAN 2002 MAGNETI                                            2,00          69.000      138.000
+ 9        CVMV2602            INSTALACION ALTA GOLF3 VENTO 2.0 MOD 98 MAGNETI                                         4,00          99.000      396.000
+ 10       3257115511      KIT CONTROL CAMBIOS GOL (41181) 98-05 AUTOBRAS BRASIL                                       2,00         25.000        50.000
+ 11       3000954268/6561 KIT EMBRAGUE GOL 1.8 210 MM BRASIL SACHS                                                    1,00        345.000       345.000
+ 12       RCPT00111       PASTILLAS FRENO LARGA VENTILADO GOL TRW                                                     2,00          48.000       96.000
+ 13       MM210Y          PILA BOMBA GASOLINA GOL BRASIL                                                              1,00          78.000       78.000
+ 14       N1014               ROTULA IZQ 17MM HIDRAULICA GOL NAKATA                                                   2,00          23.000       46.000
+ 15       NBJ1011DP           TIJERA DER NVO GOL C/BUJES C/ROTULA NAKATA                                              1,00          89.000       89.000
+ 16       NBJ1011EP           TIJERA IZQ NVO GOL C/BUJES C/ROTULA NAKATA                                              1,00          89.000       89.000
+
+
+
+
+Valor en Letras                                                                         SUBTOTAL                                               1.861.000
+UN MILLON OCHOCIENTOS OCHENTA Y DOS MIL CUATROCIENTOS DOS                               DESCUENTO                                                279.150
+PESOS M/CTE                                                                             IVA                                                      300.552
+FAVOR GIRAR CHEQUE CRUZADO A NOMBRE DE IMPORT REPUESTOS EL                              RETEFUENTE                                                     0
+ESCARABAJO SAS. EN CASO DE TRANSFERENCIA O CONSIGNACION                                 RETEIVA                                                        0
+       DAVIVIENDA CTA CTE No. 000969998277 - AV VILLAS CTA CTE No. 370-00288-3          RETEICA                                                        0
+                                                                                        TOTAL FACTURA                                          1.882.402
+                                                                                        TOTAL ITEM                                        16
+
+                   Recibido Por_____________________                                                Firma Responsable________________
+
+
+
+                                    CC PORTO SABANA 80 BG 55 Teléfono 601 0242407
+                                                      Cel 3162280287 Correo Electrónico:
+                   facturacion@importrepuestos.com.co/pedidos@importrepuestos.com.co                           Cota-Cundinamarca
+ Documento de Contingencia
+

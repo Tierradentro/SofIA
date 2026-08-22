@@ -44,7 +44,8 @@ export default function NuevoPedidoPage() {
 
   useEffect(() => {
     if (!empresaId) return;
-    api<any[]>(`/products?empresaId=${empresaId}`).then(({ status, body }) => {
+    // I26: el pedido solo ofrece productos con existencias
+    api<any[]>(`/products?empresaId=${empresaId}&conStock=true`).then(({ status, body }) => {
       if (status === 200) setProductos(body);
     });
   }, [empresaId]);
