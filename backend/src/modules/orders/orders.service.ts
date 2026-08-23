@@ -25,6 +25,8 @@ import { ProductsService } from '../products/products.service';
 import { OcrDocument } from '../ocr/entities/ocr-document.entity';
 import { ClientAddress } from '../clients/entities/client-address.entity';
 import { Client } from '../clients/entities/client.entity';
+import { Comercial } from '../comerciales/entities/comercial.entity';
+import { Company } from '../companies/entities/company.entity';
 import { DocumentType } from '../../common/enums/document-type.enum';
 import { MovementsService } from '../movements/movements.service';
 import { MovementType } from '../../common/enums/movement-type.enum';
@@ -84,6 +86,10 @@ export class OrdersService {
     via?: 'MANUAL' | 'OCR' | 'EXCEL' | 'API',
   ) {
     const comercialId = this.resolveComercial(dto, user);
+    // I29: validar que empresa, cliente y comercial existan — un UUID
+    // inventado (típico en integraciones por API) debe responder
+    // "no encontrado" con el recurso exacto, no una violación de FK.
+    await this.validarCatalogosPedido(dto, comercialId);
     // H-7: procedencia del pedido (spec §7); por defecto OCR si trae
     // documento OCR, si no MANUAL
     const createdVia = via ?? (dto.ocrDocumentId ? 'OCR' : 'MANUAL');
@@ -253,6 +259,8 @@ export class OrdersService {
       throw new BadRequestException('El pedido requiere al menos un producto');
     }
     const comercialId = this.resolveComercial(dto, user);
+    // I29: misma validación de catálogos que en create()
+    await this.validarCatalogosPedido(dto, comercialId);
     const actuales = await this.items.find({ where: { orderId: id } });
     const resueltos = await this.resolverItems(dto.empresaId, itemsDto, actuales);
 
@@ -840,6 +848,27 @@ export class OrdersService {
   }
 
   /** M08: Comercial automático para usuarios Comercial; manual para otros. */
+  /** I29: empresa, cliente y comercial del pedido deben existir. */
+  private async validarCatalogosPedido(
+    dto: CreateOrderDto,
+    comercialId: string | null,
+  ): Promise<void> {
+    const empresa = await this.dataSource
+      .getRepository(Company)
+      .findOne({ where: { id: dto.empresaId } });
+    if (!empresa) throw new NotFoundException(`Empresa no encontrada (${dto.empresaId})`);
+    const cliente = await this.dataSource
+      .getRepository(Client)
+      .findOne({ where: { id: dto.clienteId } });
+    if (!cliente) throw new NotFoundException(`Cliente no encontrado (${dto.clienteId})`);
+    if (comercialId) {
+      const comercial = await this.dataSource
+        .getRepository(Comercial)
+        .findOne({ where: { id: comercialId } });
+      if (!comercial) throw new NotFoundException(`Comercial no encontrado (${comercialId})`);
+    }
+  }
+
   private resolveComercial(dto: CreateOrderDto, user: Usuario): string | null {
     if (user.rol === Role.COMERCIAL) {
       if (!user.comercialId) {

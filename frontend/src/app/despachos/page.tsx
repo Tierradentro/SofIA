@@ -70,6 +70,8 @@ interface Despacho {
   pendientes: Pendiente[];
   totalPedidos?: number;
   totalCajas?: number;
+  /** I29: nombre del cliente en la tabla de despachos. */
+  clienteNombre?: string | null;
   despachadoAt?: string | null;
   trazabilidad?: {
     creadoPor: UsuarioTraz | null;
@@ -575,20 +577,38 @@ export default function DespachosPage() {
           </section>
         )}
 
-        {/* Pendientes por empacar */}
-        {despacho.pendientes.length > 0 && despacho.estado !== 'DESPACHADO' && despacho.estado !== 'CANCELADO' && (
+        {/* Pendientes por empacar (I29: cuadro de conteo como en alistamiento) */}
+        {despacho.pendientes.length > 0 && despacho.estado !== 'DESPACHADO' && despacho.estado !== 'CANCELADO' && (() => {
+          const pendientesReales = despacho.pendientes.filter((p) => p.pendiente > 0);
+          const totalPendienteEmpacar = pendientesReales.reduce((acc, p) => acc + p.pendiente, 0);
+          return (
           <section className="mb-4 rounded-lg bg-white p-4 shadow">
             <h2 className="mb-2 font-semibold">Pendientes por empacar</h2>
+            <div className="mb-3 flex items-center gap-4 rounded-lg border-2 border-sofia-200 bg-white px-5 py-3">
+              <span className="text-5xl font-extrabold leading-none text-sofia-900">
+                {totalPendienteEmpacar}
+              </span>
+              <div>
+                <p className="text-sm font-semibold text-sofia-800">
+                  unidades pendientes por empacar
+                </p>
+                <p className="text-xs text-slate-500">
+                  {pendientesReales.length} referencia(s) por completar
+                </p>
+              </div>
+            </div>
             <ul className="text-sm text-slate-600">
               {despacho.pendientes.map((p) => (
                 <li key={p.orderItemId}>
                   {p.codigo} — {p.descripcion} ({p.numeroPedido}): alistado {p.cantidadAlistada}, despachado {p.cantidadDespachada}
-                  {p.enCajasAbiertas > 0 && `, en cajas abiertas ${p.enCajasAbiertas}`}, <b>pendiente {p.pendiente}</b>
+                  {p.enCajasAbiertas > 0 && `, en cajas abiertas ${p.enCajasAbiertas}`},{' '}
+                  <b className={p.pendiente > 0 ? 'text-amber-700' : undefined}>pendiente {p.pendiente}</b>
                 </li>
               ))}
             </ul>
           </section>
-        )}
+          );
+        })()}
 
         {/* Aprobación de parcial (HU-041, Generador) */}
         {despacho.estado === 'PARCIAL' && !despacho.parcialMotivo && esGenerador && (
@@ -606,8 +626,8 @@ export default function DespachosPage() {
           <p className="mb-3 rounded bg-amber-100 p-2 text-sm text-amber-800">Parcial aprobado: {despacho.parcialMotivo}</p>
         )}
 
-        {/* Transporte (HU-039/040, Generador) */}
-        {despacho.empaqueFinalizado && (despacho.estado === 'ABIERTO' || despacho.estado === 'PARCIAL') && esGenerador && (
+        {/* Transporte (HU-039/040; I29: también el Operador registra la salida) */}
+        {despacho.empaqueFinalizado && (despacho.estado === 'ABIERTO' || despacho.estado === 'PARCIAL') && (esGenerador || esOperador) && (
           <section className="mb-4 rounded-lg bg-white p-4 shadow">
             <h2 className="mb-2 font-semibold">Registro de salida (transporte)</h2>
             <div className="mb-2 flex gap-4 text-sm">
@@ -866,6 +886,7 @@ export default function DespachosPage() {
             <thead>
               <tr className="border-b text-left text-slate-500">
                 <th className="py-1">Número</th>
+                <th>Cliente</th>
                 <th>Empresas</th>
                 <th>Estado</th>
                 <th>Pedidos</th>
@@ -878,6 +899,7 @@ export default function DespachosPage() {
               {lista.map((d) => (
                 <tr key={d.id} className="border-b last:border-0">
                   <td className="py-2 font-medium">{d.numero}</td>
+                  <td className="text-slate-700">{d.clienteNombre ?? '—'}</td>
                   <td>
                     {d.empresas?.map((sig) => (
                       <span key={sig} className="mr-1 rounded bg-sofia-100 px-1.5 py-0.5 text-xs font-medium text-sofia-800">

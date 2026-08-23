@@ -49,6 +49,12 @@ describe('API externa (e2e)', () => {
     await resetTestDatabase();
     t = await createTestApp();
     adminToken = await loginAndSetPassword(t.http, ADMIN.username, ADMIN.password, ADMIN_NUEVA_CLAVE);
+    // I29: la suite supera el límite por defecto (20/min) con los nuevos
+    // endpoints de catálogo; se sube a 500/min para no disparar 429 entre tests
+    await t.http
+      .put('/api/v1/admin/params/api.rate_limit_per_minute')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ valor: { requests_per_minute: 500 }, motivo: 'Suite e2e I29' });
     const empresas = await t.dataSource.query(`SELECT id, nombre FROM companies`);
     ireId = empresas.find((e: any) => e.nombre === 'IRE').id;
 
@@ -160,6 +166,56 @@ describe('API externa (e2e)', () => {
     // empresaId requerido
     const sinEmpresa = await t.http.get('/api/v1/api/products').set('X-API-Key', apiKey);
     expect(sinEmpresa.status).toBe(400);
+  });
+
+  it('I29: catálogos para integración autónoma — clients, comerciales, companies, búsqueda de productos', async () => {
+    // Empresas activas (el agente descubre los empresaId válidos)
+    const empresas = await t.http.get('/api/v1/api/companies').set('X-API-Key', apiKey);
+    expect(empresas.status).toBe(200);
+    expect(empresas.body.some((e: any) => e.id === ireId)).toBe(true);
+
+    // Clientes por nombre o identificación (resuelve el UUID del pedido)
+    const clientes = await t.http.get('/api/v1/api/clients?q=API%20Externa').set('X-API-Key', apiKey);
+    expect(clientes.status).toBe(200);
+    expect(clientes.body.some((c: any) => c.id === clienteId)).toBe(true);
+
+    // Comerciales por nombre o identificación
+    const comerciales = await t.http.get('/api/v1/api/comerciales').set('X-API-Key', apiKey);
+    expect(comerciales.status).toBe(200);
+    expect(comerciales.body.some((c: any) => c.id === comercialId)).toBe(true);
+
+    // Búsqueda parcial de productos por texto (sin código exacto)
+    const busqueda = await t.http
+      .get(`/api/v1/api/products/search?q=EXT-001&empresaId=${ireId}`)
+      .set('X-API-Key', apiKey);
+    expect(busqueda.status).toBe(200);
+    expect(busqueda.body.some((p: any) => p.codigo === 'EXT-001')).toBe(true);
+    const sinQ = await t.http.get('/api/v1/api/products/search').set('X-API-Key', apiKey);
+    expect(sinQ.status).toBe(400);
+  });
+
+  it('I29: UUIDs inexistentes en crear pedido responden 404 con el recurso exacto', async () => {
+    const inexistente = '00000000-0000-4000-8000-000000000000';
+    const sinCliente = await t.http
+      .post('/api/v1/api/orders')
+      .set('X-API-Key', apiKey)
+      .send({ empresaId: ireId, clienteId: inexistente, comercialId, items: [{ referencia: 'EXT-001', cantidad: 1 }] });
+    expect(sinCliente.status).toBe(404);
+    expect(sinCliente.body.message).toContain('Cliente no encontrado');
+
+    const sinComercial = await t.http
+      .post('/api/v1/api/orders')
+      .set('X-API-Key', apiKey)
+      .send({ empresaId: ireId, clienteId, comercialId: inexistente, items: [{ referencia: 'EXT-001', cantidad: 1 }] });
+    expect(sinComercial.status).toBe(404);
+    expect(sinComercial.body.message).toContain('Comercial no encontrado');
+
+    const sinEmpresa = await t.http
+      .post('/api/v1/api/orders')
+      .set('X-API-Key', apiKey)
+      .send({ empresaId: inexistente, clienteId, comercialId, items: [{ referencia: 'EXT-001', cantidad: 1 }] });
+    expect(sinEmpresa.status).toBe(404);
+    expect(sinEmpresa.body.message).toContain('Empresa no encontrada');
   });
 
   it('I14 (M-7): la API key no puede navegar los endpoints internos /orders (403)', async () => {

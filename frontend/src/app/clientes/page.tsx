@@ -42,6 +42,8 @@ export default function ClientesPage() {
   const [q, setQ] = useState('');
   const [form, setForm] = useState(VACIO);
   const [editando, setEditando] = useState<string | null>(null);
+  const [resumen, setResumen] = useState<any | null>(null);
+  const [resumenCargando, setResumenCargando] = useState(false);
   // QA Func. 4.1: panel de direcciones del cliente seleccionado
   const [clienteDirecciones, setClienteDirecciones] = useState<Cliente | null>(null);
   const [direcciones, setDirecciones] = useState<Direccion[]>([]);
@@ -132,6 +134,16 @@ export default function ClientesPage() {
   if (!sesion) return null;
 
   const panelAbierto = Boolean(clienteDirecciones && puedeEditar);
+
+  /** I29: pedidos, despachos y devoluciones del cliente (Generador/Admin). */
+  async function abrirResumen(c: Cliente) {
+    setResumenCargando(true);
+    setResumen({ cliente: c, pedidos: { recientes: [] }, despachos: { recientes: [] }, devoluciones: { recientes: [] } });
+    const { status, body } = await api(`/clients/${c.id}/resumen`);
+    if (status === 200) setResumen(body);
+    else setResumen(null);
+    setResumenCargando(false);
+  }
 
   return (
     <AppShell sesion={sesion}>
@@ -293,6 +305,13 @@ export default function ClientesPage() {
                       >
                         Direcciones
                       </button>
+                      <button
+                        onClick={() => abrirResumen(c)}
+                        className="rounded-md bg-menta-100 px-3 py-1 text-xs font-medium text-menta-800 hover:bg-menta-200"
+                        title="Pedidos, despachos y devoluciones del cliente"
+                      >
+                        Actividad
+                      </button>
                     </div>
                   </td>
                 )}
@@ -312,6 +331,65 @@ export default function ClientesPage() {
           Mostrando {clientes.length} resultado{clientes.length === 1 ? '' : 's'}
         </p>
       </Tarjeta>
+
+      {/* I29: actividad del cliente — pedidos, despachos y devoluciones */}
+      {resumen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={() => setResumen(null)}>
+          <Tarjeta className="max-h-[85vh] w-full max-w-3xl overflow-y-auto p-5" >
+            <div onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
+              <h2 className="text-lg font-semibold">Actividad de {resumen.cliente?.nombre}</h2>
+              <button onClick={() => setResumen(null)} className="text-sm text-slate-500 hover:underline">Cerrar</button>
+            </div>
+            {resumenCargando ? (
+              <p className="text-sm text-slate-500">Cargando…</p>
+            ) : (
+              <div className="space-y-5 text-sm">
+                <section>
+                  <h3 className="mb-1 font-semibold text-sofia-800">Pedidos ({resumen.pedidos?.total ?? 0})</h3>
+                  {resumen.pedidos?.recientes?.length ? (
+                    <ul className="divide-y divide-slate-100">
+                      {resumen.pedidos.recientes.map((p: any) => (
+                        <li key={p.numero} className="flex justify-between py-1">
+                          <span className="font-medium">{p.numero}</span>
+                          <span className="text-slate-600">{p.estado} · {p.items} ítem(s) · {new Date(p.createdAt).toLocaleDateString('es-CO')}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : <p className="text-slate-400">Sin pedidos registrados.</p>}
+                </section>
+                <section>
+                  <h3 className="mb-1 font-semibold text-sofia-800">Despachos ({resumen.despachos?.total ?? 0})</h3>
+                  {resumen.despachos?.recientes?.length ? (
+                    <ul className="divide-y divide-slate-100">
+                      {resumen.despachos.recientes.map((d: any) => (
+                        <li key={d.numero} className="flex justify-between py-1">
+                          <span className="font-medium">{d.numero}</span>
+                          <span className="text-slate-600">{d.estado}{d.guia ? ` · Guía ${d.guia}` : ''} · {new Date(d.createdAt).toLocaleDateString('es-CO')}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : <p className="text-slate-400">Sin despachos registrados.</p>}
+                </section>
+                <section>
+                  <h3 className="mb-1 font-semibold text-sofia-800">Devoluciones ({resumen.devoluciones?.total ?? 0})</h3>
+                  {resumen.devoluciones?.recientes?.length ? (
+                    <ul className="divide-y divide-slate-100">
+                      {resumen.devoluciones.recientes.map((d: any) => (
+                        <li key={d.id} className="flex justify-between py-1">
+                          <span className="font-medium">{d.codigo} ×{d.cantidad}</span>
+                          <span className="text-slate-600">{d.estado} · {d.motivoCodigo}{d.factura ? ` · ${d.factura}` : ''} · {new Date(d.createdAt).toLocaleDateString('es-CO')}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : <p className="text-slate-400">Sin devoluciones registradas.</p>}
+                </section>
+              </div>
+            )}
+            </div>
+          </Tarjeta>
+        </div>
+      )}
     </AppShell>
   );
 }

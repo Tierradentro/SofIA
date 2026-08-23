@@ -86,14 +86,35 @@ export class ClientsService {
    * devoluciones PQRS. Los contadores se alimentan de los módulos que
    * llegan en I7/I8/I9; aquí queda la estructura del contrato.
    */
-  async resumen(id: string, user: { id: string; username: string }) {
+  async resumen(id: string, user: { id: string; username: string; rol?: string }) {
     const client = await this.findOne(id, user);
+    // I29: pedidos, despachos y devoluciones (PQRS tipo DEVOLUCION) del
+    // cliente, solo para Generador/Administrador (consulta comercial).
+    const pedidos = await this.dataSource.query(
+      `SELECT numero, estado, ciudad, created_at AS "createdAt",
+              (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id = o.id) AS items
+       FROM orders o WHERE o.cliente_id = $1
+       ORDER BY o.created_at DESC LIMIT 50`,
+      [id],
+    );
+    const despachos = await this.dataSource.query(
+      `SELECT numero, estado, guia, fecha_salida AS "fechaSalida", created_at AS "createdAt"
+       FROM dispatches d WHERE d.cliente_id = $1
+       ORDER BY d.created_at DESC LIMIT 50`,
+      [id],
+    );
+    const devoluciones = await this.dataSource.query(
+      `SELECT id, codigo, descripcion, cantidad, estado, prioridad,
+              motivo_codigo AS "motivoCodigo", factura, created_at AS "createdAt"
+       FROM pqrs_cases p WHERE p.cliente_id = $1
+       ORDER BY p.created_at DESC LIMIT 50`,
+      [id],
+    );
     return {
       cliente: client,
-      pedidos: { total: 0 },
-      despachos: { total: 0 },
-      devolucionesPqrs: { total: 0 },
-      nota: 'Los contadores operativos se completan con los módulos de Pedidos (I7), Despachos (I8) y PQRS (I9)',
+      pedidos: { total: pedidos.length, recientes: pedidos },
+      despachos: { total: despachos.length, recientes: despachos },
+      devoluciones: { total: devoluciones.length, recientes: devoluciones },
     };
   }
 

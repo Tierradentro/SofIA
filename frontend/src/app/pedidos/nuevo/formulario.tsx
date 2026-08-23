@@ -137,6 +137,15 @@ export function NuevoPedido({
       )
     : clientes;
 
+  // I29: un solo resultado queda seleccionado de inmediato — antes el select
+  // conservaba el cliente precargado y el usuario no podía "escoger" el
+  // único que mostraba la búsqueda.
+  useEffect(() => {
+    if (clientesFiltrados.length === 1 && clientesFiltrados[0].id !== clienteId) {
+      setClienteId(clientesFiltrados[0].id);
+    }
+  }, [termino, clientes.length]);
+
   function totalPie(): number {
     return items.reduce((acc, i) => {
       const cant = Number(i.cantidad) || 0;

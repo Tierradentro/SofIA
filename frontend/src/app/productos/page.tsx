@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckCircle2, Filter, Plus, Search, X } from 'lucide-react';
+import { CheckCircle2, Filter, Plus, Search } from 'lucide-react';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 import { AppShell } from '@/components/app-shell';
 import {
@@ -354,88 +354,6 @@ export default function ProductosPage() {
       {mensaje && <p className="mb-4 max-w-3xl rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">{mensaje}</p>}
       {error && <p className="mb-4 max-w-3xl rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
-      {/* QA Func. 2.4: búsqueda parcial */}
-      <Tarjeta className="mb-4 max-w-3xl p-4">
-        <form onSubmit={buscar} className="flex flex-col gap-2 sm:flex-row">
-          <div className="relative flex-1">
-            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              placeholder="Buscar por código, OE, referencia cruzada o descripción (coincidencia parcial)"
-              className={`${CLASE_INPUT} pl-9`}
-              value={consulta}
-              onChange={(e) => setConsulta(e.target.value)}
-            />
-          </div>
-          <div className="flex gap-2">
-            <button className={CLASE_BOTON_PRIMARIO}>Buscar</button>
-            <button
-              type="button"
-              onClick={() => setMostrarFiltros((v) => !v)}
-              className={`flex items-center gap-1 rounded-lg px-4 text-sm ${
-                mostrarFiltros || filtrosActivos
-                  ? 'bg-sofia-100 font-medium text-sofia-700 hover:bg-sofia-200'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-              title="Filtrar la tabla por marca, ubicación o existencia"
-            >
-              <Filter size={14} /> Filtrar
-            </button>
-            {consulta && (
-              <button
-                type="button"
-                onClick={() => { setConsulta(''); cargar(); }}
-                className="rounded-lg bg-slate-100 px-4 text-sm text-slate-600 hover:bg-slate-200"
-              >
-                Limpiar
-              </button>
-            )}
-          </div>
-        </form>
-        {mostrarFiltros && (
-          <div className="mt-3 flex flex-col gap-2 border-t border-slate-100 pt-3 sm:flex-row sm:items-end">
-            <label className="flex-1 text-xs font-medium text-slate-500">
-              Marca
-              <input
-                className={`${CLASE_INPUT} mt-1`}
-                placeholder="Ej.: SKF"
-                value={filtroMarca}
-                onChange={(e) => setFiltroMarca(e.target.value)}
-              />
-            </label>
-            <label className="flex-1 text-xs font-medium text-slate-500">
-              Ubicación
-              <input
-                className={`${CLASE_INPUT} mt-1`}
-                placeholder="Ej.: A-01-03"
-                value={filtroUbicacion}
-                onChange={(e) => setFiltroUbicacion(e.target.value)}
-              />
-            </label>
-            <label className="text-xs font-medium text-slate-500">
-              Existencia
-              <select
-                className={`${CLASE_INPUT} mt-1`}
-                value={filtroExistencia}
-                onChange={(e) => setFiltroExistencia(e.target.value as 'todas' | 'con' | 'sin')}
-              >
-                <option value="todas">Todas</option>
-                <option value="con">Con existencias</option>
-                <option value="sin">Sin existencias</option>
-              </select>
-            </label>
-            {filtrosActivos && (
-              <button
-                type="button"
-                onClick={() => { setFiltroMarca(''); setFiltroUbicacion(''); setFiltroExistencia('todas'); }}
-                className="flex items-center gap-1 rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-600 hover:bg-slate-200"
-              >
-                <X size={14} /> Quitar filtros
-              </button>
-            )}
-          </div>
-        )}
-      </Tarjeta>
-
       {/* Consulta exacta por código de barras (no se toca: match exacto) */}
       <Tarjeta className="mb-6 max-w-3xl p-4">
         <h2 className="mb-2 text-sm font-semibold text-slate-700">
@@ -629,6 +547,86 @@ export default function ProductosPage() {
           </div>
         </form>
       )}
+
+      {/* QA Func. 2.4: búsqueda parcial */}
+      <Tarjeta className="mb-4 p-4">
+        <form onSubmit={buscar} className="flex flex-col gap-2 sm:flex-row">
+          <div className="relative flex-1">
+            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              placeholder="Buscar por código, OE, referencia cruzada o descripción (coincidencia parcial)"
+              className={`${CLASE_INPUT} pl-9`}
+              value={consulta}
+              onChange={(e) => setConsulta(e.target.value)}
+            />
+          </div>
+          <div className="flex gap-2">
+            <button className={CLASE_BOTON_PRIMARIO}>Buscar</button>
+            <button
+              type="button"
+              onClick={() => setMostrarFiltros((v) => !v)}
+              className={`flex items-center gap-1 rounded-lg px-4 text-sm ${
+                mostrarFiltros || filtrosActivos
+                  ? 'bg-sofia-100 font-medium text-sofia-700 hover:bg-sofia-200'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+              title="Filtrar la tabla por marca, ubicación o existencia"
+            >
+              <Filter size={14} /> Filtrar
+            </button>
+            {(consulta || filtrosActivos) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setConsulta('');
+                  setFiltroMarca('');
+                  setFiltroUbicacion('');
+                  setFiltroExistencia('todas');
+                  cargar();
+                }}
+                className="rounded-lg bg-slate-100 px-4 text-sm text-slate-600 hover:bg-slate-200"
+                title="Limpiar búsqueda y filtros"
+              >
+                Limpiar
+              </button>
+            )}
+          </div>
+        </form>
+        {mostrarFiltros && (
+          <div className="mt-3 flex flex-col gap-2 border-t border-slate-100 pt-3 sm:flex-row sm:items-end">
+            <label className="flex-1 text-xs font-medium text-slate-500">
+              Marca
+              <input
+                className={`${CLASE_INPUT} mt-1`}
+                placeholder="Ej.: SKF"
+                value={filtroMarca}
+                onChange={(e) => setFiltroMarca(e.target.value)}
+              />
+            </label>
+            <label className="flex-1 text-xs font-medium text-slate-500">
+              Ubicación
+              <input
+                className={`${CLASE_INPUT} mt-1`}
+                placeholder="Ej.: A-01-03"
+                value={filtroUbicacion}
+                onChange={(e) => setFiltroUbicacion(e.target.value)}
+              />
+            </label>
+            <label className="text-xs font-medium text-slate-500">
+              Existencia
+              <select
+                className={`${CLASE_INPUT} mt-1`}
+                value={filtroExistencia}
+                onChange={(e) => setFiltroExistencia(e.target.value as 'todas' | 'con' | 'sin')}
+              >
+                <option value="todas">Todas</option>
+                <option value="con">Con existencias</option>
+                <option value="sin">Sin existencias</option>
+              </select>
+            </label>
+          </div>
+        )}
+      </Tarjeta>
 
       <Tarjeta className="overflow-hidden">
         <div className="overflow-x-auto">

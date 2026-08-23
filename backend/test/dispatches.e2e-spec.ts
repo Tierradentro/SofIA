@@ -855,7 +855,7 @@ describe('Despachos y cajas (e2e)', () => {
     expect(reuso.status).toBe(201);
   });
 
-  it('RBAC negativo: packing solo Operador; aprobación/transporte solo Generador', async () => {
+  it('RBAC negativo: packing solo Operador; aprobación solo Generador (I29: el Operador SÍ registra la salida)', async () => {
     const d = (global as any).__dispatch1;
 
     // Generador no puede crear cajas ni escanear
@@ -864,16 +864,19 @@ describe('Despachos y cajas (e2e)', () => {
       .set('Authorization', `Bearer ${generadorToken}`);
     expect(boxGen.status).toBe(403);
 
-    // Operador no puede aprobar, aprobar parcial, transporte ni cancelar
+    // Operador no puede aprobar ni cancelar
     const apOp = await t.http
       .post(`/api/v1/dispatches/${d.id}/aprobar`)
       .set('Authorization', `Bearer ${operadorToken}`);
     expect(apOp.status).toBe(403);
+    // I29: el Operador SÍ puede registrar la salida (transporte). El despacho
+    // de prueba no tiene el empaque finalizado, así que la regla de negocio
+    // responde 400 — lo importante es que ya no es un 403 de rol.
     const trOp = await t.http
       .post(`/api/v1/dispatches/${d.id}/transporte`)
       .set('Authorization', `Bearer ${operadorToken}`)
       .send({ tipo: 'INTERNA', nombreTransporte: 'X' });
-    expect(trOp.status).toBe(403);
+    expect(trOp.status).toBe(400);
     const cancelOp = await t.http
       .post(`/api/v1/dispatches/${d.id}/cancelar`)
       .set('Authorization', `Bearer ${operadorToken}`)

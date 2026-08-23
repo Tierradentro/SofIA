@@ -38,7 +38,9 @@ export class ClientsController {
     return this.clients.findAll(q);
   }
 
+  /** I29: pedidos, despachos y devoluciones del cliente (Generador/Admin). */
   @Get(':id/resumen')
+  @Roles(Role.GENERADOR, Role.ADMINISTRADOR)
   resumen(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.clients.resumen(id, user);
   }

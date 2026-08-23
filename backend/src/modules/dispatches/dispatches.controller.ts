@@ -138,9 +138,13 @@ export class DispatchesController {
     return this.dispatches.aprobarParcial(id, dto, user);
   }
 
-  /** HU-039/040: registro de transporte externa/interna → DESPACHADO. */
+  /**
+   * HU-039/040: registro de transporte externa/interna → DESPACHADO.
+   * I29: el Operador también puede registrar la salida — es quien termina el
+   * empaque y tiene la caja física frente a la transportadora.
+   */
   @Post(':id/transporte')
-  @Roles(Role.GENERADOR, Role.ADMINISTRADOR)
+  @Roles(Role.GENERADOR, Role.OPERADOR, Role.ADMINISTRADOR)
   transporte(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: TransportDto,

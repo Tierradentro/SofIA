@@ -20,6 +20,10 @@ import {
 import { OrdersService } from '../orders/orders.service';
 import { CreateOrderDto } from '../orders/dto/order.dto';
 import { DispatchesService } from '../dispatches/dispatches.service';
+import { ClientsService } from '../clients/clients.service';
+import { ComercialesService } from '../comerciales/comerciales.service';
+import { CompaniesService } from '../companies/companies.service';
+import { ProductsService } from '../products/products.service';
 import { TransportType } from '../dispatches/entities/dispatch.entity';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/enums/role.enum';
@@ -57,10 +61,14 @@ export class CarrierGuideDto {
  *   POST /api/orders              — crear pedido (HU-060)
  *   PUT  /api/orders/{id}         — modificar pedido ABIERTO creado por API
  *   GET  /api/products            — productos y cantidades (HU-061)
+ *   GET  /api/products/search     — búsqueda parcial por texto (I29)
  *   GET  /api/dispatch/{numero}   — estado del despacho (HU-062)
  *   POST /api/carrier-guide       — registrar guía (HU-063)
  *   GET  /api/carrier-guide/{numero} — consultar guía registrada
  *   GET  /api/box/{boxId}         — consulta de caja (contenido resuelto)
+ *   GET  /api/clients             — búsqueda de clientes por nombre/NIT (I29)
+ *   GET  /api/comerciales         — búsqueda de comerciales (I29)
+ *   GET  /api/companies           — empresas activas (I29)
  */
 @Controller('api')
 @Roles(Role.API)
@@ -69,6 +77,10 @@ export class ExternalApiController {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly orders: OrdersService,
     private readonly dispatches: DispatchesService,
+    private readonly clientsService: ClientsService,
+    private readonly comercialesService: ComercialesService,
+    private readonly companiesService: CompaniesService,
+    private readonly productsService: ProductsService,
   ) {}
 
   /**
@@ -125,6 +137,57 @@ export class ExternalApiController {
     return rows
       .filter((r) => !soloDisponibles || r.disponible > 0)
       .map((r) => ({ ...r, empresa: (empresa as any).nombre }));
+  }
+
+  /**
+   * I29: búsqueda parcial de productos por texto (pg_trgm), la misma que usa
+   * el frontend interno. Permite al agente resolver "filtro de aceite para
+   * Chevrolet Spark" sin conocer el código exacto.
+   */
+  @Get('products/search')
+  async buscarProductos(
+    @Query('q') q: string,
+    @Query('empresaId') empresaId?: string,
+    @Query('limite') limite?: string,
+  ) {
+    if (!q?.trim()) throw new BadRequestException('q es requerido');
+    const resultados = await this.productsService.search(
+      q,
+      empresaId || undefined,
+      limite ? parseInt(limite, 10) : 25,
+    );
+    return resultados.map((p: any) => ({
+      codigo: p.codigo,
+      descripcion: p.descripcion,
+      marca: p.marca,
+      unidadMedida: p.unidadMedida,
+      cantidad: p.cantidad,
+      cantidadBloqueada: p.cantidadBloqueada,
+      disponible: p.cantidad - (p.cantidadBloqueada ?? 0),
+      precio: p.precio,
+      ubicacion: p.ubicacion,
+    }));
+  }
+
+  /**
+   * I29: búsqueda de clientes por nombre o identificación — el agente
+   * resuelve el UUID que exige POST /api/orders sin salir de la API.
+   */
+  @Get('clients')
+  clientes(@Query('q') q?: string) {
+    return this.clientsService.findAll(q);
+  }
+
+  /** I29: búsqueda de comerciales por nombre o identificación. */
+  @Get('comerciales')
+  comerciales(@Query('q') q?: string) {
+    return this.comercialesService.findAll(q);
+  }
+
+  /** I29: empresas activas — el agente descubre los empresaId válidos. */
+  @Get('companies')
+  empresas() {
+    return this.companiesService.findAll();
   }
 
   /** HU-062: estado y detalle del despacho (cajas, productos, guías). */

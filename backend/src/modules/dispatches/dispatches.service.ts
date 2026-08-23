@@ -17,6 +17,7 @@ import { Carrier } from '../carriers/entities/carrier.entity';
 import { CarrierType } from '../../common/enums/carrier-type.enum';
 import { Product } from '../products/entities/product.entity';
 import { ProductBarcode } from '../products/entities/product-barcode.entity';
+import { Client } from '../clients/entities/client.entity';
 import { InboundMatcher } from '../inbound/inbound-matcher';
 import { calcularPendiente, formatBoxId, formatNumeroDespacho } from './dispatch-helpers';
 import { MovementsService } from '../movements/movements.service';
@@ -396,8 +397,13 @@ export class DispatchesService {
          ORDER BY c.siglas`,
         [d.id],
       );
+      // I29: nombre del cliente en la tabla de despachos
+      const cliente = await this.dataSource
+        .getRepository(Client)
+        .findOne({ where: { id: d.clienteId } });
       out.push({
         ...d,
+        clienteNombre: cliente?.nombre ?? null,
         totalPedidos: pedidos,
         totalCajas: cajas,
         empresas: empresas.map((e: any) => e.siglas),
