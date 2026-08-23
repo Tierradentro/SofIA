@@ -67,7 +67,19 @@ export class AllExceptionsFilter implements ExceptionFilter {
 /** Errores de conectividad con Postgres (driver o TypeORM), no de datos. */
 function esErrorConexionBd(exception: unknown): boolean {
   if (!(exception instanceof Error)) return false;
-  if (exception.name === 'ConnectionNotFoundError') return true; // pool nunca inicializó
+  // ConnectionNotFoundError: pool nunca inicializó.
+  // CannotExecuteNotConnectedError / EntityMetadataNotFoundError (I30): el
+  // servidor ya escucha pero la conexión en segundo plano aún no inicializa
+  // el DataSource — la petición puede reintentarse en segundos.
+  if (
+    [
+      'ConnectionNotFoundError',
+      'CannotExecuteNotConnectedError',
+      'EntityMetadataNotFoundError',
+    ].includes(exception.name)
+  ) {
+    return true;
+  }
   const code = String((exception as { code?: string }).code ?? '');
   const msg = exception.message ?? '';
   return (

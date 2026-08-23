@@ -137,3 +137,53 @@ export function buildDataSourceOptions(): DataSourceOptions {
 }
 
 export const AppDataSource = new DataSource(buildDataSourceOptions());
+
+/**
+ * I30: promesa única de conexión que comparten main.ts (arranque con
+ * reintentos, en segundo plano tras abrir el puerto) y la dataSourceFactory
+ * de AppModule. Así TypeOrmModule espera la MISMA conexión resiliente en vez
+ * de crear un segundo DataSource que bloquearía el arranque del servidor
+ * HTTP (y con ello el health check) mientras la BD no responde.
+ */
+let promesaConexion: Promise<DataSource> | null = null;
+
+/** Registra la promesa de conexión (la llama main.ts al arrancar). */
+export function registrarConexion(p: Promise<DataSource>): void {
+  promesaConexion = p;
+  // El rechazo lo maneja quien la espera; esto evita unhandled rejection.
+  p.catch(() => undefined);
+}
+
+/** La espera la fábrica de TypeORM; sin registro previo conecta directo (tests). */
+/**
+ * Fallback de los tests e2e (sin main.ts): conexión directa. Se recalcula si
+ * el DataSource fue destruido al cerrar la app de una suite anterior, y se
+ * limpia al fallar para permitir reintentos.
+ */
+let promesaDirecta: Promise<DataSource> | null = null;
+
+/** La espera la fábrica de TypeORM; con registro previo usa la promesa de main.ts. */
+export function esperarConexion(): Promise<DataSource> {
+  if (promesaConexion) return promesaConexion;
+  if (AppDataSource.isInitialized) return Promise.resolve(AppDataSource);
+  if (!promesaDirecta) {
+    promesaDirecta = AppDataSource.initialize()
+      .then(() => AppDataSource)
+      .catch((err) => {
+        promesaDirecta = null;
+        throw err;
+      });
+    promesaDirecta.catch(() => undefined);
+  }
+  return promesaDirecta;
+}
+
+/**
+ * I30: indica si main.ts ya registró una conexión en segundo plano. Con
+ * registro activo, la dataSourceFactory devuelve el DataSource SIN esperar
+ * (manualInitialization evita que @nestjs/typeorm lo inicialice y bloquee el
+ * arranque): el puerto se abre de inmediato y la BD conecta cuando pueda.
+ */
+export function conexionEnSegundoPlano(): boolean {
+  return promesaConexion !== null;
+}

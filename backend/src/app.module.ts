@@ -1,7 +1,12 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
-import { buildDataSourceOptions } from './database/data-source';
+import {
+  AppDataSource,
+  buildDataSourceOptions,
+  conexionEnSegundoPlano,
+  esperarConexion,
+} from './database/data-source';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { CompaniesModule } from './modules/companies/companies.module';
@@ -31,14 +36,30 @@ import { ExternalApiModule } from './modules/external-api/external-api.module';
  * disponibles sus dependencias. El RBAC se enforcea siempre en backend
  * (regla transversal).
  *
- * I28: main.ts conecta el AppDataSource con reintentos antes de crear la
- * app; TypeOrmModule crea su propio DataSource con las mismas opciones
- * (incluye keep-alive y reciclaje de pool). Si la BD no está al crear la
- * app (caso RUN_MIGRATIONS=false), @nestjs/typeorm reintenta solo (9 × 3s).
+ * I30: TypeOrmModule espera la promesa de conexión registrada por main.ts
+ * (con reintentos infinitos, lanzada en segundo plano tras abrir el puerto).
+ * Así el servidor HTTP escucha de inmediato — el health check responde
+ * aunque la BD aún no esté — y el pool queda listo en cuanto conecta.
+ * En los tests e2e (sin main.ts) conecta el AppDataSource directamente.
  */
 @Module({
   imports: [
-    TypeOrmModule.forRoot(buildDataSourceOptions()),
+    TypeOrmModule.forRootAsync({
+      useFactory: () => ({
+        ...buildDataSourceOptions(),
+        // I30: la inicialización del DataSource la hace main.ts en segundo
+        // plano (reintentos infinitos). Sin manualInitialization, el módulo
+        // intentaría inicializar aquí y bloquearía el arranque del servidor
+        // HTTP (y con ello el health check) mientras la BD no responda.
+        manualInitialization: true,
+      }),
+      // Arranque real (main.ts registró la conexión): devolver el DataSource
+      // compartido SIN esperar — el puerto se abre aunque la BD siga caída y
+      // /api/v1/health reporta "degradado" hasta que conecte. En los tests
+      // e2e (sin main.ts) se espera la conexión directa, como antes.
+      dataSourceFactory: async () =>
+        conexionEnSegundoPlano() ? AppDataSource : esperarConexion(),
+    }),
     ParamsModule,
     AuditModule,
     AuthModule,

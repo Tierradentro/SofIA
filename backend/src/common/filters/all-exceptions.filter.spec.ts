@@ -112,4 +112,20 @@ describe('AllExceptionsFilter (QA Func. 1.4)', () => {
     filter.catch(new Error('Connection terminated unexpectedly'), host2);
     expect(res2.statusCode).toBe(503);
   });
+
+  it('I30: consulta con el puerto ya abierto y la BD aún sin inicializar → 503', () => {
+    // CannotExecuteNotConnectedError: dataSource.query() antes de initialize()
+    const { host, res } = hostFalso();
+    const ex1 = new Error('Cannot execute operation on "default" connection because connection is not yet established.');
+    ex1.name = 'CannotExecuteNotConnectedError';
+    filter.catch(ex1, host);
+    expect(res.statusCode).toBe(503);
+    expect(res.body.message).toContain('base de datos no está disponible');
+    // EntityMetadataNotFoundError: repository.find() antes de initialize()
+    const { host: host2, res: res2 } = hostFalso();
+    const ex2 = new Error('No metadata for "User" was found.');
+    ex2.name = 'EntityMetadataNotFoundError';
+    filter.catch(ex2, host2);
+    expect(res2.statusCode).toBe(503);
+  });
 });
