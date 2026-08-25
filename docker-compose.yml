@@ -1,6 +1,6 @@
 # SofIA Logística Inteligente — servicios según Spec §9.
 # El esquema de BD se crea con las migraciones del backend al arrancar
-# (RUN_MIGRATIONS=true por defecto) y las semillas I0 son idempotentes.
+# (siempre, son idempotentes) y las semillas I0 también son idempotentes.
 
 services:
   postgres:
@@ -45,8 +45,8 @@ services:
       FILES_DIR: /data/files
       EXPORTS_DIR: /data/exports
       OCR_WORKER_URL: http://ocr-worker:3100
-      RUN_MIGRATIONS: 'true'
-      SEED_ON_BOOT: 'true'
+      # I31: migraciones y semillas corren siempre al arrancar (idempotentes);
+      # no hay RUN_MIGRATIONS/SEED_ON_BOOT que las desactive por error.
     volumes:
       - files:/data
     depends_on:

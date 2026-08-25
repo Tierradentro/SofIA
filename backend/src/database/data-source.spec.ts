@@ -1,4 +1,4 @@
-import { buildDataSourceOptions } from './data-source';
+import { buildDataSourceOptions, esErrorConfiguracionBd } from './data-source';
 
 /**
  * I28: el pool de conexiones debe sobrevivir a un redespliegue — keep-alive
@@ -45,5 +45,40 @@ describe('buildDataSourceOptions (I28: resiliencia del pool)', () => {
       database: 'sofia',
       synchronize: false,
     });
+  });
+});
+
+/**
+ * I31: el reintento de conexión distingue "Postgres aún no arranca"
+ * (transitorio, se reintenta rápido) de "credenciales/BD mal configuradas"
+ * (configuración: se reporta con ERROR destacado en el log y se reintenta
+ * con pausa larga, para que no pase desapercibido).
+ */
+describe('esErrorConfiguracionBd (I31)', () => {
+  it('reconoce credenciales inválidas (28P01) y mensajes de autenticación', () => {
+    const e28 = new Error('password authentication failed for user "sofia_app"');
+    (e28 as any).code = '28P01';
+    expect(esErrorConfiguracionBd(e28)).toBe(true);
+    expect(esErrorConfiguracionBd(new Error('password authentication failed for user "x"'))).toBe(true);
+  });
+
+  it('reconoce base de datos inexistente (3D000) y privilegios insuficientes (42501)', () => {
+    const e3d = new Error('database "sofia" does not exist');
+    (e3d as any).code = '3D000';
+    expect(esErrorConfiguracionBd(e3d)).toBe(true);
+    expect(esErrorConfiguracionBd(new Error('database "sofia" does not exist'))).toBe(true);
+    const e42 = new Error('permission denied');
+    (e42 as any).code = '42501';
+    expect(esErrorConfiguracionBd(e42)).toBe(true);
+  });
+
+  it('NO marca como configuración los errores transitorios de red', () => {
+    const refused = new Error('connect ECONNREFUSED 10.0.0.2:5432');
+    (refused as any).code = 'ECONNREFUSED';
+    expect(esErrorConfiguracionBd(refused)).toBe(false);
+    expect(esErrorConfiguracionBd(new Error('Connection terminated unexpectedly'))).toBe(false);
+    const timeout = new Error('timeout exceeded when trying to connect');
+    (timeout as any).code = 'ETIMEDOUT';
+    expect(esErrorConfiguracionBd(timeout)).toBe(false);
   });
 });

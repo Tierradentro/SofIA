@@ -190,8 +190,46 @@ describe('API externa (e2e)', () => {
       .set('X-API-Key', apiKey);
     expect(busqueda.status).toBe(200);
     expect(busqueda.body.some((p: any) => p.codigo === 'EXT-001')).toBe(true);
-    const sinQ = await t.http.get('/api/v1/api/products/search').set('X-API-Key', apiKey);
+    const sinQ = await t.http.get(`/api/v1/api/products/search?empresaId=${ireId}`).set('X-API-Key', apiKey);
     expect(sinQ.status).toBe(400);
+  });
+
+  it('I31: listados limitados, q con tope de longitud y búsqueda solo por empresa', async () => {
+    // Búsqueda de productos exige empresaId (no mezcla catálogos de empresas)
+    const sinEmpresa = await t.http
+      .get('/api/v1/api/products/search?q=EXT')
+      .set('X-API-Key', apiKey);
+    expect(sinEmpresa.status).toBe(400);
+    expect(sinEmpresa.body.message).toContain('empresaId');
+    const empresaInexistente = await t.http
+      .get('/api/v1/api/products/search?q=EXT&empresaId=00000000-0000-4000-8000-000000000000')
+      .set('X-API-Key', apiKey);
+    expect(empresaInexistente.status).toBe(400);
+
+    // q demasiado largo → 400 en las tres búsquedas
+    const qLargo = 'x'.repeat(101);
+    const prodQLargo = await t.http
+      .get(`/api/v1/api/products/search?q=${qLargo}&empresaId=${ireId}`)
+      .set('X-API-Key', apiKey);
+    expect(prodQLargo.status).toBe(400);
+    expect(prodQLargo.body.message).toContain('100');
+    const cliQLargo = await t.http
+      .get(`/api/v1/api/clients?q=${qLargo}`)
+      .set('X-API-Key', apiKey);
+    expect(cliQLargo.status).toBe(400);
+    const comQLargo = await t.http
+      .get(`/api/v1/api/comerciales?q=${qLargo}`)
+      .set('X-API-Key', apiKey);
+    expect(comQLargo.status).toBe(400);
+
+    // Los listados tienen página limitada (máx. 200)
+    const clientes = await t.http.get('/api/v1/api/clients').set('X-API-Key', apiKey);
+    expect(clientes.status).toBe(200);
+    expect(Array.isArray(clientes.body)).toBe(true);
+    expect(clientes.body.length).toBeLessThanOrEqual(200);
+    const comerciales = await t.http.get('/api/v1/api/comerciales?limite=9999').set('X-API-Key', apiKey);
+    expect(comerciales.status).toBe(200);
+    expect(comerciales.body.length).toBeLessThanOrEqual(200);
   });
 
   it('I29: UUIDs inexistentes en crear pedido responden 404 con el recurso exacto', async () => {

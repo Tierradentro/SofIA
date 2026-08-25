@@ -41,6 +41,23 @@ export class ComercialesService {
     });
   }
 
+  /**
+   * I31: variante acotada para la API externa (página limitada explícita,
+   * alineada con el tope de clientes).
+   */
+  findAllPaginado(q?: string, take = 50) {
+    return this.comerciales.find({
+      where: q
+        ? [
+            { nombre: ILike(`%${q}%`), activo: true },
+            { identificacion: ILike(`%${q}%`), activo: true },
+          ]
+        : { activo: true },
+      order: { nombre: 'ASC' },
+      take,
+    });
+  }
+
   async findOne(id: string) {
     const comercial = await this.comerciales.findOne({ where: { id } });
     if (!comercial) throw new NotFoundException('Comercial no encontrado');

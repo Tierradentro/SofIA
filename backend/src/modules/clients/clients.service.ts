@@ -65,6 +65,23 @@ export class ClientsService {
   }
 
   /**
+   * I31: variante acotada para la API externa — la búsqueda del agente
+   * siempre devuelve una página limitada, nunca el catálogo completo.
+   */
+  findAllPaginado(q?: string, take = 50) {
+    return this.clients.find({
+      where: q
+        ? [
+            { nombre: ILike(`%${q}%`), activo: true },
+            { identificacion: ILike(`%${q}%`), activo: true },
+          ]
+        : { activo: true },
+      order: { nombre: 'ASC' },
+      take,
+    });
+  }
+
+  /**
    * Detalle de cliente. La lectura de datos sensibles de clientes se audita
    * (M15): se registra la lectura individual, no los listados paginados (R-03).
    */

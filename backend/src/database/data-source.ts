@@ -47,6 +47,7 @@ import { ApiExternaI131753000012000 } from './migrations/1753000012000-api-exter
 import { DireccionesI151753000013000 } from './migrations/1753000013000-direcciones-i15';
 import { TrazabilidadUsuariosI191753000014000 } from './migrations/1753000014000-trazabilidad-usuarios-i19';
 import { PedidoDespachadoI251753000015000 } from './migrations/1753000015000-pedido-despachado-i25';
+import { runInitialSeed } from './seeds/initial.seed';
 
 export function buildDataSourceOptions(): DataSourceOptions {
   const isTest = process.env.NODE_ENV === 'test';
@@ -186,4 +187,91 @@ export function esperarConexion(): Promise<DataSource> {
  */
 export function conexionEnSegundoPlano(): boolean {
   return promesaConexion !== null;
+}
+
+/** I31: códigos de error de Postgres que indican configuración inválida (no transitoria). */
+const CODIGOS_CONFIG_BD = new Set([
+  '28P01', // password authentication failed
+  '28000', // invalid authorization specification
+  '3D000', // database does not exist
+  '42501', // insufficient privilege
+]);
+
+/**
+ * I31: distingue un error transitorio ("Postgres aún no responde": vale la
+ * pena reintentar) de uno de configuración ("credenciales o base de datos
+ * inválidas": reintentar para siempre no lo arregla).
+ */
+export function esErrorConfiguracionBd(err: unknown): boolean {
+  const e = err as { code?: string; message?: string };
+  const code = String(e?.code ?? '');
+  if (CODIGOS_CONFIG_BD.has(code)) return true;
+  const msg = String(e?.message ?? '');
+  if (
+    msg.includes('password authentication failed') ||
+    msg.includes('no existe la base de datos') ||
+    (msg.includes('database') && msg.includes('does not exist'))
+  ) {
+    return true;
+  }
+  return false;
+}
+
+const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * I30/I31: conecta a la BD con reintentos. Los errores transitorios
+ * (Postgres aún no arranca, red del PaaS) se reintentan para siempre con
+ * pausa creciente; un error de configuración se reporta UNA vez por minuto
+ * en el log para que salte a la vista, sin matar el proceso (el puerto ya
+ * está abierto y el health responde degradado, sin 502).
+ */
+export async function conectarConReintentos(
+  ds: DataSource,
+  esperaMs = 5000,
+): Promise<DataSource> {
+  let ultimoAvisoConfig = 0;
+  for (let i = 1; ; i++) {
+    if (ds.isInitialized) return ds;
+    try {
+      await ds.initialize();
+      if (i > 1) console.log(`Conexión a la base de datos establecida (intento ${i}).`);
+      return ds;
+    } catch (err) {
+      if (esErrorConfiguracionBd(err)) {
+        const ahora = Date.now();
+        if (ahora - ultimoAvisoConfig > 60_000) {
+          ultimoAvisoConfig = ahora;
+          console.error(
+            'ERROR DE CONFIGURACIÓN DE BD (no se resuelve reintentando): ' +
+              `${(err as Error).message}. Revise DB_HOST/DB_PORT/DB_USER/` +
+              'DB_PASSWORD/DB_NAME del servicio. El servicio sigue escuchando ' +
+              'y reintentando; /api/v1/health reporta baseDatos=error.',
+          );
+        }
+        await espera(60_000);
+        continue;
+      }
+      const pausa = i <= 12 ? esperaMs : 10_000;
+      console.warn(
+        `BD no disponible aún (intento ${i}): ${(err as Error).message}; reintentando en ${pausa / 1000}s…`,
+      );
+      await espera(pausa);
+    }
+  }
+}
+
+/**
+ * I31: preparación completa de la BD en un solo flujo — conexión resiliente,
+ * migraciones y semillas SIEMPRE. Antes dependía de RUN_MIGRATIONS: con esa
+ * variable en false el pool podía quedar arriba con un esquema vacío o
+ * desactualizado y todo el API caía. Las migraciones son idempotentes y la
+ * semilla inicial también, así que correrlas en cada arranque es seguro.
+ */
+export async function prepararBaseDeDatos(): Promise<DataSource> {
+  const ds = await conectarConReintentos(AppDataSource);
+  await ds.runMigrations();
+  await runInitialSeed(ds);
+  console.log('Migraciones y semillas aplicadas; base de datos lista.');
+  return ds;
 }

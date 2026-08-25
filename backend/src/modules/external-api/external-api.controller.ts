@@ -143,6 +143,8 @@ export class ExternalApiController {
    * I29: búsqueda parcial de productos por texto (pg_trgm), la misma que usa
    * el frontend interno. Permite al agente resolver "filtro de aceite para
    * Chevrolet Spark" sin conocer el código exacto.
+   * I31: empresaId es obligatorio — la búsqueda nunca mezcla catálogos de
+   * varias empresas (coherente con GET /api/products).
    */
   @Get('products/search')
   async buscarProductos(
@@ -150,10 +152,17 @@ export class ExternalApiController {
     @Query('empresaId') empresaId?: string,
     @Query('limite') limite?: string,
   ) {
-    if (!q?.trim()) throw new BadRequestException('q es requerido');
+    const texto = validarTextoBusqueda(q);
+    if (!empresaId?.trim()) {
+      throw new BadRequestException('empresaId es requerido');
+    }
+    const empresa = await this.dataSource
+      .getRepository('companies')
+      .findOne({ where: { id: empresaId } });
+    if (!empresa) throw new BadRequestException('Empresa no encontrada');
     const resultados = await this.productsService.search(
-      q,
-      empresaId || undefined,
+      texto,
+      empresaId,
       limite ? parseInt(limite, 10) : 25,
     );
     return resultados.map((p: any) => ({
@@ -172,16 +181,19 @@ export class ExternalApiController {
   /**
    * I29: búsqueda de clientes por nombre o identificación — el agente
    * resuelve el UUID que exige POST /api/orders sin salir de la API.
+   * I31: respuesta limitada (página por defecto 50, tope 200 vía `limite`).
    */
   @Get('clients')
-  clientes(@Query('q') q?: string) {
-    return this.clientsService.findAll(q);
+  clientes(@Query('q') q?: string, @Query('limite') limite?: string) {
+    const texto = validarTextoBusqueda(q, false);
+    return this.clientsService.findAllPaginado(texto, parseLimite(limite));
   }
 
-  /** I29: búsqueda de comerciales por nombre o identificación. */
+  /** I29: búsqueda de comerciales por nombre o identificación (I31: limitada). */
   @Get('comerciales')
-  comerciales(@Query('q') q?: string) {
-    return this.comercialesService.findAll(q);
+  comerciales(@Query('q') q?: string, @Query('limite') limite?: string) {
+    const texto = validarTextoBusqueda(q, false);
+    return this.comercialesService.findAllPaginado(texto, parseLimite(limite));
   }
 
   /** I29: empresas activas — el agente descubre los empresaId válidos. */
@@ -260,4 +272,31 @@ export class ExternalApiController {
   consultaCaja(@Param('boxId') boxId: string) {
     return this.dispatches.consultaCaja(boxId);
   }
+}
+
+/** I31: longitud máxima del texto de búsqueda (protege la búsqueda por similitud). */
+const Q_MAX_LEN = 100;
+
+/**
+ * I31: valida el parámetro q de las búsquedas. Con requerido=true un q
+ * ausente o vacío es 400 (búsqueda de productos); con false el q ausente es
+ * válido y devuelve undefined (listados de clientes/comerciales).
+ */
+function validarTextoBusqueda(q: string | undefined, requerido = true): string | undefined {
+  const texto = (q ?? '').trim();
+  if (!texto) {
+    if (requerido) throw new BadRequestException('q es requerido');
+    return undefined;
+  }
+  if (texto.length > Q_MAX_LEN) {
+    throw new BadRequestException(`q no puede superar ${Q_MAX_LEN} caracteres`);
+  }
+  return texto;
+}
+
+/** I31: tamaño de página de los listados de la API externa (defecto 50, tope 200). */
+function parseLimite(limite?: string): number {
+  const n = limite ? parseInt(limite, 10) : 50;
+  if (!Number.isFinite(n) || n < 1) return 50;
+  return Math.min(200, n);
 }
