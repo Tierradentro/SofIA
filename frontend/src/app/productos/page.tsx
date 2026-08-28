@@ -14,6 +14,7 @@ import {
   Tarjeta,
 } from '@/components/ui';
 import { ConsultaProducto } from './consulta';
+import { PanelUbicaciones } from '@/components/panel-ubicaciones';
 
 interface Empresa {
   id: string;
@@ -470,6 +471,11 @@ export default function ProductosPage() {
               </div>
             )}
           </dl>
+
+          {/* I34: ubicaciones del producto en la bodega (asignación manual) */}
+          <div className="mt-5 border-t border-slate-100 pt-4">
+            <PanelUbicaciones productoId={ficha.id} codigo={ficha.codigo} soloLectura={!puedeEditar} />
+          </div>
         </Tarjeta>
       )}
 

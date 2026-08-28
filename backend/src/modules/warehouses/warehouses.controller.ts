@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -58,6 +59,24 @@ export class WarehousesController {
   @Roles(Role.GENERADOR, Role.ADMINISTRADOR)
   assign(@Body() dto: AssignLocationDto, @CurrentUser() user: AuthenticatedUser) {
     return this.warehouses.assignLocation(dto, user);
+  }
+
+  /** Reubicar una ubicación (estante/nivel, área o tránsito) — Generador. */
+  @Patch('locations/:id')
+  @Roles(Role.GENERADOR, Role.ADMINISTRADOR)
+  updateLocation(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AssignLocationDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.warehouses.updateLocation(id, dto, user);
+  }
+
+  /** Dar de baja una ubicación — Generador. */
+  @Delete('locations/:id')
+  @Roles(Role.GENERADOR, Role.ADMINISTRADOR)
+  removeLocation(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.warehouses.removeLocation(id, user);
   }
 
   /** Detalle de un estante: niveles con productos (drill-down del mapa). */

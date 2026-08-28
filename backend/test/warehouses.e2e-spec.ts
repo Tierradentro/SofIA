@@ -169,6 +169,51 @@ describe('Warehouses (e2e)', () => {
     expect(bahia2.empresas).toHaveLength(1);
   });
 
+  it('PATCH /warehouses/locations/:id reubica y DELETE da de baja recalculando la oficial', async () => {
+    const mapa = await t.http.get('/api/v1/warehouses/map').set('Authorization', `Bearer ${tokenAdmin}`);
+    const estantes = mapa.body.pisos[0].pasillos[0].zonas.find((z: any) => z.estantes.length > 0).estantes;
+    const rackA = estantes[0];
+    const rackB = estantes[1];
+
+    // Ubicación A (mayor cantidad = oficial) y B
+    const a = await t.http.post('/api/v1/warehouses/locations').set('Authorization', `Bearer ${tokenGenerador}`)
+      .send({ productId: productoId, rackId: rackA.id, nivel: 1, cantidad: 20 });
+    const b = await t.http.post('/api/v1/warehouses/locations').set('Authorization', `Bearer ${tokenGenerador}`)
+      .send({ productId: productoId, rackId: rackB.id, nivel: 2, cantidad: 5 });
+    expect(a.status).toBe(201);
+    expect(b.status).toBe(201);
+
+    // Reubicar B a nivel 3 con más cantidad → pasa a ser oficial
+    const reub = await t.http.patch(`/api/v1/warehouses/locations/${b.body.id}`).set('Authorization', `Bearer ${tokenGenerador}`)
+      .send({ productId: productoId, rackId: rackB.id, nivel: 3, cantidad: 30 });
+    expect(reub.status).toBe(200);
+
+    const det = await t.http.get(`/api/v1/warehouses/racks/${rackB.id}`).set('Authorization', `Bearer ${tokenAdmin}`);
+    const n3 = det.body.niveles.find((n: any) => n.nivel === 3);
+    expect(n3.productos[0].esOficial).toBe(true);
+
+    // Baja de la oficial → la siguiente mayor (A) queda oficial
+    const del = await t.http.delete(`/api/v1/warehouses/locations/${b.body.id}`).set('Authorization', `Bearer ${tokenGenerador}`);
+    expect(del.status).toBe(200);
+    const detA = await t.http.get(`/api/v1/warehouses/racks/${rackA.id}`).set('Authorization', `Bearer ${tokenAdmin}`);
+    const n1 = detA.body.niveles.find((n: any) => n.nivel === 1);
+    expect(n1.productos[0].esOficial).toBe(true);
+
+    // Operador no puede dar de baja
+    const delOp = await t.http.delete(`/api/v1/warehouses/locations/${a.body.id}`).set('Authorization', `Bearer ${tokenOperador}`);
+    expect(delOp.status).toBe(403);
+  });
+
+  it('la exportación products.csv codifica la ubicación oficial en grupo_siete', async () => {
+    const res = await t.http
+      .get(`/api/v1/exports/products.csv?empresaId=${empresaId}`)
+      .set('Authorization', `Bearer ${tokenGenerador}`);
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('grupo_siete');
+    // El producto con ubicación oficial en rack tiene su código P1-A1-...
+    expect(res.text).toMatch(/P1-A\d-[ID]-E\d-N\d/);
+  });
+
   it('valida reglas: nivel fuera de rango, ubicacion sin destino y mover cajon con alias', async () => {
     const mapa = await t.http.get('/api/v1/warehouses/map').set('Authorization', `Bearer ${tokenAdmin}`);
     const pasillo = mapa.body.pisos[0].pasillos[0];

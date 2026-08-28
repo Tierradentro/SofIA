@@ -7,6 +7,7 @@ import { api, obtenerSesion, mensajeError, Sesion } from '@/lib/api';
 import { AppShell } from '@/components/app-shell';
 import { CajonBodega, MapaBodega } from '@/components/mapa-bodega';
 import { CLASE_INPUT, EncabezadoPagina, Insignia, Tarjeta } from '@/components/ui';
+import { PanelUbicaciones } from '@/components/panel-ubicaciones';
 
 /**
  * I33 (Fase 2 - Mapa 2D, HU-056/057/059): mapa operativo de la bodega para
@@ -141,6 +142,22 @@ function MapaPage() {
   const [productosArea, setProductosArea] = useState<UbicacionProducto[] | null>(null);
   const [rackSelId, setRackSelId] = useState<string | null>(null);
   const [nivelSel, setNivelSel] = useState<number | null>(null);
+  const [asignarCodigo, setAsignarCodigo] = useState('');
+  const [asignarProducto, setAsignarProducto] = useState<{ id: string; codigo: string } | null>(null);
+  const [errorAsignar, setErrorAsignar] = useState('');
+
+  async function buscarProductoParaAsignar() {
+    const q = asignarCodigo.trim();
+    if (!q) return;
+    setErrorAsignar('');
+    const { status, body } = await api(`/warehouses/locate?q=${encodeURIComponent(q)}`);
+    if (status === 200 && body.product) {
+      setAsignarProducto({ id: body.product.id, codigo: body.product.codigo });
+    } else {
+      setAsignarProducto(null);
+      setErrorAsignar(mensajeError(body, 'Producto no encontrado'));
+    }
+  }
 
   async function cargarMapa() {
     setErrorCarga('');
@@ -308,6 +325,7 @@ function MapaPage() {
 
   if (!sesion) return null;
 
+  const puedeAsignar = sesion.usuario.rol === 'GENERADOR' || sesion.usuario.rol === 'ADMINISTRADOR';
   const pasilloSel = seleccion?.tipo === 'pasillo' ? (seleccion as CajonBodega & { ref?: MapaPasillo }).ref : null;
   const areaSel = seleccion?.tipo === 'area' ? (seleccion as CajonBodega & { ref?: MapaArea }).ref : null;
 
@@ -587,6 +605,43 @@ function MapaPage() {
                   </ul>
                 )}
                 {nivelSel === null && <p className="text-sm text-slate-400">Seleccione un nivel para ver sus productos.</p>}
+
+                {/* I34: asignar un producto a este estante/nivel */}
+                {puedeAsignar && (
+                  <div className="mt-4 border-t border-slate-100 pt-4">
+                    <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Asignar producto a {detalleRack.rack.alias}
+                    </h3>
+                    <div className="flex gap-2">
+                      <input
+                        className={`${CLASE_INPUT} flex-1`}
+                        placeholder="Referencia / código"
+                        value={asignarCodigo}
+                        onChange={(e) => setAsignarCodigo(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), buscarProductoParaAsignar())}
+                      />
+                      <button
+                        onClick={buscarProductoParaAsignar}
+                        className="rounded-lg bg-sofia-700 px-3 py-2 text-sm font-medium text-white hover:bg-sofia-600"
+                      >
+                        Buscar
+                      </button>
+                    </div>
+                    {errorAsignar && <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{errorAsignar}</p>}
+                    {asignarProducto && (
+                      <div className="mt-3 rounded-lg border border-slate-200 p-3">
+                        <PanelUbicaciones
+                          productoId={asignarProducto.id}
+                          codigo={asignarProducto.codigo}
+                          alCambiar={() => {
+                            cargarMapa();
+                            if (rackSelId) cargarDetalleRack(rackSelId);
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
               </Tarjeta>
             )}
           </div>

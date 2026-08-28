@@ -57,10 +57,44 @@ export class ExportsController {
     if (!empresa) throw new BadRequestException('Empresa no encontrada');
 
     const productos = await this.dataSource.query(
-      `SELECT ${COLUMNAS.map((c) => `"${c}"`).join(', ')}
+      `SELECT id, ${COLUMNAS.map((c) => `"${c}"`).join(', ')}
        FROM products WHERE empresa_id = $1 ORDER BY codigo`,
       [empresaId],
     );
+
+    // I34: ubicación oficial legible (Grupo 7 de la exportación contable) en
+    // un solo campo: P{piso}-A{pasillo}-{lado}-{estante}-N{nivel} | AREA-* | TRANSITO.
+    const oficiales: any[] = await this.dataSource.query(
+      `SELECT wpl.product_id,
+              f.numero  AS piso,
+              a.numero  AS pasillo,
+              z.lado    AS lado,
+              r.alias   AS estante,
+              wpl.nivel AS nivel,
+              ar.tipo   AS area_tipo,
+              wpl.transito AS transito
+       FROM warehouse_product_locations wpl
+       LEFT JOIN warehouse_racks   r  ON r.id  = wpl.rack_id
+       LEFT JOIN warehouse_zones   z  ON z.id  = r.zone_id
+       LEFT JOIN warehouse_aisles  a  ON a.id  = z.aisle_id
+       LEFT JOIN warehouse_floors  f  ON f.id  = a.floor_id
+       LEFT JOIN warehouse_areas   ar ON ar.id = wpl.area_id
+       WHERE wpl.es_oficial = true
+         AND wpl.product_id IN (SELECT id FROM products WHERE empresa_id = $1)`,
+      [empresaId],
+    );
+    const codigoPorProducto = new Map<string, string>();
+    for (const o of oficiales) {
+      let codigo: string | null = null;
+      if (o.transito) codigo = 'TRANSITO';
+      else if (o.area_tipo) codigo = `AREA-${o.area_tipo}`;
+      else if (o.estante) codigo = `P${o.piso ?? 1}-A${o.pasillo ?? 0}-${(o.lado ?? '').slice(0, 1)}-${o.estante}-N${o.nivel ?? 1}`;
+      if (codigo) codigoPorProducto.set(o.product_id, codigo);
+    }
+    for (const p of productos) {
+      const oficial = codigoPorProducto.get(p.id as string);
+      if (oficial) p.grupo_siete = oficial;
+    }
 
     // Trazabilidad: los ajustes (movimientos) de la empresa, para auditoría
     await this.audit.log({

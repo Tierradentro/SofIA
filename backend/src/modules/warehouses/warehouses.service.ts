@@ -443,6 +443,102 @@ export class WarehousesService {
   }
 
   /**
+   * Código legible de la ubicación oficial de un producto (I34, Grupo 7 de la
+   * exportación contable): `P{piso}-A{pasillo}-{lado}-{estante}-N{nivel}`,
+   * `AREA-{tipo}` o `TRANSITO`. Devuelve null si no tiene ubicación oficial.
+   */
+  async codigoUbicacionOficial(productId: string): Promise<string | null> {
+    const oficial = await this.locations.findOne({
+      where: { productId, esOficial: true },
+      relations: ['rack', 'rack.zone', 'rack.zone.aisle', 'rack.zone.aisle.floor', 'area'],
+    });
+    if (!oficial) return null;
+    if (oficial.transito) return 'TRANSITO';
+    if (oficial.area) return `AREA-${oficial.area.tipo}`;
+    if (oficial.rack) {
+      const piso = oficial.rack.zone?.aisle?.floor?.numero ?? 1;
+      const pasillo = oficial.rack.zone?.aisle?.numero ?? 0;
+      const lado = (oficial.rack.zone?.lado ?? '').slice(0, 1); // I/D
+      return `P${piso}-A${pasillo}-${lado}-${oficial.rack.alias}-N${oficial.nivel ?? 1}`;
+    }
+    return null;
+  }
+
+  /** Dar de baja una ubicación y recalcular la oficial (mayor cantidad). */
+  async removeLocation(id: string, user: { id: string; username: string }) {
+    const loc = await this.locations.findOne({ where: { id } });
+    if (!loc) throw new NotFoundException('Ubicación no encontrada');
+    const productId = loc.productId;
+    await this.locations.delete(id);
+    await this.recalcularOficial(productId);
+    await this.audit.log({
+      usuarioId: user.id,
+      usuarioUsername: user.username,
+      accion: 'BAJA_UBICACION',
+      tabla: 'warehouse_product_locations',
+      registroId: id,
+      valorAnterior: { productId, rackId: loc.rackId, nivel: loc.nivel, areaId: loc.areaId, transito: loc.transito, cantidad: loc.cantidad },
+    });
+    return { ok: true };
+  }
+
+  /** Mover una ubicación a otro estante/nivel, área o tránsito. */
+  async updateLocation(id: string, dto: AssignLocationDto, user: { id: string; username: string }) {
+    const loc = await this.locations.findOne({ where: { id } });
+    if (!loc) throw new NotFoundException('Ubicación no encontrada');
+    const anterior = { rackId: loc.rackId, nivel: loc.nivel, areaId: loc.areaId, transito: loc.transito, cantidad: loc.cantidad };
+
+    const esTransito = dto.transito === true;
+    if (!esTransito && !dto.rackId && !dto.areaId) {
+      throw new BadRequestException('Indique rackId+nivel, areaId o transito');
+    }
+    if (dto.rackId && !dto.nivel) throw new BadRequestException('El nivel es requerido cuando se asigna un estante');
+    if (dto.rackId) {
+      const rack = await this.dataSource.getRepository(WarehouseRack).findOne({ where: { id: dto.rackId } });
+      if (!rack) throw new NotFoundException('Estante no encontrado');
+      if (dto.nivel! > rack.niveles) throw new BadRequestException(`El estante tiene ${rack.niveles} niveles`);
+    }
+    if (dto.areaId) {
+      const area = await this.dataSource.getRepository(WarehouseArea).findOne({ where: { id: dto.areaId } });
+      if (!area) throw new NotFoundException('Área no encontrada');
+      if (!area.permiteProductos) throw new BadRequestException('Esta área no almacena productos');
+    }
+
+    loc.rackId = dto.rackId ?? null;
+    loc.nivel = dto.nivel ?? null;
+    loc.areaId = dto.areaId ?? null;
+    loc.transito = esTransito;
+    loc.cantidad = dto.cantidad;
+    await this.locations.save(loc);
+    await this.recalcularOficial(loc.productId);
+    await this.audit.log({
+      usuarioId: user.id,
+      usuarioUsername: user.username,
+      accion: 'REUBICAR_UBICACION',
+      tabla: 'warehouse_product_locations',
+      registroId: id,
+      valorAnterior: anterior,
+      valorNuevo: { rackId: loc.rackId, nivel: loc.nivel, areaId: loc.areaId, transito: loc.transito, cantidad: loc.cantidad },
+    });
+    return loc;
+  }
+
+  /** Marca la ubicación oficial = la de mayor cantidad del producto. */
+  private async recalcularOficial(productId: string) {
+    const todas = await this.locations.find({ where: { productId } });
+    let max = -1;
+    let oficialId: string | null = null;
+    for (const t of todas) {
+      if (t.cantidad > max) {
+        max = t.cantidad;
+        oficialId = t.id;
+      }
+    }
+    await this.locations.update({ productId }, { esOficial: false });
+    if (oficialId) await this.locations.update({ id: oficialId }, { esOficial: true });
+  }
+
+  /**
    * Busca un producto por referencia/código y devuelve sus ubicaciones para
    * resaltarlas en el mapa (ruta básica, HU-059).
    */
