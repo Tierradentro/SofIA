@@ -10,6 +10,7 @@ import { PqrsReason } from '../../modules/pqrs/entities/pqrs-reason.entity';
 import { Role } from '../../common/enums/role.enum';
 import { UserStatus } from '../../common/enums/user-status.enum';
 import { PqrsConcept } from '../../common/enums/pqrs-concept.enum';
+import { runWarehouseSeed } from './warehouse.seed';
 
 /**
  * Semillas I0 (idempotentes):
@@ -163,4 +164,7 @@ export async function runInitialSeed(dataSource: DataSource): Promise<void> {
         reasonRepo.create({ codigo, concepto: PqrsConcept.GARANTIA_NO_APLICA, descripcion }),
       );
   }
+
+  // ---- I32: bodega de ejemplo para el mapa 2D ----
+  await runWarehouseSeed(dataSource);
 }

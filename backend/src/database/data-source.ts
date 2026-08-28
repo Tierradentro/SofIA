@@ -47,6 +47,14 @@ import { ApiExternaI131753000012000 } from './migrations/1753000012000-api-exter
 import { DireccionesI151753000013000 } from './migrations/1753000013000-direcciones-i15';
 import { TrazabilidadUsuariosI191753000014000 } from './migrations/1753000014000-trazabilidad-usuarios-i19';
 import { PedidoDespachadoI251753000015000 } from './migrations/1753000015000-pedido-despachado-i25';
+import { Warehouse } from '../modules/warehouses/entities/warehouse.entity';
+import { WarehouseFloor } from '../modules/warehouses/entities/warehouse-floor.entity';
+import { WarehouseAisle } from '../modules/warehouses/entities/warehouse-aisle.entity';
+import { WarehouseZone } from '../modules/warehouses/entities/warehouse-zone.entity';
+import { WarehouseRack } from '../modules/warehouses/entities/warehouse-rack.entity';
+import { WarehouseArea } from '../modules/warehouses/entities/warehouse-area.entity';
+import { WarehouseProductLocation } from '../modules/warehouses/entities/warehouse-product-location.entity';
+import { WarehousesI321753000016000 } from './migrations/1753000016000-warehouses-i32';
 import { runInitialSeed } from './seeds/initial.seed';
 
 export function buildDataSourceOptions(): DataSourceOptions {
@@ -91,6 +99,13 @@ export function buildDataSourceOptions(): DataSourceOptions {
       PqrsSupport,
       StockCount,
       StockCountItem,
+      Warehouse,
+      WarehouseFloor,
+      WarehouseAisle,
+      WarehouseZone,
+      WarehouseRack,
+      WarehouseArea,
+      WarehouseProductLocation,
     ],
     migrations: [
       InitI0I11753000000000,
@@ -109,6 +124,7 @@ export function buildDataSourceOptions(): DataSourceOptions {
       DireccionesI151753000013000,
       TrazabilidadUsuariosI191753000014000,
       PedidoDespachadoI251753000015000,
+      WarehousesI321753000016000,
     ],
     synchronize: false,
     logging: false,

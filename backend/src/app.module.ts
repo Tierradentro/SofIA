@@ -29,6 +29,7 @@ import { DispatchesModule } from './modules/dispatches/dispatches.module';
 import { PqrsModule } from './modules/pqrs/pqrs.module';
 import { InventoriesModule } from './modules/inventories/inventories.module';
 import { ExternalApiModule } from './modules/external-api/external-api.module';
+import { WarehousesModule } from './modules/warehouses/warehouses.module';
 
 
 /**
@@ -82,6 +83,7 @@ import { ExternalApiModule } from './modules/external-api/external-api.module';
     PqrsModule,
     InventoriesModule,
     ExternalApiModule,
+    WarehousesModule,
   ],
   controllers: [AppController],
 })
