@@ -87,21 +87,45 @@ export class WarehousesService {
           })
         : await this.locations.find({ where: { transito: true }, relations: ['product'] });
 
-    // Ocupación por estante: cantidad total y niveles ocupados.
-    const porRack = new Map<string, { cantidad: number; niveles: Set<number> }>();
+    // Ocupación por estante: cantidad total, niveles ocupados y empresas
+    // presentes (I33: filtro por empresa en el mapa 2D).
+    const porRack = new Map<string, { cantidad: number; niveles: Set<number>; empresas: Map<string, number> }>();
+    const porArea = new Map<string, { cantidad: number; empresas: Map<string, number> }>();
+    let enTransito = 0;
+    const sumarEmpresa = (m: Map<string, number>, empresaId: string | undefined, cantidad: number) => {
+      if (!empresaId) return;
+      m.set(empresaId, (m.get(empresaId) ?? 0) + cantidad);
+    };
     for (const u of ubicaciones) {
-      if (!u.rackId) continue;
-      const e = porRack.get(u.rackId) ?? { cantidad: 0, niveles: new Set<number>() };
-      e.cantidad += u.cantidad;
-      if (u.nivel) e.niveles.add(u.nivel);
-      porRack.set(u.rackId, e);
+      if (u.transito) enTransito += u.cantidad;
+      if (u.rackId) {
+        const e = porRack.get(u.rackId) ?? { cantidad: 0, niveles: new Set<number>(), empresas: new Map<string, number>() };
+        e.cantidad += u.cantidad;
+        if (u.nivel) e.niveles.add(u.nivel);
+        sumarEmpresa(e.empresas, u.product?.empresaId, u.cantidad);
+        porRack.set(u.rackId, e);
+      } else if (u.areaId) {
+        const e = porArea.get(u.areaId) ?? { cantidad: 0, empresas: new Map<string, number>() };
+        e.cantidad += u.cantidad;
+        sumarEmpresa(e.empresas, u.product?.empresaId, u.cantidad);
+        porArea.set(u.areaId, e);
+      }
     }
+
+    const empresasDe = (m: Map<string, number>) =>
+      Array.from(m.entries()).map(([empresaId, cantidad]) => ({ empresaId, cantidad }));
 
     return {
       bodega,
+      enTransito,
       pisos: pisos.map((piso) => ({
         ...piso,
-        areas: areas.filter((a) => a.floorId === piso.id),
+        areas: areas
+          .filter((a) => a.floorId === piso.id)
+          .map((area) => {
+            const occ = porArea.get(area.id);
+            return { ...area, cantidad: occ?.cantidad ?? 0, empresas: occ ? empresasDe(occ.empresas) : [] };
+          }),
         pasillos: pasillos
           .filter((p) => p.floorId === piso.id)
           .map((pasillo) => ({
@@ -119,10 +143,72 @@ export class WarehousesService {
                       cantidad: occ?.cantidad ?? 0,
                       nivelesOcupados: occ ? occ.niveles.size : 0,
                       ocupacion: rack.niveles > 0 ? (occ ? occ.niveles.size / rack.niveles : 0) : 0,
+                      empresas: occ ? empresasDe(occ.empresas) : [],
                     };
                   }),
               })),
           })),
+      })),
+    };
+  }
+
+  /**
+   * Detalle de un estante (HU-056): niveles con los productos que contiene
+   * (drill-down estante → niveles → productos del mapa 2D).
+   */
+  async rackDetalle(rackId: string) {
+    const rack = await this.dataSource.getRepository(WarehouseRack).findOne({
+      where: { id: rackId },
+      relations: ['zone', 'zone.aisle', 'zone.aisle.floor'],
+    });
+    if (!rack) throw new NotFoundException('Estante no encontrado');
+    const ubicaciones = await this.locations.find({
+      where: { rackId },
+      relations: ['product', 'product.empresa'],
+    });
+    const niveles = Array.from({ length: rack.niveles }, (_, i) => {
+      const nivel = i + 1;
+      return {
+        nivel,
+        productos: ubicaciones
+          .filter((u) => u.nivel === nivel)
+          .map((u) => ({
+            ubicacionId: u.id,
+            productoId: u.productId,
+            codigo: u.product?.codigo,
+            descripcion: u.product?.descripcion,
+            empresa: u.product?.empresa?.nombre,
+            cantidad: u.cantidad,
+            esOficial: u.esOficial,
+          })),
+      };
+    });
+    return { rack, niveles };
+  }
+
+  /**
+   * Detalle de un área (bahías/patio): productos almacenados en ella.
+   */
+  async areaDetalle(areaId: string) {
+    const area = await this.dataSource.getRepository(WarehouseArea).findOne({
+      where: { id: areaId },
+      relations: ['floor'],
+    });
+    if (!area) throw new NotFoundException('Área no encontrada');
+    const ubicaciones = await this.locations.find({
+      where: { areaId },
+      relations: ['product', 'product.empresa'],
+    });
+    return {
+      area,
+      productos: ubicaciones.map((u) => ({
+        ubicacionId: u.id,
+        productoId: u.productId,
+        codigo: u.product?.codigo,
+        descripcion: u.product?.descripcion,
+        empresa: u.product?.empresa?.nombre,
+        cantidad: u.cantidad,
+        esOficial: u.esOficial,
       })),
     };
   }

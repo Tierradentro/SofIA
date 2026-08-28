@@ -60,6 +60,20 @@ export class WarehousesController {
     return this.warehouses.assignLocation(dto, user);
   }
 
+  /** Detalle de un estante: niveles con productos (drill-down del mapa). */
+  @Get('racks/:id')
+  @Roles(Role.OPERADOR, Role.GENERADOR, Role.ADMINISTRADOR)
+  rackDetalle(@Param('id', ParseUUIDPipe) id: string) {
+    return this.warehouses.rackDetalle(id);
+  }
+
+  /** Detalle de un área: productos almacenados (bahías/patio). */
+  @Get('areas/:id')
+  @Roles(Role.OPERADOR, Role.GENERADOR, Role.ADMINISTRADOR)
+  areaDetalle(@Param('id', ParseUUIDPipe) id: string) {
+    return this.warehouses.areaDetalle(id);
+  }
+
   /** Ubicaciones de un producto — roles operativos. */
   @Get('products/:id/locations')
   @Roles(Role.OPERADOR, Role.GENERADOR, Role.ADMINISTRADOR)

@@ -33,6 +33,7 @@ export function MapaBodega({
   altoM,
   cajones,
   seleccionada,
+  resaltadas,
   onSeleccionar,
   onArrastrar,
 }: {
@@ -40,6 +41,8 @@ export function MapaBodega({
   altoM: number;
   cajones: CajonBodega[];
   seleccionada?: string | null;
+  /** Cajones resaltados (búsqueda/filtro por empresa): borde ámbar grueso. */
+  resaltadas?: string[];
   onSeleccionar?: (cajon: CajonBodega) => void;
   /** Fin del arrastre: el padre persiste; si falla, devuelve false y se revierte. */
   onArrastrar?: (cajon: CajonBodega, posX: number, posY: number) => Promise<boolean> | boolean;
@@ -164,6 +167,9 @@ export function MapaBodega({
         const y = (altoM - pos.y - c.altoM) * E;
         const esLinea = c.altoM === 0;
         const sel = seleccionada === c.clave;
+        const resaltado = resaltadas?.includes(c.clave) ?? false;
+        const colorResalte = sel ? '#f59e0b' : resaltado ? '#f59e0b' : c.borde;
+        const anchoResalte = sel ? E * 0.35 : resaltado ? E * 0.35 : E * 0.15;
         const arrastrando = arrastre?.clave === c.clave;
         return (
           <g
@@ -181,8 +187,8 @@ export function MapaBodega({
                   height={E * 0.6}
                   rx={E * 0.3}
                   fill={c.relleno}
-                  stroke={sel ? '#f59e0b' : c.borde}
-                  strokeWidth={sel ? E * 0.3 : E * 0.12}
+                  stroke={colorResalte}
+                  strokeWidth={sel || resaltado ? E * 0.3 : E * 0.12}
                 />
                 <text
                   x={x + (c.anchoM * E) / 2}
@@ -204,9 +210,9 @@ export function MapaBodega({
                   height={c.altoM * E}
                   rx={E * 0.3}
                   fill={c.relleno}
-                  stroke={sel ? '#f59e0b' : c.borde}
-                  strokeWidth={sel ? E * 0.35 : E * 0.15}
-                  strokeDasharray={c.tipo === 'area' && !sel ? `${E * 0.5} ${E * 0.3}` : undefined}
+                  stroke={colorResalte}
+                  strokeWidth={anchoResalte}
+                  strokeDasharray={c.tipo === 'area' && !sel && !resaltado ? `${E * 0.5} ${E * 0.3}` : undefined}
                 />
                 <text
                   x={x + (c.anchoM * E) / 2}

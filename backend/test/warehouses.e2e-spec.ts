@@ -113,6 +113,62 @@ describe('Warehouses (e2e)', () => {
     expect(res.body.ubicaciones[0].rack.zone.aisle.numero).toBe(1);
   });
 
+  it('GET /warehouses/racks/:id devuelve niveles con productos y empresa', async () => {
+    const mapa = await t.http.get('/api/v1/warehouses/map').set('Authorization', `Bearer ${tokenAdmin}`);
+    const rack = mapa.body.pisos[0].pasillos[0].zonas.find((z: any) => z.estantes.length > 0).estantes[0];
+    const res = await t.http.get(`/api/v1/warehouses/racks/${rack.id}`).set('Authorization', `Bearer ${tokenOperador}`);
+    expect(res.status).toBe(200);
+    expect(res.body.rack.niveles).toBe(rack.niveles);
+    expect(res.body.niveles).toHaveLength(rack.niveles);
+    const nivel2 = res.body.niveles.find((n: any) => n.nivel === 2);
+    expect(nivel2.productos).toHaveLength(1);
+    expect(nivel2.productos[0].codigo).toBe('MAPA-001');
+    expect(nivel2.productos[0].cantidad).toBe(7);
+    expect(nivel2.productos[0].empresa).toBe('IRE');
+  });
+
+  it('el mapa desglosa la ocupación por empresa y cuenta el tránsito', async () => {
+    const mapa = await t.http.get('/api/v1/warehouses/map').set('Authorization', `Bearer ${tokenAdmin}`);
+    expect(mapa.body.enTransito).toBe(0);
+    const rack = mapa.body.pisos[0].pasillos[0].zonas.find((z: any) => z.estantes.length > 0).estantes[0];
+    expect(rack.empresas).toHaveLength(1);
+    expect(rack.empresas[0].cantidad).toBe(7);
+
+    // Asignar en tránsito y verificar el contador global
+    const res = await t.http
+      .post('/api/v1/warehouses/locations')
+      .set('Authorization', `Bearer ${tokenGenerador}`)
+      .send({ productId: productoId, transito: true, cantidad: 3 });
+    expect(res.status).toBe(201);
+    const mapa2 = await t.http.get('/api/v1/warehouses/map').set('Authorization', `Bearer ${tokenAdmin}`);
+    expect(mapa2.body.enTransito).toBe(3);
+  });
+
+  it('GET /warehouses/areas/:id devuelve los productos almacenados en el área', async () => {
+    const mapa = await t.http.get('/api/v1/warehouses/map').set('Authorization', `Bearer ${tokenAdmin}`);
+    const bahia = mapa.body.pisos[0].areas.find((a: any) => a.tipo === 'BAHIA_TEMPORAL');
+    expect(bahia).toBeDefined();
+
+    const asignar = await t.http
+      .post('/api/v1/warehouses/locations')
+      .set('Authorization', `Bearer ${tokenGenerador}`)
+      .send({ productId: productoId, areaId: bahia.id, cantidad: 4 });
+    expect(asignar.status).toBe(201);
+
+    const res = await t.http.get(`/api/v1/warehouses/areas/${bahia.id}`).set('Authorization', `Bearer ${tokenOperador}`);
+    expect(res.status).toBe(200);
+    expect(res.body.area.tipo).toBe('BAHIA_TEMPORAL');
+    expect(res.body.productos).toHaveLength(1);
+    expect(res.body.productos[0].codigo).toBe('MAPA-001');
+    expect(res.body.productos[0].cantidad).toBe(4);
+
+    // El mapa refleja la ocupación del área
+    const mapa2 = await t.http.get('/api/v1/warehouses/map').set('Authorization', `Bearer ${tokenAdmin}`);
+    const bahia2 = mapa2.body.pisos[0].areas.find((a: any) => a.tipo === 'BAHIA_TEMPORAL');
+    expect(bahia2.cantidad).toBe(4);
+    expect(bahia2.empresas).toHaveLength(1);
+  });
+
   it('valida reglas: nivel fuera de rango, ubicacion sin destino y mover cajon con alias', async () => {
     const mapa = await t.http.get('/api/v1/warehouses/map').set('Authorization', `Bearer ${tokenAdmin}`);
     const pasillo = mapa.body.pisos[0].pasillos[0];

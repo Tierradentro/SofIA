@@ -112,17 +112,13 @@ function MapaAlmacen() {
     <Tarjeta className="p-5">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold text-slate-900">Mapa del Almacén</h2>
-        <div className="flex items-center gap-4 text-xs text-slate-500">
-          <span className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-menta-400" /> Operativo
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-sofia-700" /> Crítico
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-slate-300" /> Libre
-          </span>
-        </div>
+        {/* I33: enlace al mapa 2D operativo (estructura real de la bodega) */}
+        <a
+          href="/mapa"
+          className="rounded-lg bg-sofia-50 px-3 py-1.5 text-xs font-medium text-sofia-700 hover:bg-sofia-100"
+        >
+          Abrir mapa operativo →
+        </a>
       </div>
 
       <div className="rounded-xl border border-slate-200 p-4">

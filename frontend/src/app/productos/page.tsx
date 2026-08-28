@@ -403,6 +403,13 @@ export default function ProductosPage() {
                   Editar
                 </button>
               )}
+              {/* I33: ubicar el producto en el mapa 2D de la bodega */}
+              <a
+                href={`/mapa?q=${encodeURIComponent(ficha.codigo)}`}
+                className="rounded-lg bg-menta-50 px-3 py-1.5 text-sm font-medium text-menta-700 hover:bg-menta-100"
+              >
+                Ver en mapa
+              </a>
               <button onClick={() => setFicha(null)} className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-200">
                 Cerrar
               </button>

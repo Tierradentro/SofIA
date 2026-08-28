@@ -19,6 +19,7 @@ import {
   Lock,
   LogOut,
   Map,
+  MapPin,
   Menu,
   Package,
   RotateCcw,
@@ -60,6 +61,7 @@ const NAV_OPERACIONES: ItemNav[] = [
   { href: '/devoluciones', etiqueta: 'Devoluciones', icono: RotateCcw, roles: GOCA },
   { href: '/movimientos', etiqueta: 'Movimientos', icono: ArrowLeftRight, roles: ['ADMINISTRADOR', 'GENERADOR'] },
   { href: '/inventarios', etiqueta: 'Inventarios', icono: Warehouse, roles: GOA },
+  { href: '/mapa', etiqueta: 'Mapa', icono: MapPin, roles: GOA },
   { href: '/tablero', etiqueta: 'Mi tablero', icono: KanbanSquare, roles: ['COMERCIAL'] },
 ];
 
