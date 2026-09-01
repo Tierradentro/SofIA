@@ -16,6 +16,8 @@ interface Movimiento {
   docTipo: string | null;
   docId: string | null;
   usuarioUsername: string | null;
+  /** I35: nombre del usuario que registró el movimiento. */
+  usuarioNombre?: string | null;
   motivo: string | null;
   fecha: string; // columna real de la API (inventory_movements.fecha)
 }
@@ -165,7 +167,9 @@ export default function MovimientosPage() {
                     {m.cantidadBloqueadaDelta === null ? '—' : Number(m.cantidadBloqueadaDelta) > 0 ? `+${m.cantidadBloqueadaDelta}` : m.cantidadBloqueadaDelta}
                   </td>
                   <td className="p-2 text-xs">{m.docTipo ?? '—'}</td>
-                  <td className="p-2 text-xs">{m.usuarioUsername ?? '—'}</td>
+                  <td className="p-2 text-xs">
+                    {m.usuarioNombre ? `${m.usuarioNombre} (${m.usuarioUsername})` : m.usuarioUsername ?? '—'}
+                  </td>
                   <td className="p-2 text-xs">{m.motivo ?? ''}</td>
                 </tr>
               ))}

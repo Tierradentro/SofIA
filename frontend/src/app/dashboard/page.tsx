@@ -6,7 +6,6 @@ import {
   CheckCircle2,
   Clock,
   Download,
-  MapPin,
   Package,
   ShoppingCart,
   Truck,
@@ -14,6 +13,7 @@ import {
 import { api, obtenerSesion, Sesion } from '@/lib/api';
 import { useAvisoEstadosPedidos } from '@/lib/sonido';
 import { AppShell } from '@/components/app-shell';
+import { CajonBodega, MapaBodega } from '@/components/mapa-bodega';
 import {
   CLASES_TABLA,
   COLORES_PESTANA,
@@ -37,6 +37,8 @@ interface PedidoCola {
   estado: 'ABIERTO' | 'ALISTADO' | 'APROBADO' | 'PENDIENTE_CORRECCION' | 'CANCELADO' | 'DESPACHADO';
   createdAt: string;
   clienteId: string;
+  /** I35: factura relacionada con el pedido. */
+  numeroFactura?: string | null;
 }
 
 interface DespachoTraza {
@@ -106,61 +108,145 @@ function formatearFecha(fechaIso: string | null): string {
   return d.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
-/** I17: mapa estático ilustrativo del almacén (sin datos operativos en el modelo). */
-function MapaAlmacen() {
+/** I35: color de ocupación de un cajón (libre → menta, ocupado → sofia). */
+function colorOcupacion(ocupacion: number): { relleno: string; borde: string; texto: string } {
+  if (ocupacion <= 0) return { relleno: '#f1f5f9', borde: '#94a3b8', texto: '#475569' };
+  if (ocupacion < 0.5) return { relleno: '#d0faec', borde: '#17b795', texto: '#0a2547' };
+  if (ocupacion < 0.85) return { relleno: '#a5f3da', borde: '#17b795', texto: '#0a2547' };
+  return { relleno: '#3fd9b8', borde: '#0d9379', texto: '#0b7561' };
+}
+
+/** Estructura del mapa real de la bodega (GET /warehouses/map). */
+interface MapaDash {
+  bodega: { nombre: string; anchoM: number; altoM: number };
+  pisos: {
+    id: string;
+    numero: number;
+    alias?: string;
+    areas: {
+      id: string; tipo: string; alias?: string; color?: string | null;
+      posX: number; posY: number; anchoM: number; altoM: number; cantidad: number;
+    }[];
+    pasillos: {
+      id: string; alias: string; color?: string | null;
+      posX: number; posY: number; anchoM: number; altoM: number;
+      zonas: { estantes: { niveles: number; nivelesOcupados: number; cantidad: number }[] }[];
+    }[];
+  }[];
+}
+
+/** I35: mapa real del almacén configurado (reemplaza el ilustrativo de I17). */
+function MapaAlmacen({ rol }: { rol: string }) {
+  const [mapa, setMapa] = useState<MapaDash | null>(null);
+  const [estado, setEstado] = useState<'cargando' | 'sin-bodega' | 'sin-acceso' | 'error'>('cargando');
+  const [piso, setPiso] = useState(0);
+
+  useEffect(() => {
+    // El mapa es para los roles operativos (Operador/Generador/Administrador).
+    if (!['OPERADOR', 'GENERADOR', 'ADMINISTRADOR'].includes(rol)) {
+      setEstado('sin-acceso');
+      return;
+    }
+    api<MapaDash>('/warehouses/map').then(({ status, body }) => {
+      if (status === 200) setMapa(body);
+      else if (status === 404) setEstado('sin-bodega');
+      else if (status === 403) setEstado('sin-acceso');
+      else setEstado('error');
+    });
+  }, [rol]);
+
+  const cajones: CajonBodega[] = [];
+  if (mapa) {
+    const p = mapa.pisos[Math.min(piso, mapa.pisos.length - 1)];
+    if (p) {
+      for (const a of p.areas) {
+        const colores = colorOcupacion(a.cantidad > 0 ? 1 : 0);
+        cajones.push({
+          clave: `area:${a.id}`,
+          tipo: 'area',
+          alias: a.alias || a.tipo,
+          posX: a.posX,
+          posY: a.posY,
+          anchoM: a.anchoM,
+          altoM: a.altoM,
+          relleno: a.color ?? colores.relleno,
+          borde: colores.borde,
+          texto: colores.texto,
+          detalle: a.cantidad > 0 ? `${a.cantidad} und` : undefined,
+        });
+      }
+      for (const pas of p.pasillos) {
+        let niveles = 0;
+        let ocupados = 0;
+        let cantidad = 0;
+        for (const z of pas.zonas) {
+          for (const e of z.estantes) {
+            niveles += e.niveles;
+            ocupados += e.nivelesOcupados;
+            cantidad += e.cantidad;
+          }
+        }
+        const colores = colorOcupacion(niveles > 0 ? ocupados / niveles : 0);
+        cajones.push({
+          clave: `pasillo:${pas.id}`,
+          tipo: 'pasillo',
+          alias: pas.alias,
+          posX: pas.posX,
+          posY: pas.posY,
+          anchoM: pas.anchoM,
+          altoM: pas.altoM,
+          relleno: pas.color ?? colores.relleno,
+          borde: colores.borde,
+          texto: colores.texto,
+          detalle: cantidad > 0 ? `${cantidad} und` : undefined,
+        });
+      }
+    }
+  }
+
   return (
     <Tarjeta className="p-5">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold text-slate-900">Mapa del Almacén</h2>
-        {/* I33: enlace al mapa 2D operativo (estructura real de la bodega) */}
-        <a
-          href="/mapa"
-          className="rounded-lg bg-sofia-50 px-3 py-1.5 text-xs font-medium text-sofia-700 hover:bg-sofia-100"
-        >
-          Abrir mapa operativo →
-        </a>
-      </div>
-
-      <div className="rounded-xl border border-slate-200 p-4">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div className="flex h-36 flex-col items-center justify-center rounded-lg bg-slate-100">
-            <p className="text-lg font-bold tracking-wide text-slate-700">ZONA A</p>
-            <p className="text-xs text-slate-500">Racks Pesados</p>
-          </div>
-          <div className="flex h-36 flex-col items-center justify-center rounded-lg bg-slate-100">
-            <p className="text-lg font-bold tracking-wide text-slate-700">ZONA B</p>
-            <p className="text-xs text-slate-500">Pick-Pack</p>
-          </div>
-          <div className="relative flex h-36 flex-col items-center justify-center rounded-lg border border-slate-200 bg-white">
-            <span className="absolute right-3 top-3 h-3 w-3 rounded-full bg-menta-400" />
-            <p className="text-lg font-bold tracking-wide text-slate-700">ZONA C</p>
-            <p className="text-xs text-slate-500">Devoluciones</p>
-          </div>
+        <div className="flex items-center gap-2">
+          {mapa && mapa.pisos.length > 1 && (
+            <div className="flex gap-1">
+              {mapa.pisos.map((p, i) => (
+                <button
+                  key={p.id}
+                  onClick={() => setPiso(i)}
+                  className={`rounded-lg px-3 py-1 text-xs font-medium ${
+                    piso === i ? 'bg-sofia-700 text-white' : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  {p.alias ?? `Piso ${p.numero}`}
+                </button>
+              ))}
+            </div>
+          )}
+          <a
+            href="/mapa"
+            className="rounded-lg bg-sofia-50 px-3 py-1.5 text-xs font-medium text-sofia-700 hover:bg-sofia-100"
+          >
+            Abrir mapa operativo →
+          </a>
         </div>
-
-        <p className="my-3 text-center text-[11px] font-semibold uppercase tracking-widest text-slate-400">
-          Corredor principal de montacargas
+      </div>
+      {estado === 'cargando' && <p className="py-8 text-center text-sm text-slate-400">Cargando mapa…</p>}
+      {estado === 'sin-bodega' && (
+        <p className="py-8 text-center text-sm text-slate-400">
+          La bodega aún no está configurada. Un administrador puede definirla en Administración → Bodega.
         </p>
-
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <div className="flex h-24 flex-col items-center justify-center rounded-lg bg-menta-200 text-sofia-900">
-            <MapPin size={18} />
-            <p className="mt-1 text-sm font-medium">Bahía 01</p>
-          </div>
-          <div className="flex h-24 flex-col items-center justify-center rounded-lg bg-menta-200 text-sofia-900">
-            <MapPin size={18} />
-            <p className="mt-1 text-sm font-medium">Bahía 02</p>
-          </div>
-          <div className="flex h-24 flex-col items-center justify-center rounded-lg bg-slate-100 text-slate-400">
-            <MapPin size={18} />
-            <p className="mt-1 text-sm font-medium">Bahía 03</p>
-          </div>
-          <div className="flex h-24 flex-col items-center justify-center rounded-lg bg-slate-100 text-sofia-700">
-            <Truck size={18} />
-            <p className="mt-1 text-sm font-medium">Patio de Maniobras</p>
-          </div>
-        </div>
-      </div>
+      )}
+      {estado === 'sin-acceso' && (
+        <p className="py-8 text-center text-sm text-slate-400">El mapa del almacén está disponible para los roles operativos.</p>
+      )}
+      {estado === 'error' && (
+        <p className="py-8 text-center text-sm text-slate-400">No se pudo cargar el mapa del almacén.</p>
+      )}
+      {mapa && (
+        <MapaBodega anchoM={mapa.bodega.anchoM} altoM={mapa.bodega.altoM} cajones={cajones} />
+      )}
     </Tarjeta>
   );
 }
@@ -363,6 +449,10 @@ export default function DashboardPage() {
                 <p className="truncate text-sm font-medium text-sofia-700">
                   {nombreClientes[p.clienteId] ?? 'Sin cliente'}
                 </p>
+                {/* I35: factura relacionada con el pedido */}
+                <p className="mt-1 truncate text-xs text-slate-500">
+                  {p.numeroFactura ? `Factura ${p.numeroFactura}` : 'Sin factura'}
+                </p>
                 <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-400">
                   <Clock size={13} /> {haceMinutos(p.createdAt)}
                 </p>
@@ -376,9 +466,9 @@ export default function DashboardPage() {
         )}
       </Tarjeta>
 
-      {/* Mapa del almacén (ilustrativo) */}
+      {/* I35: mapa real del almacén configurado */}
       <div className="mb-8">
-        <MapaAlmacen />
+        <MapaAlmacen rol={sesion?.usuario.rol ?? ''} />
       </div>
 
       {/* Trazabilidad reciente de despachos */}

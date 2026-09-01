@@ -64,6 +64,8 @@ interface Despacho {
     id: string;
     numero: string;
     empresaPedido: string;
+    /** I35: factura relacionada con el pedido. */
+    numeroFactura?: string | null;
     items: { id: string; codigo: string; descripcion: string; cantidadAlistada: number; cantidadDespachada: number; pendienteDespachar: number }[];
   }[];
   cajas: Caja[];
@@ -72,6 +74,8 @@ interface Despacho {
   totalCajas?: number;
   /** I29: nombre del cliente en la tabla de despachos. */
   clienteNombre?: string | null;
+  /** I35: facturas relacionadas con los pedidos del despacho (tabla). */
+  facturas?: string[];
   despachadoAt?: string | null;
   trazabilidad?: {
     creadoPor: UsuarioTraz | null;
@@ -444,6 +448,15 @@ export default function DespachosPage() {
                 <button onClick={() => setEditandoDireccion(false)} className="text-slate-500">Cancelar</button>
               </div>
             )}
+            {/* I35: información de la transportadora al consultar el despacho */}
+            <p className="mt-1 text-sm text-slate-500">
+              Transporte:{' '}
+              {despacho.tipoTransporte
+                ? despacho.tipoTransporte === 'EXTERNA'
+                  ? `Transportadora externa — ${despacho.nombreTransporte ?? 'sin nombre'}${despacho.guia ? ` · Guía ${despacho.guia}` : ''}${despacho.fechaSalida ? ` · Salida ${new Date(despacho.fechaSalida).toLocaleString('es-CO')}` : ''}`
+                  : `Transporte interno — ${despacho.nombreTransporte ?? 'sin nombre'}${despacho.fechaSalida ? ` · Salida ${new Date(despacho.fechaSalida).toLocaleString('es-CO')}` : ''}`
+                : 'sin registrar'}
+            </p>
         </div>
 
         {mensaje && <p className="mb-3 rounded bg-green-100 p-2 text-sm text-green-800">{mensaje}</p>}
@@ -455,7 +468,12 @@ export default function DespachosPage() {
           {despacho.pedidos.map((p) => (
             <div key={p.id} className="mb-2 rounded border p-2 text-sm">
               <div className="flex justify-between">
-                <span className="font-medium">{p.numero}</span>
+                <span className="font-medium">
+                  {p.numero}
+                  {p.numeroFactura && (
+                    <span className="ml-2 font-normal text-slate-500">· Factura {p.numeroFactura}</span>
+                  )}
+                </span>
                 {enEdicion && esGenerador && despacho.pedidos.length > 1 && (
                   <button onClick={() => retirarPedido(p.id)} className="text-red-600 hover:underline">Retirar</button>
                 )}
@@ -891,6 +909,7 @@ export default function DespachosPage() {
                 <th>Estado</th>
                 <th>Pedidos</th>
                 <th>Cajas</th>
+                <th>Factura</th>
                 <th>Transporte</th>
                 <th></th>
               </tr>
@@ -910,6 +929,7 @@ export default function DespachosPage() {
                   <td>{ESTADOS[d.estado]}</td>
                   <td>{d.totalPedidos}</td>
                   <td>{d.totalCajas}</td>
+                  <td className="text-slate-500">{d.facturas?.length ? d.facturas.join(', ') : '—'}</td>
                   <td className="text-slate-500">{d.nombreTransporte ? `${d.nombreTransporte}${d.guia ? ` · ${d.guia}` : ''}` : '—'}</td>
                   <td>
                     <button onClick={() => cargarDetalle(d.id)} className="text-sofia-700 hover:underline">Abrir</button>

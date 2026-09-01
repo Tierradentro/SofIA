@@ -22,6 +22,23 @@ interface Comercial {
   ciudad?: string;
 }
 
+/** I35: actividad asociada al comercial (GET /comerciales/:id/resumen). */
+interface ResumenComercial {
+  comercial: Comercial;
+  pedidos: {
+    total: number;
+    recientes: Array<{ id: string; numero: string; estado: string; ciudad?: string; numeroFactura?: string; created_at: string; items: number }>;
+  };
+  despachos: {
+    total: number;
+    recientes: Array<{ id: string; estado: string; guia?: string; created_at: string }>;
+  };
+  devoluciones: {
+    total: number;
+    recientes: Array<{ id: string; codigo: string; cantidad: number; estado: string; motivoCodigo?: string; factura?: string; created_at: string }>;
+  };
+}
+
 const VACIO = { nombre: '', identificacion: '', direccion: '', telefonos: '', ciudad: '' };
 
 /** M04: comerciales (catálogo global). Crear/editar: Generador y Administrador. */
@@ -34,8 +51,25 @@ export default function ComercialesPage() {
   const [editando, setEditando] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [mensaje, setMensaje] = useState('');
+  // I35: modal de actividad del comercial
+  const [resumen, setResumen] = useState<ResumenComercial | null>(null);
+  const [resumenCargando, setResumenCargando] = useState(false);
 
   const puedeEditar = ['GENERADOR', 'ADMINISTRADOR'].includes(sesion?.usuario.rol || '');
+
+  /** I35: pedidos, despachos y devoluciones asociados al comercial. */
+  async function abrirResumen(c: Comercial) {
+    setResumenCargando(true);
+    setResumen(null);
+    setError('');
+    const { status, body } = await api<ResumenComercial>(`/comerciales/${c.id}/resumen`);
+    setResumenCargando(false);
+    if (status === 200) {
+      setResumen(body);
+    } else {
+      setError(mensajeError(body, 'No se pudo cargar la actividad del comercial'));
+    }
+  }
 
   async function cargar(busqueda = q) {
     const { status, body } = await api<Comercial[]>(`/comerciales${busqueda ? `?q=${encodeURIComponent(busqueda)}` : ''}`);
@@ -155,6 +189,13 @@ export default function ComercialesPage() {
                     >
                       Editar
                     </button>
+                    {/* I35: actividad del comercial */}
+                    <button
+                      onClick={() => abrirResumen(c)}
+                      className="ml-2 rounded-md bg-menta-100 px-3 py-1 text-xs font-medium text-menta-700 hover:bg-menta-200"
+                    >
+                      Actividad
+                    </button>
                   </td>
                 )}
               </tr>
@@ -173,6 +214,91 @@ export default function ComercialesPage() {
           Mostrando {comerciales.length} resultado{comerciales.length === 1 ? '' : 's'}
         </p>
       </Tarjeta>
+
+      {/* I35: modal de actividad del comercial */}
+      {(resumenCargando || resumen) && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4">
+          <Tarjeta className="mt-10 w-full max-w-3xl p-5">
+            <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
+              <h2 className="font-semibold text-slate-900">
+                Actividad de {resumen?.comercial.nombre ?? '…'}
+              </h2>
+              <button
+                onClick={() => setResumen(null)}
+                className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-200"
+              >
+                Cerrar
+              </button>
+            </div>
+            {resumenCargando && <p className="py-6 text-center text-sm text-slate-400">Cargando actividad…</p>}
+            {resumen && (
+              <div className="space-y-5">
+                <section>
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Pedidos ({resumen.pedidos.total})
+                  </h3>
+                  {resumen.pedidos.recientes.length === 0 ? (
+                    <p className="text-sm text-slate-400">Sin pedidos asociados.</p>
+                  ) : (
+                    <ul className="space-y-1">
+                      {resumen.pedidos.recientes.map((p) => (
+                        <li key={p.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-1.5 text-sm">
+                          <span className="font-medium text-slate-700">{p.numero}</span>
+                          <span className="text-xs text-slate-500">
+                            {p.estado} · {p.items} ítem(s)
+                            {p.numeroFactura ? ` · Fact. ${p.numeroFactura}` : ''}
+                            {p.ciudad ? ` · ${p.ciudad}` : ''} · {new Date(p.created_at).toLocaleDateString('es-CO')}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+                <section>
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Despachos ({resumen.despachos.total})
+                  </h3>
+                  {resumen.despachos.recientes.length === 0 ? (
+                    <p className="text-sm text-slate-400">Sin despachos asociados.</p>
+                  ) : (
+                    <ul className="space-y-1">
+                      {resumen.despachos.recientes.map((d) => (
+                        <li key={d.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-1.5 text-sm">
+                          <span className="font-medium text-slate-700">{d.estado}</span>
+                          <span className="text-xs text-slate-500">
+                            {d.guia ? `Guía ${d.guia} · ` : ''}{new Date(d.created_at).toLocaleDateString('es-CO')}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+                <section>
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Devoluciones ({resumen.devoluciones.total})
+                  </h3>
+                  {resumen.devoluciones.recientes.length === 0 ? (
+                    <p className="text-sm text-slate-400">Sin devoluciones asociadas.</p>
+                  ) : (
+                    <ul className="space-y-1">
+                      {resumen.devoluciones.recientes.map((r) => (
+                        <li key={r.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-1.5 text-sm">
+                          <span className="font-medium text-slate-700">{r.codigo} ×{r.cantidad}</span>
+                          <span className="text-xs text-slate-500">
+                            {r.estado}
+                            {r.motivoCodigo ? ` · ${r.motivoCodigo}` : ''}
+                            {r.factura ? ` · Fact. ${r.factura}` : ''} · {new Date(r.created_at).toLocaleDateString('es-CO')}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              </div>
+            )}
+          </Tarjeta>
+        </div>
+      )}
     </AppShell>
   );
 }
