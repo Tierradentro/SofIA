@@ -20,6 +20,14 @@ import {
  *  - "Estructura": forma, dimensiones, pisos → pasillos → zonas → estantes.
  *  - "Organizar cajones": mover/redimensionar pasillos y áreas dentro del
  *    perímetro con arrastre, y renombrarlos.
+ * I35:
+ *  - Áreas adicionales por piso (bahía, patio, entrada) configurables.
+ *  - Los pisos nuevos ubican sus pasillos de arriba hacia abajo.
+ *  - «Organizar cajones» tiene botón «Guardar cambios» para persistir los
+ *    movimientos; al guardar, la vista previa de «1. Estructura» refleja la
+ *    distribución real guardada (posiciones, alias y colores).
+ *  - Los cajones tipo área también admiten cambio de color.
+ *  - Cada estante puede configurarse de forma individual (2 o más niveles).
  */
 
 // ---------- Tipos del mapa (respuesta del backend) ----------
@@ -53,10 +61,12 @@ interface MapaArea {
   id: string;
   tipo: 'ENTRADA' | 'PATIO_MANIOBRAS' | 'BAHIA_EMPAQUE' | 'BAHIA_TEMPORAL';
   alias: string;
+  color?: string | null;
   posX: number;
   posY: number;
   anchoM: number;
   altoM: number;
+  permiteProductos: boolean;
 }
 interface MapaPiso {
   id: string;
@@ -74,14 +84,20 @@ interface MapaRespuesta {
 // ---------- Modelo del asistente ----------
 
 interface PasilloForm {
-  estIzq: number;
-  nivIzq: number;
-  estDer: number;
-  nivDer: number;
+  /** I35: niveles de cada estante (un estante puede tener 2 o más niveles, de forma individual). */
+  nivelesIzq: number[];
+  nivelesDer: number[];
   conFondo: boolean;
+}
+/** I35: áreas adicionales configurables por piso (bahía, patio, entrada). */
+interface AreaForm {
+  tipo: MapaArea['tipo'];
+  alias: string;
+  permiteProductos: boolean;
 }
 interface PisoForm {
   pasillos: PasilloForm[];
+  areas: AreaForm[];
 }
 interface EstructuraForm {
   nombre: string;
@@ -91,7 +107,11 @@ interface EstructuraForm {
   pisos: PisoForm[];
 }
 
-const PASILLO_BASE: PasilloForm = { estIzq: 5, nivIzq: 3, estDer: 5, nivDer: 3, conFondo: true };
+const PASILLO_BASE: PasilloForm = { nivelesIzq: [3, 3, 3, 3, 3], nivelesDer: [3, 3, 3, 3, 3], conFondo: true };
+
+function clonarPasillo(p: PasilloForm): PasilloForm {
+  return { nivelesIzq: [...p.nivelesIzq], nivelesDer: [...p.nivelesDer], conFondo: p.conFondo };
+}
 
 const FORM_INICIAL: EstructuraForm = {
   nombre: 'Bodega Principal',
@@ -99,9 +119,18 @@ const FORM_INICIAL: EstructuraForm = {
   anchoM: 40,
   altoM: 30,
   pisos: [
-    { pasillos: [{ ...PASILLO_BASE }, { ...PASILLO_BASE }, { ...PASILLO_BASE }] },
-    { pasillos: [{ ...PASILLO_BASE }, { ...PASILLO_BASE }, { ...PASILLO_BASE }] },
+    { pasillos: [clonarPasillo(PASILLO_BASE), clonarPasillo(PASILLO_BASE), clonarPasillo(PASILLO_BASE)], areas: [] },
+    { pasillos: [clonarPasillo(PASILLO_BASE), clonarPasillo(PASILLO_BASE), clonarPasillo(PASILLO_BASE)], areas: [] },
   ],
+};
+
+const TIPOS_AREA: Array<MapaArea['tipo']> = ['ENTRADA', 'PATIO_MANIOBRAS', 'BAHIA_EMPAQUE', 'BAHIA_TEMPORAL'];
+
+const ETIQUETA_AREA: Record<MapaArea['tipo'], string> = {
+  ENTRADA: 'Entrada',
+  PATIO_MANIOBRAS: 'Patio de maniobras',
+  BAHIA_EMPAQUE: 'Bahía de empaque',
+  BAHIA_TEMPORAL: 'Bahía temporal',
 };
 
 const MAX_PISOS = 5;
@@ -134,7 +163,7 @@ function coloresArea(tipo: MapaArea['tipo']) {
 
 // ---------- Geometría por defecto (idéntica a la que crea el backend) ----------
 
-function areasFijasPiso1(anchoM: number): Array<Omit<MapaArea, 'id'>> {
+function areasFijasPiso1(anchoM: number): Array<Omit<MapaArea, 'id' | 'permiteProductos'>> {
   return [
     { tipo: 'ENTRADA', alias: 'Entrada', posX: anchoM / 2 - 3, posY: 0, anchoM: 6, altoM: 0 },
     { tipo: 'PATIO_MANIOBRAS', alias: 'Patio de Maniobras', posX: 2, posY: 1, anchoM: anchoM - 4, altoM: 4 },
@@ -143,29 +172,58 @@ function areasFijasPiso1(anchoM: number): Array<Omit<MapaArea, 'id'>> {
   ];
 }
 
-/** Posición por defecto de los pasillos de un piso (rejilla horizontal). */
+/**
+ * Posición por defecto de los pasillos de un piso (rejilla horizontal).
+ * I35: el piso 1 deja el borde inferior a las áreas fijas; los pisos nuevos se
+ * ubican de arriba hacia abajo, dejando libre la franja inferior para las áreas.
+ */
 function posicionPasillo(form: EstructuraForm, pisoIndice: number, pasilloIndice: number, total: number) {
-  const base = pisoIndice === 0 ? 12 : 2; // el piso 1 deja el borde inferior a las áreas fijas
-  const altoP = Math.max(4, Math.min(16, form.altoM - base - 2));
+  const altoP = Math.max(4, Math.min(16, form.altoM - (pisoIndice === 0 ? 12 : 2) - 2));
+  const posY = pisoIndice === 0 ? 12 : form.altoM - altoP - 2;
   const anchoP = Math.max(3, Math.min(12, (form.anchoM - 4 - (total - 1) * 2) / total));
-  return { posX: 2 + pasilloIndice * (anchoP + 2), posY: base, anchoM: Math.round(anchoP * 10) / 10, altoM: altoP };
+  return { posX: 2 + pasilloIndice * (anchoP + 2), posY, anchoM: Math.round(anchoP * 10) / 10, altoM: altoP };
 }
 
 function detallePasillo(p: PasilloForm): string {
-  const lados = [];
-  if (p.estIzq > 0) lados.push(`${p.estIzq}×${p.nivIzq} izq`);
-  if (p.estDer > 0) lados.push(`${p.estDer}×${p.nivDer} der`);
+  const fmt = (arr: number[], lado: string) => {
+    if (arr.length === 0) return null;
+    const min = Math.min(...arr);
+    const max = Math.max(...arr);
+    return `${arr.length} est. ${lado} (${min === max ? `${min} niv.` : `${min}-${max} niv.`})`;
+  };
+  const lados = [fmt(p.nivelesIzq, 'izq.'), fmt(p.nivelesDer, 'der.')].filter(Boolean);
   if (p.conFondo) lados.push('fondo');
   return lados.join(' · ');
 }
 
-/** Cajones de vista previa del asistente para un piso. */
-function previsualizarPiso(form: EstructuraForm, pisoIndice: number): CajonBodega[] {
+/**
+ * Cajones de vista previa del asistente para un piso.
+ * I35: si la bodega ya está configurada, la vista previa refleja las posiciones,
+ * alias y colores reales guardados en «Organizar cajones».
+ */
+function previsualizarPiso(form: EstructuraForm, pisoIndice: number, mapa?: MapaRespuesta | null): CajonBodega[] {
   const piso = form.pisos[pisoIndice];
   const cajones: CajonBodega[] = [];
-  if (pisoIndice === 0) {
-    for (const a of areasFijasPiso1(form.anchoM)) {
+  const pisoMapa = mapa?.pisos[pisoIndice];
+  if (pisoMapa) {
+    for (const a of pisoMapa.areas) {
       const colores = coloresArea(a.tipo);
+      cajones.push({
+        clave: `area:${a.id}`,
+        tipo: 'area',
+        alias: a.alias,
+        posX: a.posX,
+        posY: a.posY,
+        anchoM: a.anchoM,
+        altoM: a.altoM,
+        relleno: a.color ?? colores.relleno,
+        borde: colores.borde,
+        texto: colores.texto,
+      });
+    }
+  } else {
+    const fijas = pisoIndice === 0 ? areasFijasPiso1(form.anchoM) : [];
+    fijas.forEach((a) => {
       cajones.push({
         clave: `area:${a.tipo}`,
         tipo: 'area',
@@ -174,18 +232,36 @@ function previsualizarPiso(form: EstructuraForm, pisoIndice: number): CajonBodeg
         posY: a.posY,
         anchoM: a.anchoM,
         altoM: a.altoM,
-        ...colores,
+        ...coloresArea(a.tipo),
       });
-    }
+    });
+    // Áreas adicionales del asistente (posición inicial: franja inferior).
+    piso.areas.forEach((a, idx) => {
+      cajones.push({
+        clave: `area-extra:${idx}`,
+        tipo: 'area',
+        alias: a.alias || ETIQUETA_AREA[a.tipo],
+        posX: 2 + idx * 9,
+        posY: 1,
+        anchoM: 8,
+        altoM: a.tipo === 'ENTRADA' ? 0 : 4,
+        ...coloresArea(a.tipo),
+      });
+    });
   }
   piso.pasillos.forEach((p, i) => {
-    const geo = posicionPasillo(form, pisoIndice, i, piso.pasillos.length);
+    const pasMapa = pisoMapa?.pasillos[i];
+    const geo = pasMapa
+      ? { posX: pasMapa.posX, posY: pasMapa.posY, anchoM: pasMapa.anchoM, altoM: pasMapa.altoM }
+      : posicionPasillo(form, pisoIndice, i, piso.pasillos.length);
     cajones.push({
-      clave: `pasillo:${i + 1}`,
+      clave: `pasillo:${pasMapa?.id ?? i + 1}`,
       tipo: 'pasillo',
-      alias: `Pasillo ${i + 1}`,
+      alias: pasMapa?.alias ?? `Pasillo ${i + 1}`,
       ...geo,
-      ...COLORES.pasillo,
+      relleno: pasMapa?.color ?? COLORES.pasillo.relleno,
+      borde: COLORES.pasillo.borde,
+      texto: COLORES.pasillo.texto,
       detalle: detallePasillo(p),
     });
   });
@@ -202,19 +278,24 @@ function construirPayload(form: EstructuraForm) {
     pisos: form.pisos.map((piso, i) => ({
       numero: i + 1,
       tieneAreasFijas: i === 0,
+      areas: piso.areas.map((a) => ({
+        tipo: a.tipo,
+        alias: a.alias.trim() || undefined,
+        permiteProductos: a.permiteProductos,
+      })),
       pasillos: piso.pasillos.map((p, j) => {
         const geo = posicionPasillo(form, i, j, piso.pasillos.length);
         const zonas: Array<Record<string, unknown>> = [];
-        if (p.estIzq > 0) {
+        if (p.nivelesIzq.length > 0) {
           zonas.push({
             lado: 'IZQUIERDA',
-            estantes: Array.from({ length: p.estIzq }, (_, k) => ({ numero: k + 1, niveles: p.nivIzq })),
+            estantes: p.nivelesIzq.map((n, k) => ({ numero: k + 1, niveles: n })),
           });
         }
-        if (p.estDer > 0) {
+        if (p.nivelesDer.length > 0) {
           zonas.push({
             lado: 'DERECHA',
-            estantes: Array.from({ length: p.estDer }, (_, k) => ({ numero: k + 1, niveles: p.nivDer })),
+            estantes: p.nivelesDer.map((n, k) => ({ numero: k + 1, niveles: n })),
           });
         }
         if (p.conFondo) zonas.push({ lado: 'FONDO', estantes: [] });
@@ -231,19 +312,31 @@ function formDesdeMapa(mapa: MapaRespuesta): EstructuraForm {
     forma: mapa.bodega.forma,
     anchoM: mapa.bodega.anchoM,
     altoM: mapa.bodega.altoM,
-    pisos: mapa.pisos.map((piso) => ({
-      pasillos: piso.pasillos.map((pas) => {
-        const izq = pas.zonas.find((z) => z.lado === 'IZQUIERDA');
-        const der = pas.zonas.find((z) => z.lado === 'DERECHA');
-        return {
-          estIzq: izq?.estantes.length ?? 0,
-          nivIzq: izq?.estantes[0]?.niveles ?? 3,
-          estDer: der?.estantes.length ?? 0,
-          nivDer: der?.estantes[0]?.niveles ?? 3,
-          conFondo: pas.zonas.some((z) => z.lado === 'FONDO'),
-        };
-      }),
-    })),
+    pisos: mapa.pisos.map((piso) => {
+      // Las 4 áreas fijas del piso 1 no se repiten como adicionales: se omite
+      // la primera ocurrencia de cada tipo fijo.
+      const omitidos = new Set<string>();
+      const areas: AreaForm[] = [];
+      for (const a of piso.areas) {
+        if (piso.tieneAreasFijas && TIPOS_AREA.includes(a.tipo) && !omitidos.has(a.tipo)) {
+          omitidos.add(a.tipo);
+          continue;
+        }
+        areas.push({ tipo: a.tipo, alias: a.alias ?? '', permiteProductos: a.permiteProductos });
+      }
+      return {
+        areas,
+        pasillos: piso.pasillos.map((pas) => {
+          const izq = pas.zonas.find((z) => z.lado === 'IZQUIERDA');
+          const der = pas.zonas.find((z) => z.lado === 'DERECHA');
+          return {
+            nivelesIzq: izq?.estantes.map((e) => e.niveles) ?? [],
+            nivelesDer: der?.estantes.map((e) => e.niveles) ?? [],
+            conFondo: pas.zonas.some((z) => z.lado === 'FONDO'),
+          };
+        }),
+      };
+    }),
   };
 }
 
@@ -252,10 +345,10 @@ function validarForm(form: EstructuraForm): string | null {
   if (form.anchoM < 20 || form.altoM < 18) {
     return 'Las dimensiones mínimas para el diseño son 20 m de ancho × 18 m de alto (caben las áreas fijas y los pasillos).';
   }
-  for (const [i, piso] of Array.from(form.pisos.entries())) {
+  for (const [i, piso] of form.pisos.entries()) {
     if (piso.pasillos.length === 0) return `El piso ${i + 1} no tiene pasillos.`;
-    for (const [j, p] of Array.from(piso.pasillos.entries())) {
-      if (p.estIzq === 0 && p.estDer === 0 && !p.conFondo) {
+    for (const [j, p] of piso.pasillos.entries()) {
+      if (p.nivelesIzq.length === 0 && p.nivelesDer.length === 0 && !p.conFondo) {
         return `El pasillo ${j + 1} del piso ${i + 1} no tiene zonas (active estantes a un lado o el fondo).`;
       }
     }
@@ -270,6 +363,7 @@ export default function BodegaPage() {
   const [sesion, setSesion] = useState<Sesion | null>(null);
   const [pestana, setPestana] = useState<'estructura' | 'cajones'>('estructura');
   const [mapa, setMapa] = useState<MapaRespuesta | null>(null);
+  const [mapaVersion, setMapaVersion] = useState(0);
   const [errorCarga, setErrorCarga] = useState('');
 
   // Asistente
@@ -289,6 +383,9 @@ export default function BodegaPage() {
   const [altoEd, setAltoEd] = useState(0);
   const [errorEd, setErrorEd] = useState('');
   const [mensajeEd, setMensajeEd] = useState('');
+  // I35: movimientos de arrastre pendientes hasta pulsar «Guardar cambios».
+  const [pendientes, setPendientes] = useState<Record<string, { posX: number; posY: number }>>({});
+  const [guardandoMovimientos, setGuardandoMovimientos] = useState(false);
 
   async function cargarMapa(): Promise<MapaRespuesta | null> {
     setErrorCarga('');
@@ -296,6 +393,7 @@ export default function BodegaPage() {
       const { status, body } = await api<MapaRespuesta>('/warehouses/map');
       if (status === 200) {
         setMapa(body);
+        setMapaVersion((v) => v + 1);
         return body;
       }
       if (status === 404) {
@@ -338,21 +436,97 @@ export default function BodegaPage() {
     const cantidad = Math.max(1, Math.min(MAX_PASILLOS, Math.round(n) || 1));
     actualizarPiso(indice, (piso) => {
       const pasillos = [...piso.pasillos];
-      while (pasillos.length < cantidad) pasillos.push({ ...PASILLO_BASE });
-      return { pasillos: pasillos.slice(0, cantidad) };
+      while (pasillos.length < cantidad) pasillos.push(clonarPasillo(PASILLO_BASE));
+      return { ...piso, pasillos: pasillos.slice(0, cantidad) };
     });
   }
 
-  function aplicarATodos(indice: number, campo: keyof PasilloForm, valor: number | boolean) {
+  /** Ajusta un arreglo de niveles a la cantidad de estantes indicada. */
+  function ajustarEstantes(arr: number[], cantidad: number): number[] {
+    const copia = arr.slice(0, cantidad);
+    while (copia.length < cantidad) copia.push(copia[copia.length - 1] ?? 3);
+    return copia;
+  }
+
+  /** Cambia la cantidad de estantes por lado en todos los pasillos del piso. */
+  function fijarEstantes(indice: number, n: number) {
+    const cantidad = Math.max(0, Math.min(MAX_ESTANTES, Math.round(n) || 0));
     actualizarPiso(indice, (piso) => ({
-      pasillos: piso.pasillos.map((p) => ({ ...p, [campo]: valor })),
+      ...piso,
+      pasillos: piso.pasillos.map((p) => ({
+        ...p,
+        nivelesIzq: ajustarEstantes(p.nivelesIzq, cantidad),
+        nivelesDer: ajustarEstantes(p.nivelesDer, cantidad),
+      })),
     }));
   }
 
-  function actualizarPasillo(pisoIndice: number, pasilloIndice: number, campo: keyof PasilloForm, valor: number | boolean) {
-    actualizarPiso(pisoIndice, (piso) => ({
-      pasillos: piso.pasillos.map((p, i) => (i === pasilloIndice ? { ...p, [campo]: valor } : p)),
+  /** Pone el mismo número de niveles a todos los estantes del piso. */
+  function fijarNiveles(indice: number, n: number) {
+    const v = Math.max(1, Math.min(MAX_NIVELES, Math.round(n) || 1));
+    actualizarPiso(indice, (piso) => ({
+      ...piso,
+      pasillos: piso.pasillos.map((p) => ({
+        ...p,
+        nivelesIzq: p.nivelesIzq.map(() => v),
+        nivelesDer: p.nivelesDer.map(() => v),
+      })),
     }));
+  }
+
+  function fijarFondo(indice: number, valor: boolean) {
+    actualizarPiso(indice, (piso) => ({
+      ...piso,
+      pasillos: piso.pasillos.map((p) => ({ ...p, conFondo: valor })),
+    }));
+  }
+
+  function actualizarPasillo(pisoIndice: number, pasilloIndice: number, cambios: (p: PasilloForm) => PasilloForm) {
+    actualizarPiso(pisoIndice, (piso) => ({
+      ...piso,
+      pasillos: piso.pasillos.map((p, i) => (i === pasilloIndice ? cambios(p) : p)),
+    }));
+  }
+
+  /** I35: niveles de un estante individual (algunos estantes tienen 2 o más niveles). */
+  function fijarNivelEstante(
+    pisoIndice: number,
+    pasilloIndice: number,
+    lado: 'nivelesIzq' | 'nivelesDer',
+    estanteIndice: number,
+    valor: number,
+  ) {
+    const v = Math.max(1, Math.min(MAX_NIVELES, Math.round(valor) || 1));
+    actualizarPasillo(pisoIndice, pasilloIndice, (p) => {
+      const arr = [...p[lado]];
+      arr[estanteIndice] = v;
+      return { ...p, [lado]: arr };
+    });
+  }
+
+  function fijarEstantesPasillo(pisoIndice: number, pasilloIndice: number, lado: 'nivelesIzq' | 'nivelesDer', n: number) {
+    const cantidad = Math.max(0, Math.min(MAX_ESTANTES, Math.round(n) || 0));
+    actualizarPasillo(pisoIndice, pasilloIndice, (p) => ({ ...p, [lado]: ajustarEstantes(p[lado], cantidad) }));
+  }
+
+  // ---------- I35: áreas adicionales por piso ----------
+
+  function agregarArea(indice: number) {
+    actualizarPiso(indice, (piso) => ({
+      ...piso,
+      areas: [...piso.areas, { tipo: 'BAHIA_EMPAQUE', alias: '', permiteProductos: true }],
+    }));
+  }
+
+  function actualizarArea(indice: number, areaIndice: number, cambios: Partial<AreaForm>) {
+    actualizarPiso(indice, (piso) => ({
+      ...piso,
+      areas: piso.areas.map((a, k) => (k === areaIndice ? { ...a, ...cambios } : a)),
+    }));
+  }
+
+  function quitarArea(indice: number, areaIndice: number) {
+    actualizarPiso(indice, (piso) => ({ ...piso, areas: piso.areas.filter((_, k) => k !== areaIndice) }));
   }
 
   async function guardarEstructura() {
@@ -379,6 +553,7 @@ export default function BodegaPage() {
     setGuardando(false);
     if (status === 200 || status === 201) {
       setMensaje('Bodega configurada. Ahora puede organizar los cajones en el plano.');
+      setPendientes({});
       const m = await cargarMapa();
       if (m) setForm(formDesdeMapa(m));
       setPestana('cajones');
@@ -393,16 +568,22 @@ export default function BodegaPage() {
     if (!mapa) return [];
     const piso = mapa.pisos[pisoSel];
     if (!piso) return [];
-    const cajones: CajonBodega[] = piso.areas.map((a) => ({
-      clave: `area:${a.id}`,
-      tipo: 'area' as const,
-      alias: a.alias,
-      posX: a.posX,
-      posY: a.posY,
-      anchoM: a.anchoM,
-      altoM: a.altoM,
-      ...coloresArea(a.tipo),
-    }));
+    const cajones: CajonBodega[] = piso.areas.map((a) => {
+      const colores = coloresArea(a.tipo);
+      return {
+        clave: `area:${a.id}`,
+        tipo: 'area' as const,
+        alias: a.alias,
+        posX: a.posX,
+        posY: a.posY,
+        anchoM: a.anchoM,
+        altoM: a.altoM,
+        // I35: las áreas también admiten color propio.
+        relleno: a.color ?? colores.relleno,
+        borde: colores.borde,
+        texto: colores.texto,
+      };
+    });
     for (const pas of piso.pasillos) {
       const estantes = pas.zonas.reduce((acc, z) => acc + z.estantes.length, 0);
       const conFondo = pas.zonas.some((z) => z.lado === 'FONDO');
@@ -429,26 +610,43 @@ export default function BodegaPage() {
     return null;
   }
 
+  /** I35: el arrastre queda pendiente; se persiste con el botón «Guardar cambios». */
   async function moverCajon(cajon: CajonBodega, posX: number, posY: number): Promise<boolean> {
-    const ref = cajonPorClave(cajon.clave);
-    if (!ref) return false;
+    setPendientes((prev) => ({ ...prev, [cajon.clave]: { posX, posY } }));
+    setMensajeEd('');
+    return true;
+  }
+
+  async function guardarMovimientos() {
+    const entradas = Object.entries(pendientes);
+    if (entradas.length === 0) return;
+    setGuardandoMovimientos(true);
     setErrorEd('');
-    const { status, body } = await api(`/warehouses/${ref.tipo}/${ref.id}/posicion`, {
-      method: 'PATCH',
-      body: JSON.stringify({ posX, posY }),
-    });
-    if (status === 200) {
-      await cargarMapa();
-      return true;
+    setMensajeEd('');
+    for (const [clave, pos] of entradas) {
+      const ref = cajonPorClave(clave);
+      if (!ref) continue;
+      const { status, body } = await api(`/warehouses/${ref.tipo}/${ref.id}/posicion`, {
+        method: 'PATCH',
+        body: JSON.stringify(pos),
+      });
+      if (status !== 200) {
+        setGuardandoMovimientos(false);
+        setErrorEd(mensajeError(body, 'No se pudo guardar la posición de un cajón'));
+        return;
+      }
     }
-    setErrorEd(mensajeError(body, 'No se pudo mover el cajón'));
-    return false;
+    setPendientes({});
+    setGuardandoMovimientos(false);
+    setMensajeEd('Cambios guardados. La vista previa de «1. Estructura» ya refleja la nueva distribución.');
+    await cargarMapa();
   }
 
   function seleccionar(cajon: CajonBodega) {
     setSeleccion(cajon);
     setAliasEd(cajon.alias);
-    setColorEd(cajon.tipo === 'pasillo' ? cajon.relleno : '');
+    // I35: pasillos y áreas admiten cambio de color.
+    setColorEd(cajon.relleno);
     setAnchoEd(cajon.anchoM);
     setAltoEd(cajon.altoM);
     setErrorEd('');
@@ -461,14 +659,15 @@ export default function BodegaPage() {
     if (!ref) return;
     setErrorEd('');
     setMensajeEd('');
+    const posPendiente = pendientes[seleccion.clave];
     const payload: Record<string, unknown> = {
-      posX: seleccion.posX,
-      posY: seleccion.posY,
+      posX: posPendiente?.posX ?? seleccion.posX,
+      posY: posPendiente?.posY ?? seleccion.posY,
       alias: aliasEd,
       anchoM: anchoEd,
       altoM: seleccion.tipo === 'area' && seleccion.altoM === 0 ? 0 : altoEd,
     };
-    if (seleccion.tipo === 'pasillo' && colorEd) payload.color = colorEd;
+    if (colorEd) payload.color = colorEd;
     const { status, body } = await api(`/warehouses/${ref.tipo}/${ref.id}/posicion`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
@@ -476,6 +675,11 @@ export default function BodegaPage() {
     if (status === 200) {
       setMensajeEd(`"${aliasEd}" actualizado.`);
       setSeleccion(null);
+      setPendientes((prev) => {
+        const copia = { ...prev };
+        delete copia[seleccion.clave];
+        return copia;
+      });
       await cargarMapa();
     } else {
       setErrorEd(mensajeError(body, 'No se pudo guardar el cajón'));
@@ -485,6 +689,7 @@ export default function BodegaPage() {
   if (!sesion) return null;
 
   const pisoPreviewSeguro = Math.min(pisoPreview, form.pisos.length - 1);
+  const numPendientes = Object.keys(pendientes).length;
 
   return (
     <AppShell sesion={sesion}>
@@ -597,6 +802,11 @@ export default function BodegaPage() {
                         (incluye entrada, patio de maniobras, bahía de empaque y bahía temporal)
                       </span>
                     )}
+                    {i > 0 && (
+                      <span className="ml-2 text-xs font-normal normal-case text-slate-400">
+                        (los pasillos se ubican de arriba hacia abajo)
+                      </span>
+                    )}
                   </h2>
                   {form.pisos.length > 1 && i === form.pisos.length - 1 && (
                     <button
@@ -627,12 +837,8 @@ export default function BodegaPage() {
                       min={0}
                       max={MAX_ESTANTES}
                       className={`mt-1 ${CLASE_INPUT}`}
-                      value={piso.pasillos[0]?.estIzq ?? 0}
-                      onChange={(e) => {
-                        const v = Math.max(0, Math.min(MAX_ESTANTES, Number(e.target.value) || 0));
-                        aplicarATodos(i, 'estIzq', v);
-                        aplicarATodos(i, 'estDer', v);
-                      }}
+                      value={piso.pasillos[0]?.nivelesIzq.length ?? 0}
+                      onChange={(e) => fijarEstantes(i, Number(e.target.value))}
                     />
                   </label>
                   <label className="text-sm text-slate-600">
@@ -642,12 +848,8 @@ export default function BodegaPage() {
                       min={1}
                       max={MAX_NIVELES}
                       className={`mt-1 ${CLASE_INPUT}`}
-                      value={piso.pasillos[0]?.nivIzq ?? 3}
-                      onChange={(e) => {
-                        const v = Math.max(1, Math.min(MAX_NIVELES, Number(e.target.value) || 1));
-                        aplicarATodos(i, 'nivIzq', v);
-                        aplicarATodos(i, 'nivDer', v);
-                      }}
+                      value={piso.pasillos[0]?.nivelesIzq[0] ?? 3}
+                      onChange={(e) => fijarNiveles(i, Number(e.target.value))}
                     />
                   </label>
                   <label className="flex items-end gap-2 pb-2 text-sm text-slate-600">
@@ -655,7 +857,7 @@ export default function BodegaPage() {
                       type="checkbox"
                       className="h-4 w-4 rounded border-slate-300"
                       checked={piso.pasillos.every((p) => p.conFondo)}
-                      onChange={(e) => aplicarATodos(i, 'conFondo', e.target.checked)}
+                      onChange={(e) => fijarFondo(i, e.target.checked)}
                     />
                     Espacio al fondo
                   </label>
@@ -669,57 +871,133 @@ export default function BodegaPage() {
                 </button>
 
                 {personalizar[i] && (
-                  <div className="mt-2 overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-slate-200 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          <th className="px-2 py-2">Pasillo</th>
-                          <th className="px-2 py-2">Estantes izq.</th>
-                          <th className="px-2 py-2">Niveles izq.</th>
-                          <th className="px-2 py-2">Estantes der.</th>
-                          <th className="px-2 py-2">Niveles der.</th>
-                          <th className="px-2 py-2">Fondo</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {piso.pasillos.map((p, j) => (
-                          <tr key={j} className="border-b border-slate-100 last:border-0">
-                            <td className="px-2 py-2 font-medium text-slate-700">#{j + 1}</td>
-                            {(
-                              [
-                                ['estIzq', MAX_ESTANTES],
-                                ['nivIzq', MAX_NIVELES],
-                                ['estDer', MAX_ESTANTES],
-                                ['nivDer', MAX_NIVELES],
-                              ] as Array<[keyof PasilloForm, number]>
-                            ).map(([campo, max]) => (
-                              <td key={campo} className="px-2 py-2">
+                  <div className="mt-3 space-y-3">
+                    {piso.pasillos.map((p, j) => (
+                      <div key={j} className="rounded-lg border border-slate-200 p-3">
+                        <div className="mb-2 flex items-center justify-between">
+                          <p className="text-sm font-medium text-slate-700">Pasillo #{j + 1}</p>
+                          <label className="flex items-center gap-2 text-xs text-slate-600">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-slate-300"
+                              checked={p.conFondo}
+                              onChange={(e) =>
+                                actualizarPasillo(i, j, (q) => ({ ...q, conFondo: e.target.checked }))
+                              }
+                            />
+                            Fondo
+                          </label>
+                        </div>
+                        {(['nivelesIzq', 'nivelesDer'] as const).map((lado) => (
+                          <div key={lado} className="mb-2 last:mb-0">
+                            <div className="flex items-center gap-2">
+                              <span className="w-20 text-xs text-slate-500">
+                                {lado === 'nivelesIzq' ? 'Izquierda' : 'Derecha'}
+                              </span>
+                              <label className="flex items-center gap-1 text-xs text-slate-600">
+                                Estantes
                                 <input
                                   type="number"
-                                  min={campo.startsWith('niv') ? 1 : 0}
-                                  max={max}
-                                  className="w-20 rounded-lg border border-slate-300 px-2 py-1 text-sm"
-                                  value={p[campo] as number}
-                                  onChange={(e) =>
-                                    actualizarPasillo(i, j, campo, Math.max(0, Math.min(max, Number(e.target.value) || 0)))
-                                  }
+                                  min={0}
+                                  max={MAX_ESTANTES}
+                                  className="w-16 rounded-lg border border-slate-300 px-2 py-1 text-sm"
+                                  value={p[lado].length}
+                                  onChange={(e) => fijarEstantesPasillo(i, j, lado, Number(e.target.value))}
                                 />
-                              </td>
-                            ))}
-                            <td className="px-2 py-2">
-                              <input
-                                type="checkbox"
-                                className="h-4 w-4 rounded border-slate-300"
-                                checked={p.conFondo}
-                                onChange={(e) => actualizarPasillo(i, j, 'conFondo', e.target.checked)}
-                              />
-                            </td>
-                          </tr>
+                              </label>
+                            </div>
+                            {p[lado].length > 0 && (
+                              <div className="mt-1 flex flex-wrap gap-2 sm:pl-20">
+                                {p[lado].map((n, k) => (
+                                  <label key={k} className="text-[10px] text-slate-400">
+                                    E{k + 1}
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      max={MAX_NIVELES}
+                                      title={`Niveles del estante E${k + 1}`}
+                                      className="mt-0.5 block w-14 rounded-lg border border-slate-300 px-1.5 py-1 text-sm"
+                                      value={n}
+                                      onChange={(e) => fijarNivelEstante(i, j, lado, k, Number(e.target.value))}
+                                    />
+                                  </label>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         ))}
-                      </tbody>
-                    </table>
+                      </div>
+                    ))}
+                    <p className="text-xs text-slate-400">
+                      Cada estante puede tener un número de niveles distinto (2 o más).
+                    </p>
                   </div>
                 )}
+
+                {/* I35: áreas adicionales del piso (bahía, patio, entrada) */}
+                <div className="mt-4 border-t border-slate-100 pt-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Áreas adicionales{i === 0 ? ' (además de las fijas)' : ''}
+                    </h3>
+                    <button
+                      onClick={() => agregarArea(i)}
+                      className="text-xs font-medium text-sofia-700 underline hover:text-sofia-800"
+                    >
+                      + Añadir área
+                    </button>
+                  </div>
+                  {piso.areas.length === 0 && (
+                    <p className="text-xs text-slate-400">
+                      Sin áreas adicionales. Puede añadir bahías, patios o entradas según el piso.
+                    </p>
+                  )}
+                  {piso.areas.map((a, k) => (
+                    <div
+                      key={k}
+                      className="mb-2 grid grid-cols-1 gap-2 rounded-lg border border-slate-200 p-3 sm:grid-cols-[1fr_1fr_auto_auto]"
+                    >
+                      <label className="text-xs text-slate-600">
+                        Tipo
+                        <select
+                          className={`mt-1 ${CLASE_INPUT}`}
+                          value={a.tipo}
+                          onChange={(e) => actualizarArea(i, k, { tipo: e.target.value as AreaForm['tipo'] })}
+                        >
+                          {TIPOS_AREA.map((t) => (
+                            <option key={t} value={t}>
+                              {ETIQUETA_AREA[t]}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="text-xs text-slate-600">
+                        Alias
+                        <input
+                          className={`mt-1 ${CLASE_INPUT}`}
+                          value={a.alias}
+                          placeholder={ETIQUETA_AREA[a.tipo]}
+                          onChange={(e) => actualizarArea(i, k, { alias: e.target.value })}
+                        />
+                      </label>
+                      <label className="flex items-end gap-2 pb-2 text-xs text-slate-600">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-slate-300"
+                          checked={a.permiteProductos}
+                          onChange={(e) => actualizarArea(i, k, { permiteProductos: e.target.checked })}
+                        />
+                        Guarda productos
+                      </label>
+                      <button
+                        onClick={() => quitarArea(i, k)}
+                        className="self-center text-xs font-medium text-red-600 hover:text-red-700"
+                      >
+                        Quitar
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </Tarjeta>
             ))}
 
@@ -727,7 +1005,7 @@ export default function BodegaPage() {
               {form.pisos.length < MAX_PISOS && (
                 <button
                   onClick={() =>
-                    setForm((f) => ({ ...f, pisos: [...f.pisos, { pasillos: [{ ...PASILLO_BASE }] }] }))
+                    setForm((f) => ({ ...f, pisos: [...f.pisos, { pasillos: [clonarPasillo(PASILLO_BASE)], areas: [] }] }))
                   }
                   className={CLASE_BOTON_SECUNDARIO}
                 >
@@ -765,11 +1043,12 @@ export default function BodegaPage() {
             <MapaBodega
               anchoM={form.anchoM}
               altoM={form.altoM}
-              cajones={previsualizarPiso(form, pisoPreviewSeguro)}
+              cajones={previsualizarPiso(form, pisoPreviewSeguro, mapa)}
             />
             <p className="mt-3 text-xs text-slate-400">
-              Las posiciones son una propuesta inicial; en la pestaña «Organizar cajones» puede arrastrarlas dentro del
-              perímetro.
+              {mapa
+                ? 'La vista previa refleja la distribución guardada en «Organizar cajones».'
+                : 'Las posiciones son una propuesta inicial; en la pestaña «Organizar cajones» puede arrastrarlas dentro del perímetro.'}
             </p>
           </Tarjeta>
         </div>
@@ -806,7 +1085,23 @@ export default function BodegaPage() {
                     ))}
                   </div>
                 </div>
+                {/* I35: guardar los movimientos de arrastre */}
+                <div className="mb-3 flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2">
+                  <p className="text-xs text-slate-500">
+                    {numPendientes > 0
+                      ? `${numPendientes} cajón(es) movido(s) sin guardar.`
+                      : 'Arrastre los cajones y luego guarde los cambios.'}
+                  </p>
+                  <button
+                    onClick={guardarMovimientos}
+                    disabled={numPendientes === 0 || guardandoMovimientos}
+                    className={CLASE_BOTON_PRIMARIO}
+                  >
+                    {guardandoMovimientos ? 'Guardando…' : 'Guardar cambios'}
+                  </button>
+                </div>
                 <MapaBodega
+                  key={`editor-${pisoSel}-${mapaVersion}`}
                   anchoM={mapa.bodega.anchoM}
                   altoM={mapa.bodega.altoM}
                   cajones={cajonesPiso}
@@ -815,8 +1110,8 @@ export default function BodegaPage() {
                   onArrastrar={moverCajon}
                 />
                 <p className="mt-3 text-xs text-slate-400">
-                  Arrastre los cajones para ubicarlos dentro del perímetro. Toque un cajón para renombrarlo, cambiar su
-                  color o ajustar su tamaño.
+                  Arrastre los cajones para ubicarlos dentro del perímetro y pulse «Guardar cambios». Toque un cajón
+                  para renombrarlo, cambiar su color o ajustar su tamaño.
                 </p>
               </>
             )}
@@ -836,17 +1131,16 @@ export default function BodegaPage() {
                   Alias
                   <input className={`mt-1 ${CLASE_INPUT}`} value={aliasEd} onChange={(e) => setAliasEd(e.target.value)} />
                 </label>
-                {seleccion.tipo === 'pasillo' && (
-                  <label className="block text-sm text-slate-600">
-                    Color
-                    <input
-                      type="color"
-                      className="mt-1 h-9 w-full rounded-lg border border-slate-300"
-                      value={colorEd || COLORES.pasillo.relleno}
-                      onChange={(e) => setColorEd(e.target.value)}
-                    />
-                  </label>
-                )}
+                {/* I35: pasillos y áreas admiten cambio de color */}
+                <label className="block text-sm text-slate-600">
+                  Color
+                  <input
+                    type="color"
+                    className="mt-1 h-9 w-full rounded-lg border border-slate-300"
+                    value={colorEd || COLORES.pasillo.relleno}
+                    onChange={(e) => setColorEd(e.target.value)}
+                  />
+                </label>
                 <div className="grid grid-cols-2 gap-3">
                   <label className="text-sm text-slate-600">
                     Ancho (m)
@@ -878,6 +1172,12 @@ export default function BodegaPage() {
                     Cerrar
                   </button>
                 </div>
+                {errorEd && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{errorEd}</p>}
+                {mensajeEd && <p className="rounded-lg bg-menta-50 px-3 py-2 text-sm text-menta-700">{mensajeEd}</p>}
+              </div>
+            )}
+            {!seleccion && (errorEd || mensajeEd) && (
+              <div className="mt-3">
                 {errorEd && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{errorEd}</p>}
                 {mensajeEd && <p className="rounded-lg bg-menta-50 px-3 py-2 text-sm text-menta-700">{mensajeEd}</p>}
               </div>
