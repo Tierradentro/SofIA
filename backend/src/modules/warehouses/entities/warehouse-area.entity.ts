@@ -6,17 +6,17 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
-  Unique,
   UpdateDateColumn,
 } from 'typeorm';
 import { WarehouseFloor } from './warehouse-floor.entity';
 
 /**
- * Área fija de la bodega (HU-014, EP-11). Rectángulos de contexto en el mapa
- * 2D del piso 1: patio de maniobras, bahía de empaque y bahía de
- * almacenamiento temporal. La entrada es una línea (apertura en el
- * perímetro), no un rectángulo. La bahía temporal puede tener productos;
- * entrada y patio no.
+ * Área de la bodega (HU-014, EP-11). Rectángulos de contexto en el mapa 2D:
+ * patio de maniobras, bahía de empaque y bahía de almacenamiento temporal, en
+ * cualquier piso. La entrada es una línea (apertura en el perímetro), no un
+ * rectángulo. La bahía temporal puede tener productos; entrada y patio no.
+ * I35: un piso puede tener varias áreas del mismo tipo (sin unicidad por
+ * tipo) y cada cajón de área admite color propio.
  */
 export enum AreaTipo {
   ENTRADA = 'ENTRADA',
@@ -26,7 +26,6 @@ export enum AreaTipo {
 }
 
 @Entity('warehouse_areas')
-@Unique(['floorId', 'tipo'])
 export class WarehouseArea {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -44,6 +43,10 @@ export class WarehouseArea {
 
   @Column({ length: 120, nullable: true })
   alias: string;
+
+  /** I35: color propio del cajón de área (hex). */
+  @Column({ length: 30, nullable: true })
+  color: string | null;
 
   /** Posición del cajón en el lienzo (metros). La entrada usa ancho= línea. */
   @Column({ name: 'pos_x', type: 'float', default: 0 })

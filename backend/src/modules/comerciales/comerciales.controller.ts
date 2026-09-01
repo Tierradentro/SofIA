@@ -36,6 +36,13 @@ export class ComercialesController {
     return this.comerciales.findAll(q);
   }
 
+  /** I35: actividad del comercial (pedidos, despachos y devoluciones). */
+  @Get(':id/resumen')
+  @Roles(Role.GENERADOR, Role.ADMINISTRADOR)
+  resumen(@Param('id', ParseUUIDPipe) id: string) {
+    return this.comerciales.resumen(id);
+  }
+
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.comerciales.findOne(id);

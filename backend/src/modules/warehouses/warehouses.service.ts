@@ -13,6 +13,7 @@ import { WarehouseRack } from './entities/warehouse-rack.entity';
 import { WarehouseArea, AreaTipo } from './entities/warehouse-area.entity';
 import { WarehouseProductLocation } from './entities/warehouse-product-location.entity';
 import { Product } from '../products/entities/product.entity';
+import { ProductBarcode } from '../products/entities/product-barcode.entity';
 import { AuditService } from '../audit/audit.service';
 import { ConfigureWarehouseDto } from './dto/configure-warehouse.dto';
 import { AssignLocationDto, MoveCajonDto } from './dto/warehouse-ops.dto';
@@ -256,13 +257,34 @@ export class WarehousesService {
             warehouseId: bodega.id,
             numero: pisoDto.numero,
             alias: pisoDto.alias ?? `Piso ${pisoDto.numero}`,
-            tieneAreasFijas: pisoDto.numero === 1 ? true : pisoDto.tieneAreasFijas,
+            tieneAreasFijas: pisoDto.tieneAreasFijas ?? pisoDto.numero === 1,
             activo: true,
           }),
         );
 
         if (piso.tieneAreasFijas) {
           await this.crearAreasFijas(m, piso.id, dto.anchoM, dto.altoM);
+        }
+
+        // I35: áreas adicionales por piso (bahía, patio, entrada) definidas en
+        // el asistente de configuración.
+        for (const [idx, areaDto] of (pisoDto.areas ?? []).entries()) {
+          await m.getRepository(WarehouseArea).save(
+            m.getRepository(WarehouseArea).create({
+              floorId: piso.id,
+              tipo: areaDto.tipo,
+              alias: areaDto.alias ?? undefined,
+              color: areaDto.color ?? null,
+              posX: areaDto.posX ?? 2 + idx * 9,
+              posY: areaDto.posY ?? 1,
+              anchoM: areaDto.anchoM ?? 8,
+              altoM: areaDto.altoM ?? (areaDto.tipo === AreaTipo.ENTRADA ? 0 : 4),
+              permiteProductos:
+                areaDto.permiteProductos ??
+                (areaDto.tipo === AreaTipo.BAHIA_TEMPORAL || areaDto.tipo === AreaTipo.BAHIA_EMPAQUE),
+              activo: true,
+            }),
+          );
         }
 
         for (const pasDto of pisoDto.pasillos) {
@@ -353,7 +375,8 @@ export class WarehousesService {
     if (dto.anchoM != null) cajon.anchoM = dto.anchoM;
     if (dto.altoM != null) cajon.altoM = dto.altoM;
     if (dto.alias != null) cajon.alias = dto.alias;
-    if (dto.color != null && tipo === 'pasillo') cajon.color = dto.color;
+    // I35: los cajones tipo área también admiten cambio de color
+    if (dto.color != null) cajon.color = dto.color;
     await (repo.save as any)(cajon);
     await this.audit.log({
       usuarioId: user.id,
@@ -541,13 +564,31 @@ export class WarehousesService {
   /**
    * Busca un producto por referencia/código y devuelve sus ubicaciones para
    * resaltarlas en el mapa (ruta básica, HU-059).
+   * I35: la búsqueda acepta código, código OE, referencias cruzadas o código
+   * de barras.
    */
   async locateProduct(q: string) {
     const texto = (q || '').trim();
     if (!texto) throw new BadRequestException('q es requerido');
-    const product = await this.dataSource.getRepository(Product).findOne({
-      where: [{ codigo: texto.toUpperCase() }],
+    const textoUpper = texto.toUpperCase();
+    const products = this.dataSource.getRepository(Product);
+    let product = await products.findOne({
+      where: [
+        { codigo: textoUpper },
+        { codigoOE: textoUpper },
+        { refCruzada1: textoUpper },
+        { refCruzada2: textoUpper },
+      ],
     });
+    if (!product) {
+      // Código de barras: coincidencia exacta en las etiquetas del producto.
+      const barcode = await this.dataSource.getRepository(ProductBarcode).findOne({
+        where: { barcode: texto },
+      });
+      if (barcode) {
+        product = await products.findOne({ where: { id: barcode.productId } });
+      }
+    }
     if (!product) throw new NotFoundException('Producto no encontrado');
     const ubicaciones = await this.locations.find({
       where: { productId: product.id },

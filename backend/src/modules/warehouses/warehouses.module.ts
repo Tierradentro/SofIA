@@ -7,6 +7,7 @@ import { WarehouseZone } from './entities/warehouse-zone.entity';
 import { WarehouseRack } from './entities/warehouse-rack.entity';
 import { WarehouseArea } from './entities/warehouse-area.entity';
 import { WarehouseProductLocation } from './entities/warehouse-product-location.entity';
+import { ProductBarcode } from '../products/entities/product-barcode.entity';
 import { WarehousesService } from './warehouses.service';
 import { WarehousesController } from './warehouses.controller';
 import { AuditModule } from '../audit/audit.module';
@@ -21,6 +22,7 @@ import { AuditModule } from '../audit/audit.module';
       WarehouseRack,
       WarehouseArea,
       WarehouseProductLocation,
+      ProductBarcode,
     ]),
     AuditModule,
   ],

@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { ILike, Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, ILike, Repository } from 'typeorm';
 import { Comercial } from './entities/comercial.entity';
 import { CreateComercialDto, UpdateComercialDto } from './dto/comercial.dto';
 import { AuditService } from '../audit/audit.service';
@@ -12,6 +12,7 @@ export class ComercialesService {
   constructor(
     @InjectRepository(Comercial)
     private readonly comerciales: Repository<Comercial>,
+    @InjectDataSource() private readonly dataSource: DataSource,
     private readonly audit: AuditService,
   ) {}
 
@@ -62,6 +63,65 @@ export class ComercialesService {
     const comercial = await this.comerciales.findOne({ where: { id } });
     if (!comercial) throw new NotFoundException('Comercial no encontrado');
     return comercial;
+  }
+
+  /**
+   * I35: actividad asociada al comercial — pedidos, despachos y devoluciones
+   * (casos PQRS) registrados a su nombre, con totales y los más recientes.
+   */
+  async resumen(id: string) {
+    const comercial = await this.findOne(id);
+    const pedidos = await this.dataSource.query(
+      `SELECT o.id, o.numero, o.estado, o.ciudad,
+              o.numero_factura AS "numeroFactura", o.created_at,
+              (SELECT COUNT(*)::int FROM order_items oi WHERE oi.order_id = o.id) AS items
+       FROM orders o
+       WHERE o.comercial_id = $1
+       ORDER BY o.created_at DESC
+       LIMIT 20`,
+      [id],
+    );
+    const [{ total: totalPedidos }] = await this.dataSource.query(
+      `SELECT COUNT(*)::int AS total FROM orders WHERE comercial_id = $1`,
+      [id],
+    );
+    const despachos = await this.dataSource.query(
+      `SELECT d.id, d.estado, d.guia, d.created_at
+       FROM dispatches d
+       WHERE d.id IN (
+         SELECT do2.dispatch_id
+         FROM dispatch_orders do2 JOIN orders o2 ON o2.id = do2.order_id
+         WHERE o2.comercial_id = $1
+       )
+       ORDER BY d.created_at DESC
+       LIMIT 20`,
+      [id],
+    );
+    const [{ total: totalDespachos }] = await this.dataSource.query(
+      `SELECT COUNT(DISTINCT do2.dispatch_id)::int AS total
+       FROM dispatch_orders do2 JOIN orders o2 ON o2.id = do2.order_id
+       WHERE o2.comercial_id = $1`,
+      [id],
+    );
+    const devoluciones = await this.dataSource.query(
+      `SELECT p.id, p.codigo, p.cantidad, p.estado, p.motivo_codigo AS "motivoCodigo",
+              p.factura, p.created_at
+       FROM pqrs_cases p
+       WHERE p.comercial_id = $1
+       ORDER BY p.created_at DESC
+       LIMIT 20`,
+      [id],
+    );
+    const [{ total: totalDevoluciones }] = await this.dataSource.query(
+      `SELECT COUNT(*)::int AS total FROM pqrs_cases WHERE comercial_id = $1`,
+      [id],
+    );
+    return {
+      comercial,
+      pedidos: { total: totalPedidos, recientes: pedidos },
+      despachos: { total: totalDespachos, recientes: despachos },
+      devoluciones: { total: totalDevoluciones, recientes: devoluciones },
+    };
   }
 
   async update(id: string, dto: UpdateComercialDto, user: { id: string; username: string }) {

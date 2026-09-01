@@ -7,6 +7,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
 import { InventoryMovement } from './entities/inventory-movement.entity';
 import { Product } from '../products/entities/product.entity';
+import { User } from '../users/entities/user.entity';
 import { MovementType } from '../../common/enums/movement-type.enum';
 
 export interface MovementInput {
@@ -89,19 +90,42 @@ export class MovementsService {
 
   /** Consulta de movimientos por producto (trazabilidad, M18). */
   async byProduct(productId: string, limit = 100) {
-    return this.dataSource.getRepository(InventoryMovement).find({
+    const movimientos = await this.dataSource.getRepository(InventoryMovement).find({
       where: { productId },
       order: { fecha: 'DESC' },
       take: Math.min(500, limit),
     });
+    return this.conUsuarios(movimientos);
   }
 
   /** Consulta por empresa (auditoría operativa y dashboard). */
   async byEmpresa(empresaId: string, limit = 200) {
-    return this.dataSource.getRepository(InventoryMovement).find({
+    const movimientos = await this.dataSource.getRepository(InventoryMovement).find({
       where: { empresaId },
       order: { fecha: 'DESC' },
       take: Math.min(1000, limit),
+    });
+    return this.conUsuarios(movimientos);
+  }
+
+  /**
+   * I35: resuelve el usuario que registró cada movimiento (username y nombre)
+   * para mostrarlo en la vista de movimientos de inventario.
+   */
+  private async conUsuarios(movimientos: InventoryMovement[]) {
+    const ids = [...new Set(movimientos.map((m) => m.usuarioId).filter(Boolean))] as string[];
+    if (ids.length === 0) return movimientos;
+    const usuarios = await this.dataSource.getRepository(User).find({
+      where: ids.map((id) => ({ id })),
+    });
+    const porId = new Map(usuarios.map((u) => [u.id, u]));
+    return movimientos.map((m) => {
+      const u = m.usuarioId ? porId.get(m.usuarioId) : undefined;
+      return {
+        ...m,
+        usuarioUsername: u?.username ?? null,
+        usuarioNombre: u?.nombre ?? null,
+      };
     });
   }
 

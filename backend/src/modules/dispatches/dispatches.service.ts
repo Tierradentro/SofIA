@@ -401,12 +401,21 @@ export class DispatchesService {
       const cliente = await this.dataSource
         .getRepository(Client)
         .findOne({ where: { id: d.clienteId } });
+      // I35: facturas relacionadas con los pedidos del despacho
+      const facturas = await this.dataSource.query(
+        `SELECT DISTINCT o.numero_factura AS factura
+         FROM dispatch_orders do2 JOIN orders o ON o.id = do2.order_id
+         WHERE do2.dispatch_id = $1 AND o.numero_factura IS NOT NULL
+         ORDER BY o.numero_factura`,
+        [d.id],
+      );
       out.push({
         ...d,
         clienteNombre: cliente?.nombre ?? null,
         totalPedidos: pedidos,
         totalCajas: cajas,
         empresas: empresas.map((e: any) => e.siglas),
+        facturas: facturas.map((f: any) => f.factura),
       });
     }
     return out;

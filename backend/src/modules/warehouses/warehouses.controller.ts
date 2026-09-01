@@ -54,9 +54,9 @@ export class WarehousesController {
     return this.warehouses.moverCajon(tipo, id, dto, admin);
   }
 
-  /** Asociar producto a ubicación — Generador. */
+  /** Asociar producto a ubicación — Generador. I35: el operador solo asigna. */
   @Post('locations')
-  @Roles(Role.GENERADOR, Role.ADMINISTRADOR)
+  @Roles(Role.OPERADOR, Role.GENERADOR, Role.ADMINISTRADOR)
   assign(@Body() dto: AssignLocationDto, @CurrentUser() user: AuthenticatedUser) {
     return this.warehouses.assignLocation(dto, user);
   }

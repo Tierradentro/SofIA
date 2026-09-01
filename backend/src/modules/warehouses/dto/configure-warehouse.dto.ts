@@ -6,6 +6,7 @@ import {
   IsEnum,
   IsInt,
   IsNotEmpty,
+  IsNumber,
   IsOptional,
   IsString,
   Max,
@@ -15,6 +16,7 @@ import {
 } from 'class-validator';
 import { BodegaForma } from '../entities/warehouse.entity';
 import { ZonaLado } from '../entities/warehouse-zone.entity';
+import { AreaTipo } from '../entities/warehouse-area.entity';
 
 class EstanteCfgDto {
   @IsInt()
@@ -97,6 +99,46 @@ class PasilloCfgDto {
   zonas: ZonaCfgDto[];
 }
 
+/** I35: área adicional configurable por piso (bahía, patio, entrada). */
+class AreaCfgDto {
+  @IsEnum(AreaTipo)
+  tipo: AreaTipo;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  alias?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  color?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  posX?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  posY?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  anchoM?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  altoM?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  permiteProductos?: boolean;
+}
+
 class PisoCfgDto {
   @IsInt()
   @Min(1)
@@ -107,9 +149,17 @@ class PisoCfgDto {
   @MaxLength(120)
   alias?: string;
 
-  /** Solo el piso 1 tiene entrada/patio/bahías. */
+  /** Solo el piso 1 tiene entrada/patio/bahías (I35: opcional, por defecto piso 1). */
+  @IsOptional()
   @IsBoolean()
-  tieneAreasFijas: boolean;
+  tieneAreasFijas?: boolean;
+
+  /** I35: áreas adicionales del piso (bahía, patio, entrada) configurables. */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => AreaCfgDto)
+  areas?: AreaCfgDto[];
 
   @IsArray()
   @ArrayMinSize(1)

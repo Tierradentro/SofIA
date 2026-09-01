@@ -60,9 +60,10 @@ export class MoveCajonDto {
   @Min(1)
   anchoM?: number;
 
+  // I35: altoM admite 0 porque las entradas se dibujan como línea (sin alto).
   @IsOptional()
   @IsNumber()
-  @Min(1)
+  @Min(0)
   altoM?: number;
 
   @IsOptional()
