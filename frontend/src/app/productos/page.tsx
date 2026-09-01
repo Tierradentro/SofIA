@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CheckCircle2, Filter, Plus, Search } from 'lucide-react';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
@@ -108,8 +108,12 @@ export default function ProductosPage() {
 
   const esGenerador = sesion?.usuario.rol === 'GENERADOR';
   const esAdmin = sesion?.usuario.rol === 'ADMINISTRADOR';
+  // I35: el Operador no ve las existencias en la vista de productos.
+  const esOperador = sesion?.usuario.rol === 'OPERADOR';
   const puedeEditar = esGenerador || esAdmin;
   const puedeBarcode = ['OPERADOR', 'GENERADOR'].includes(sesion?.usuario.rol || '');
+  // I35: al abrir la ficha se desplaza la vista hasta el cuadro.
+  const fichaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const s = obtenerSesion();
@@ -155,6 +159,8 @@ export default function ProductosPage() {
     const { status, body } = await api<Producto>(`/products/${p.id}`);
     if (status === 200) {
       setFicha(body);
+      // I35: subir y ubicar la ventana en el cuadro de la ficha
+      setTimeout(() => fichaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
     } else {
       setError(mensajeError(body, 'No se pudo cargar la ficha'));
     }
@@ -395,6 +401,8 @@ export default function ProductosPage() {
       {/* QA Func. 2.2: ficha técnica completa */}
       {ficha && (
         <Tarjeta className="mb-6 max-w-4xl border-l-4 border-menta-400 p-5">
+          {/* I35: ancla de desplazamiento (compensa el encabezado fijo) */}
+          <div ref={fichaRef} className="-mt-24 pt-24" aria-hidden />
           <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
             <h2 className="font-semibold text-slate-900">Ficha técnica — {ficha.codigo}</h2>
             <div className="flex gap-2">
@@ -433,11 +441,11 @@ export default function ProductosPage() {
                 ['Unidad de medida', ficha.unidadMedida],
                 ['Precio', ficha.precio],
                 ['Ubicación', ficha.ubicacion],
-                ['Grupo siete', ficha.grupoSiete],
-                ['Grupo ocho', ficha.grupoOcho],
                 ['Estado', ficha.estado],
-                ['Existencia', ficha.cantidad],
-                ['Bloqueada', ficha.cantidadBloqueada],
+                // I35: existencias ocultas para el Operador
+                ...(esOperador
+                  ? []
+                  : ([['Existencia', ficha.cantidad], ['Bloqueada', ficha.cantidadBloqueada]] as [string, unknown][])),
                 ['Código de barras', ficha.codigoBarras ? `${ficha.codigoBarras.barcode} (${ficha.codigoBarras.origen})` : '—'],
               ] as [string, unknown][]
             ).map(([etiqueta, valor]) => (
@@ -473,8 +481,9 @@ export default function ProductosPage() {
           </dl>
 
           {/* I34: ubicaciones del producto en la bodega (asignación manual) */}
+          {/* I35: el Operador solo asigna; Admin/Generador también modifican */}
           <div className="mt-5 border-t border-slate-100 pt-4">
-            <PanelUbicaciones productoId={ficha.id} codigo={ficha.codigo} soloLectura={!puedeEditar} />
+            <PanelUbicaciones productoId={ficha.id} codigo={ficha.codigo} puedeAsignar puedeModificar={puedeEditar} />
           </div>
         </Tarjeta>
       )}
@@ -625,18 +634,20 @@ export default function ProductosPage() {
                 onChange={(e) => setFiltroUbicacion(e.target.value)}
               />
             </label>
-            <label className="text-xs font-medium text-slate-500">
-              Existencia
-              <select
-                className={`${CLASE_INPUT} mt-1`}
-                value={filtroExistencia}
-                onChange={(e) => setFiltroExistencia(e.target.value as 'todas' | 'con' | 'sin')}
-              >
-                <option value="todas">Todas</option>
-                <option value="con">Con existencias</option>
-                <option value="sin">Sin existencias</option>
-              </select>
-            </label>
+            {!esOperador && (
+              <label className="text-xs font-medium text-slate-500">
+                Existencia
+                <select
+                  className={`${CLASE_INPUT} mt-1`}
+                  value={filtroExistencia}
+                  onChange={(e) => setFiltroExistencia(e.target.value as 'todas' | 'con' | 'sin')}
+                >
+                  <option value="todas">Todas</option>
+                  <option value="con">Con existencias</option>
+                  <option value="sin">Sin existencias</option>
+                </select>
+              </label>
+            )}
           </div>
         )}
       </Tarjeta>
@@ -651,8 +662,12 @@ export default function ProductosPage() {
                 <th className={CLASES_TABLA.celdaCabecera}>Marca</th>
                 <th className={CLASES_TABLA.celdaCabecera}>Código barras</th>
                 <th className={CLASES_TABLA.celdaCabecera}>Ubicación</th>
-                <th className={`${CLASES_TABLA.celdaCabecera} text-right`}>Existencia</th>
-                <th className={`${CLASES_TABLA.celdaCabecera} text-right`}>Bloqueada</th>
+                {!esOperador && (
+                  <>
+                    <th className={`${CLASES_TABLA.celdaCabecera} text-right`}>Existencia</th>
+                    <th className={`${CLASES_TABLA.celdaCabecera} text-right`}>Bloqueada</th>
+                  </>
+                )}
                 <th className={CLASES_TABLA.celdaCabecera}>Acciones</th>
               </tr>
             </thead>
@@ -681,8 +696,12 @@ export default function ProductosPage() {
                     ) : '—'}
                   </td>
                   <td className={CLASES_TABLA.celda}>{p.ubicacion || '—'}</td>
-                  <td className={`${CLASES_TABLA.celda} text-right`}>{p.cantidad}</td>
-                  <td className={`${CLASES_TABLA.celda} text-right`}>{p.cantidadBloqueada}</td>
+                  {!esOperador && (
+                    <>
+                      <td className={`${CLASES_TABLA.celda} text-right`}>{p.cantidad}</td>
+                      <td className={`${CLASES_TABLA.celda} text-right`}>{p.cantidadBloqueada}</td>
+                    </>
+                  )}
                   <td className={CLASES_TABLA.celda}>
                     <div className="flex flex-wrap gap-2">
                       <button
@@ -713,7 +732,7 @@ export default function ProductosPage() {
               ))}
               {productosFiltrados.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-sm text-slate-400">
+                  <td colSpan={esOperador ? 6 : 8} className="px-4 py-8 text-center text-sm text-slate-400">
                     {productos.length === 0
                       ? 'Sin productos en esta empresa'
                       : 'Ningún producto coincide con los filtros'}
