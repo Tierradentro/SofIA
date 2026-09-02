@@ -345,9 +345,9 @@ function validarForm(form: EstructuraForm): string | null {
   if (form.anchoM < 20 || form.altoM < 18) {
     return 'Las dimensiones mínimas para el diseño son 20 m de ancho × 18 m de alto (caben las áreas fijas y los pasillos).';
   }
-  for (const [i, piso] of form.pisos.entries()) {
+  for (const [i, piso] of Array.from(form.pisos.entries())) {
     if (piso.pasillos.length === 0) return `El piso ${i + 1} no tiene pasillos.`;
-    for (const [j, p] of piso.pasillos.entries()) {
+    for (const [j, p] of Array.from(piso.pasillos.entries())) {
       if (p.nivelesIzq.length === 0 && p.nivelesDer.length === 0 && !p.conFondo) {
         return `El pasillo ${j + 1} del piso ${i + 1} no tiene zonas (active estantes a un lado o el fondo).`;
       }
