@@ -81,6 +81,19 @@ export async function runInitialSeed(dataSource: DataSource): Promise<void> {
       valor: { engine: 'OCR_LOCAL' },
       descripcion: 'Motor OCR activo',
     },
+    {
+      // I36: horario de logística (control de acceso). Inactivo por defecto.
+      clave: PARAM_KEYS.HORARIO_LOGISTICA,
+      valor: {
+        activo: false,
+        dias: [1, 2, 3, 4, 5, 6],
+        horaInicio: '06:00',
+        horaFin: '18:00',
+        zonaHoraria: 'America/Bogota',
+      },
+      descripcion:
+        'Horario de logística: días y franja horaria en que los roles operativos pueden acceder a la aplicación',
+    },
   ];
   for (const p of params) {
     const exists = await paramRepo.findOne({ where: { clave: p.clave } });

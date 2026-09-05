@@ -25,6 +25,7 @@ import { MovementType } from '../../common/enums/movement-type.enum';
 import { AuditService } from '../audit/audit.service';
 import { User } from '../users/entities/user.entity';
 import { InventoriesService } from '../inventories/inventories.service';
+import { asegurarAreaEmpaque, descontarDeEmpaque, sumarEnEmpaque } from '../warehouses/empaque';
 import {
   ApproveParcialDto,
   AssociateOrdersDto,
@@ -706,6 +707,8 @@ export class DispatchesService {
           },
           em,
         );
+        // I36: las unidades empacadas salen de la bahía de empaque y de la bodega.
+        await descontarDeEmpaque(em, it.productId, it.cantidad);
         await em.query(
           `UPDATE order_items SET cantidad_despachada = cantidad_despachada + $2 WHERE id = $1`,
           [it.orderItemId, it.cantidad],
@@ -979,6 +982,8 @@ export class DispatchesService {
       throw new BadRequestException(`No se puede cancelar un despacho ${dispatch.estado}`);
     }
     await this.dataSource.transaction(async (em) => {
+      // I36: al revertir los cierres, las unidades regresan a la bahía de empaque.
+      const areaEmpaqueId = await asegurarAreaEmpaque(em);
       const boxes = await em.find(Box, { where: { dispatchId: id, estado: BoxStatus.CERRADA } });
       for (const box of boxes) {
         const items = await em.find(BoxItem, { where: { boxId: box.id } });
@@ -996,6 +1001,9 @@ export class DispatchesService {
             },
             em,
           );
+          if (areaEmpaqueId) {
+            await sumarEnEmpaque(em, it.productId, areaEmpaqueId, it.cantidad);
+          }
           await em.query(
             `UPDATE order_items SET cantidad_despachada = cantidad_despachada - $2 WHERE id = $1`,
             [it.orderItemId, it.cantidad],

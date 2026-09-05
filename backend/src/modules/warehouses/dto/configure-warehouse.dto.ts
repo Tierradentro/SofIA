@@ -72,23 +72,25 @@ class PasilloCfgDto {
   @MaxLength(30)
   color?: string;
 
+  // I36: la geometría admite decimales (el asistente reparte el ancho útil
+  // entre los pasillos y puede dar valores fraccionarios).
   @IsOptional()
-  @IsInt()
+  @IsNumber()
   @Min(0)
   posX?: number;
 
   @IsOptional()
-  @IsInt()
+  @IsNumber()
   @Min(0)
   posY?: number;
 
   @IsOptional()
-  @IsInt()
+  @IsNumber()
   @Min(1)
   anchoM?: number;
 
   @IsOptional()
-  @IsInt()
+  @IsNumber()
   @Min(1)
   altoM?: number;
 
@@ -172,7 +174,7 @@ class PisoCfgDto {
  * Asistente de configuración de la bodega (HU-014). El Administrador define
  * la forma y la estructura completa (pisos → pasillos → zonas → estantes →
  * niveles); las áreas fijas del piso 1 se crean automáticamente (entrada,
- * patio de maniobras, bahía de empaque, bahía temporal).
+ * patio de maniobras, bahía de empaque — I36: la bahía temporal es opcional).
  */
 export class ConfigureWarehouseDto {
   @IsString()

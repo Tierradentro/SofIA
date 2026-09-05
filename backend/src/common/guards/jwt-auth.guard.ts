@@ -18,6 +18,11 @@ import { Role } from '../enums/role.enum';
 import { ApiKey } from '../../modules/api-keys/entities/api-key.entity';
 import { TokenBlacklistService } from '../../modules/auth/token-blacklist.service';
 import { ParamsService } from '../../modules/params/params.service';
+import {
+  descripcionHorario,
+  estaEnHorarioLogistica,
+  HorarioLogistica,
+} from '../../modules/params/horario-logistica';
 
 /** Rutas permitidas cuando el usuario debe cambiar la clave (M02). */
 const ALLOWED_WHEN_MUST_CHANGE = [
@@ -35,6 +40,8 @@ const ALLOWED_WHEN_MUST_CHANGE = [
 export class JwtAuthGuard implements CanActivate {
   /** Ventanas de rate limit por API key (60 s; EP-12). */
   private readonly rateBuckets = new Map<string, { count: number; resetAt: number }>();
+  /** I36: caché corto del horario de logística (30 s) para no consultar la BD en cada petición. */
+  private horarioCache: { at: number; valor: HorarioLogistica } | null = null;
 
   constructor(
     private readonly reflector: Reflector,
@@ -93,6 +100,22 @@ export class JwtAuthGuard implements CanActivate {
       exp: payload.exp,
     };
 
+    // I36: control de acceso por horario de logística. No aplica al
+    // Administrador ni a los sistemas externos (rol API con X-API-Key, que
+    // no pasan por este punto del guard).
+    if (user.rol !== Role.ADMINISTRADOR) {
+      const horario = await this.getHorarioCache();
+      if (!estaEnHorarioLogistica(horario)) {
+        throw new ForbiddenException({
+          statusCode: 403,
+          code: 'FUERA_DE_HORARIO',
+          message:
+            'El acceso a la aplicación está restringido al horario de logística ' +
+            `configurado (${descripcionHorario(horario)}). Consulte al administrador.`,
+        });
+      }
+    }
+
     // Puerta de cambio obligatorio de clave (primer login / expiración 60 días)
     if (user.debeCambiarClave) {
       const path: string = request.route?.path || request.url || '';
@@ -106,6 +129,17 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     return true;
+  }
+
+  /** I36: horario de logística con caché de 30 s (se lee en cada petición autenticada). */
+  private async getHorarioCache(): Promise<HorarioLogistica> {
+    const ahora = Date.now();
+    if (this.horarioCache && ahora - this.horarioCache.at < 30_000) {
+      return this.horarioCache.valor;
+    }
+    const valor = await this.params.getHorarioLogistica();
+    this.horarioCache = { at: ahora, valor };
+    return valor;
   }
 
   /**

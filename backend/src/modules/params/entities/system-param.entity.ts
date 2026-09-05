@@ -24,4 +24,6 @@ export const PARAM_KEYS = {
   PASSWORD_POLICY: 'security.password_policy',
   API_RATE_LIMIT: 'api.rate_limit_per_minute',
   OCR_ACTIVE_ENGINE: 'ocr.active_engine',
+  /** I36: horario de logística (días y franja horaria de acceso a la app). */
+  HORARIO_LOGISTICA: 'logistica.horario_acceso',
 } as const;

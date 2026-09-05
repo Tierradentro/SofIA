@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -10,7 +11,12 @@ import * as bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 import { User } from '../users/entities/user.entity';
 import { UserStatus } from '../../common/enums/user-status.enum';
+import { Role } from '../../common/enums/role.enum';
 import { ParamsService } from '../params/params.service';
+import {
+  descripcionHorario,
+  estaEnHorarioLogistica,
+} from '../params/horario-logistica';
 import { PasswordPolicyService } from './password-policy.service';
 import { TokenBlacklistService } from './token-blacklist.service';
 import { AuditService } from '../audit/audit.service';
@@ -87,6 +93,29 @@ export class AuthService {
     if (this.passwordPolicy.isExpired(user.fechaClave, policy)) {
       user.debeCambiarClave = true;
     }
+
+    // I36: control de acceso por horario de logística (excepto Administrador
+    // e integraciones API). Rechaza el login con un mensaje claro.
+    if (user.rol !== Role.ADMINISTRADOR && user.rol !== Role.API) {
+      const horario = await this.params.getHorarioLogistica();
+      if (!estaEnHorarioLogistica(horario)) {
+        await this.audit.log({
+          usuarioId: user.id,
+          usuarioUsername: user.username,
+          accion: 'LOGIN_FUERA_DE_HORARIO',
+          tabla: 'users',
+          registroId: user.id,
+        });
+        throw new ForbiddenException({
+          statusCode: 403,
+          code: 'FUERA_DE_HORARIO',
+          message:
+            'El acceso a la aplicación está restringido al horario de logística ' +
+            `configurado (${descripcionHorario(horario)}). Consulte al administrador.`,
+        });
+      }
+    }
+
     user.intentosFallidos = 0;
     await this.users.save(user);
 

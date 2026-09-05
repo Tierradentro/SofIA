@@ -267,10 +267,36 @@ export class ExternalApiController {
     };
   }
 
-  /** Spec §7: consulta de caja — el QR contiene solo box_id; aquí se resuelve. */
+  /**
+   * Spec §7: consulta de caja — el QR contiene solo box_id; aquí se resuelve.
+   * I36: la respuesta se remapea campo por campo (mismo patrón de
+   * GET /dispatch/:numero): el servicio interno devuelve los ítems con el
+   * registro crudo de la entidad BoxItem (id PK, boxId FK interno — que
+   * colisiona en nombre con el boxId público CJA-###### —, orderItemId,
+   * productId y otros campos de auditoría); hacia afuera solo salen los
+   * campos de negocio.
+   */
   @Get('box/:boxId')
-  consultaCaja(@Param('boxId') boxId: string) {
-    return this.dispatches.consultaCaja(boxId);
+  async consultaCaja(@Param('boxId') boxId: string) {
+    const c = await this.dispatches.consultaCaja(boxId);
+    return {
+      boxId: c.boxId,
+      estado: c.estado,
+      numeroEnDespacho: c.numeroEnDespacho,
+      fecha: c.fecha,
+      despacho: { numero: c.despacho.numero, estado: c.despacho.estado },
+      cliente: c.cliente ? { nombre: c.cliente.nombre } : null,
+      empresas: c.empresas,
+      documentos: c.documentos,
+      items: c.items.map((i: any) => ({
+        codigo: i.codigo,
+        descripcion: i.descripcion,
+        cantidad: i.cantidad,
+        pedido: i.pedido,
+        numeroFactura: i.numeroFactura,
+        empresa: i.empresa,
+      })),
+    };
   }
 }
 

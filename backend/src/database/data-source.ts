@@ -213,6 +213,12 @@ const CODIGOS_CONFIG_BD = new Set([
   '28000', // invalid authorization specification
   '3D000', // database does not exist
   '42501', // insufficient privilege
+  // I36: un DB_HOST mal escrito no llega a Postgres — falla antes, en la
+  // resolución DNS de Node.js. No son códigos del driver de Postgres sino de
+  // la capa de red; se tratan como configuración para escalar el log a
+  // console.error (los reintentos continúan: un DNS caído es transitorio).
+  'ENOTFOUND', // el hostname no existe
+  'EAI_AGAIN', // el DNS no respondió
 ]);
 
 /**

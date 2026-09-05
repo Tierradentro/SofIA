@@ -109,6 +109,12 @@ function mensajeInfraestructura(exception: unknown): string {
         return 'Falta un dato obligatorio para completar la operación.';
       case '23514':
         return 'Uno de los valores no cumple las reglas de consistencia de los datos.';
+      // I36: ventana de migraciones sin aplicar — la petición llegó cuando el
+      // esquema aún no estaba al día (tabla o columna inexistente). Mensaje
+      // claro y reintentable en vez de un error genérico confuso.
+      case '42P01':
+      case '42703':
+        return 'El sistema se está actualizando; espere unos segundos e intente de nuevo.';
       default:
         if (code === '22001' || message.includes('value too long')) {
           return 'Uno de los campos ingresados es demasiado largo.';

@@ -37,6 +37,7 @@ import { InboundMatcher } from '../inbound/inbound-matcher';
 import { compararFacturaConPedido } from './order-compare';
 import { BarcodeOrigin } from '../../common/enums/barcode-origin.enum';
 import { Role } from '../../common/enums/role.enum';
+import { asegurarAreaEmpaque, trasladarAEmpaque } from '../warehouses/empaque';
 
 const TABLA = 'Pedidos';
 
@@ -465,14 +466,29 @@ export class OrdersService {
     order.estado = OrderStatus.ALISTADO;
     order.alistadoPor = user.id;
     order.alistadoAt = new Date();
-    await this.orders.save(order);
-    await this.audit.log({
-      usuarioId: user.id,
-      usuarioUsername: user.username,
-      accion: 'PEDIDO_ALISTADO',
-      tabla: TABLA,
-      registroId: id,
-      valorNuevo: { estado: OrderStatus.ALISTADO },
+    // I36: el cambio de estado y el traslado de la mercancía alistada a la
+    // bahía de empaque son atómicos (una sola transacción).
+    await this.dataSource.transaction(async (em) => {
+      await em.getRepository(Order).save(order);
+      const areaEmpaqueId = await asegurarAreaEmpaque(em);
+      if (areaEmpaqueId) {
+        for (const item of items) {
+          if (item.cantidadAlistada > 0) {
+            await trasladarAEmpaque(em, item.productId, areaEmpaqueId, item.cantidadAlistada);
+          }
+        }
+      }
+      await this.audit.log(
+        {
+          usuarioId: user.id,
+          usuarioUsername: user.username,
+          accion: 'PEDIDO_ALISTADO',
+          tabla: TABLA,
+          registroId: id,
+          valorNuevo: { estado: OrderStatus.ALISTADO, ubicacion: 'BAHIA_EMPAQUE' },
+        },
+        em,
+      );
     });
     return this.getDetalle(id);
   }

@@ -215,19 +215,18 @@ export class WarehousesService {
   }
 
   /**
-   * Configura la bodega (asistente). Crea/reemplaza la estructura completa en
-   * una transacción. Las áreas fijas del piso 1 (entrada, patio, bahía de
-   * empaque, bahía temporal) se generan automáticamente.
-   */
-  /**
    * Configura la bodega (asistente). Reemplaza la estructura de la bodega
    * activa en una transacción (borra pisos/pasillos/zonas/estantes/áreas y
-   * ubicaciones previas). Las áreas fijas del piso 1 se crean solas.
+   * ubicaciones previas). Las áreas fijas del piso 1 se crean solas (I36:
+   * entrada, patio de maniobras y bahía de empaque — la bahía temporal es
+   * opcional). Si el diseño queda sin bahía de empaque, se crea una
+   * automáticamente: el alistamiento la usa como ubicación destino.
    */
   async configure(dto: ConfigureWarehouseDto, user: { id: string; username: string }) {
     await this.dataSource.transaction(async (m) => {
       // Reconfigurar la bodega activa existente (o crearla si no hay).
       let bodega = await m.getRepository(Warehouse).findOne({ where: { activo: true } });
+      let piso1Id: string | null = null;
       if (bodega) {
         // Borrar la estructura previa (cascade en BD).
         const pisos = await m.getRepository(WarehouseFloor).find({ where: { warehouseId: bodega.id } });
@@ -261,6 +260,7 @@ export class WarehousesService {
             activo: true,
           }),
         );
+        if (piso.numero === 1) piso1Id = piso.id;
 
         if (piso.tieneAreasFijas) {
           await this.crearAreasFijas(m, piso.id, dto.anchoM, dto.altoM);
@@ -329,6 +329,28 @@ export class WarehousesService {
         }
       }
 
+      // I36: la bahía de empaque es obligatoria (el alistamiento ubica allí la
+      // mercancía del pedido). Si el diseño no la incluye — piso 1 sin áreas
+      // fijas y sin área adicional de empaque — se crea automáticamente.
+      const empaque = await m.getRepository(WarehouseArea).findOne({
+        where: { tipo: AreaTipo.BAHIA_EMPAQUE, activo: true },
+      });
+      if (!empaque && piso1Id) {
+        await m.getRepository(WarehouseArea).save(
+          m.getRepository(WarehouseArea).create({
+            floorId: piso1Id,
+            tipo: AreaTipo.BAHIA_EMPAQUE,
+            alias: 'Bahía de Empaque',
+            posX: 2,
+            posY: 6,
+            anchoM: 8,
+            altoM: 4,
+            permiteProductos: true,
+            activo: true,
+          }),
+        );
+      }
+
       await this.audit.log(
         {
           usuarioId: user.id,
@@ -346,7 +368,7 @@ export class WarehousesService {
     return this.getMapa();
   }
 
-  /** Áreas fijas del piso 1: entrada (línea), patio, bahía empaque, bahía temporal. */
+  /** Áreas fijas del piso 1: entrada (línea), patio y bahía de empaque (I36: la bahía temporal ya no es fija). */
   private async crearAreasFijas(m: EntityManager, floorId: string, anchoM: number, altoM: number) {
     const repo = m.getRepository(WarehouseArea);
     const areas: Array<Partial<WarehouseArea>> = [
@@ -354,7 +376,6 @@ export class WarehousesService {
       { tipo: AreaTipo.ENTRADA, alias: 'Entrada', posX: anchoM / 2 - 3, posY: 0, anchoM: 6, altoM: 0, permiteProductos: false },
       { tipo: AreaTipo.PATIO_MANIOBRAS, alias: 'Patio de Maniobras', posX: 2, posY: 1, anchoM: anchoM - 4, altoM: 4, permiteProductos: false },
       { tipo: AreaTipo.BAHIA_EMPAQUE, alias: 'Bahía de Empaque', posX: 2, posY: 6, anchoM: 8, altoM: 4, permiteProductos: true },
-      { tipo: AreaTipo.BAHIA_TEMPORAL, alias: 'Bahía Temporal', posX: anchoM - 10, posY: 6, anchoM: 8, altoM: 4, permiteProductos: true },
     ];
     for (const a of areas) {
       await repo.save(repo.create({ ...a, floorId, activo: true } as WarehouseArea));
