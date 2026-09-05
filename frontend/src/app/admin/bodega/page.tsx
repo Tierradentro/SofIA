@@ -382,6 +382,10 @@ export default function BodegaPage() {
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState('');
   const [error, setError] = useState('');
+  // I37d: indica si la estructura (pisos/pasillos/estantes/niveles) tiene
+  // cambios sin guardar. Los cambios de niveles NO se aplican al editarlos:
+  // hay que pulsar «Guardar cambios». Este aviso lo deja claro.
+  const [estructuraSucia, setEstructuraSucia] = useState(false);
 
   // Editor de cajones
   const [pisoSel, setPisoSel] = useState(0);
@@ -434,7 +438,15 @@ export default function BodegaPage() {
 
   // ---------- Asistente: estructura ----------
 
+  /** Marca que la estructura (incluidos los niveles por estante) tiene cambios
+   * sin guardar, para mostrar el aviso y el botón «Guardar cambios». */
+  function marcarEstructuraSucia() {
+    setMensaje('');
+    setEstructuraSucia(true);
+  }
+
   function actualizarPiso(indice: number, cambios: (piso: PisoForm) => PisoForm) {
+    marcarEstructuraSucia();
     setForm((f) => ({
       ...f,
       pisos: f.pisos.map((p, i) => (i === indice ? cambios(p) : p)),
@@ -561,7 +573,8 @@ export default function BodegaPage() {
     });
     setGuardando(false);
     if (status === 200 || status === 201) {
-      setMensaje('Bodega configurada. Ahora puede organizar los cajones en el plano.');
+      setMensaje('Cambios guardados. Los niveles de los estantes ya quedaron aplicados.');
+      setEstructuraSucia(false);
       setPendientes({});
       const m = await cargarMapa();
       if (m) setForm(formDesdeMapa(m));
@@ -860,8 +873,7 @@ export default function BodegaPage() {
                       value={piso.pasillos[0]?.nivelesIzq[0] ?? 3}
                       onChange={(e) => fijarNiveles(i, Number(e.target.value))}
                     />
-                  </label>
-                  <label className="flex items-end gap-2 pb-2 text-sm text-slate-600">
+                  </label>                  <label className="flex items-end gap-2 pb-2 text-sm text-slate-600">
                     <input
                       type="checkbox"
                       className="h-4 w-4 rounded border-slate-300"
@@ -939,6 +951,10 @@ export default function BodegaPage() {
                     ))}
                     <p className="text-xs text-slate-400">
                       Cada estante puede tener un número de niveles distinto (2 o más).
+                    </p>
+                    <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
+                      Estos cambios aún no están aplicados. Baje hasta el final y pulse{' '}
+                      <strong>«Guardar cambios de la bodega»</strong> para que tomen efecto.
                     </p>
                   </div>
                 )}
@@ -1028,9 +1044,35 @@ export default function BodegaPage() {
             </div>
 
             <div>
-              <button onClick={guardarEstructura} disabled={guardando} className={CLASE_BOTON_PRIMARIO}>
-                {guardando ? 'Guardando…' : mapa ? 'Reconfigurar bodega' : 'Crear bodega'}
+              {/* I37d: los cambios de niveles NO se aplican al editarlos; hay
+                  que pulsar «Guardar cambios». El aviso lo deja explícito. */}
+              {estructuraSucia && !guardando && (
+                <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  Hay cambios sin guardar (incluidos los niveles de los estantes). Pulse{' '}
+                  <strong>«Guardar cambios»</strong> para aplicarlos; de lo contrario se perderán.
+                </p>
+              )}
+              <button
+                onClick={guardarEstructura}
+                disabled={guardando}
+                className={`${CLASE_BOTON_PRIMARIO} ${
+                  estructuraSucia && !guardando ? 'ring-2 ring-amber-400 ring-offset-1' : ''
+                }`}
+              >
+                {guardando
+                  ? 'Guardando…'
+                  : mapa
+                    ? estructuraSucia
+                      ? 'Guardar cambios de la bodega'
+                      : 'Reconfigurar bodega'
+                    : 'Crear bodega'}
               </button>
+              {estructuraSucia && !guardando && (
+                <p className="mt-2 text-xs text-amber-700">
+                  Importante: si ya hay productos ubicados, guardar reconfigura la estructura y se
+                  pierden las ubicaciones asignadas.
+                </p>
+              )}
               {error && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
               {mensaje && <p className="mt-3 rounded-lg bg-menta-50 px-3 py-2 text-sm text-menta-700">{mensaje}</p>}
             </div>
