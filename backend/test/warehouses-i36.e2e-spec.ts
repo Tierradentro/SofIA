@@ -395,4 +395,99 @@ describe('I36 ajustes (e2e)', () => {
     expect(res.body.baseDatos).toBe('ok');
     expect(res.body.migraciones).toBe('al_dia');
   });
+
+  it('I38: ajuste puntual de niveles de un estante conserva las ubicaciones', async () => {
+    // Bodega con un estante de 4 niveles
+    const conf = await t.http
+      .post('/api/v1/warehouses/configure')
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({
+        nombre: 'Bodega I38',
+        forma: 'RECTANGULO',
+        anchoM: 40,
+        altoM: 30,
+        pisos: [
+          {
+            numero: 1,
+            tieneAreasFijas: true,
+            pasillos: [
+              {
+                numero: 1,
+                zonas: [
+                  { lado: 'IZQUIERDA', estantes: [{ numero: 1, niveles: 4 }] },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+    expect(conf.status).toBe(201);
+
+    const mapa = await t.http.get('/api/v1/warehouses/map').set('Authorization', `Bearer ${tokenAdmin}`);
+    const rack = mapa.body.pisos[0].pasillos[0].zonas.find((z: any) => z.estantes.length > 0).estantes[0];
+    expect(rack.niveles).toBe(4);
+
+    // Producto ubicado en el nivel 3 del estante
+    const prod = await t.http
+      .post('/api/v1/products')
+      .set('Authorization', `Bearer ${tokenGenerador}`)
+      .send({
+        empresaId,
+        codigo: 'E38-001',
+        descripcion: 'Producto niveles I38',
+        unidadMedida: 'UND',
+        precio: 5000,
+      });
+    expect(prod.status).toBe(201);
+    await t.dataSource.query(`UPDATE products SET cantidad = 10 WHERE id = $1`, [prod.body.id]);
+    const ubicar = await t.http
+      .post('/api/v1/warehouses/locations')
+      .set('Authorization', `Bearer ${tokenGenerador}`)
+      .send({ productId: prod.body.id, rackId: rack.id, nivel: 3, cantidad: 5 });
+    expect(ubicar.status).toBe(201);
+
+    // Subir niveles: siempre permitido, ubicaciones intactas
+    const subir = await t.http
+      .patch(`/api/v1/warehouses/racks/${rack.id}`)
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({ niveles: 6 });
+    expect(subir.status).toBe(200);
+    expect(subir.body.niveles).toBe(6);
+    let ubicaciones = await ubicacionesDe(prod.body.id);
+    expect(ubicaciones).toHaveLength(1);
+    expect(ubicaciones[0].cantidad).toBe(5);
+
+    // Bajar por debajo del nivel ocupado (3): rechazado con mensaje claro
+    const bajarDeMas = await t.http
+      .patch(`/api/v1/warehouses/racks/${rack.id}`)
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({ niveles: 2 });
+    expect(bajarDeMas.status).toBe(400);
+    expect(bajarDeMas.body.message).toContain('nivel 3');
+
+    // Bajar justo hasta el nivel ocupado: permitido, ubicación conservada
+    const bajarJusto = await t.http
+      .patch(`/api/v1/warehouses/racks/${rack.id}`)
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({ niveles: 3 });
+    expect(bajarJusto.status).toBe(200);
+    expect(bajarJusto.body.niveles).toBe(3);
+    ubicaciones = await ubicacionesDe(prod.body.id);
+    expect(ubicaciones).toHaveLength(1);
+    expect(ubicaciones[0].cantidad).toBe(5);
+
+    // RBAC: el generador no ajusta estantes (solo el administrador)
+    const porGenerador = await t.http
+      .patch(`/api/v1/warehouses/racks/${rack.id}`)
+      .set('Authorization', `Bearer ${tokenGenerador}`)
+      .send({ niveles: 4 });
+    expect(porGenerador.status).toBe(403);
+
+    // Queda auditado
+    const logs = await t.dataSource.query(
+      `SELECT id FROM audit_logs WHERE accion = 'AJUSTAR_ESTANTE' AND registro_id = $1`,
+      [rack.id],
+    );
+    expect(logs.length).toBeGreaterThan(0);
+  });
 });

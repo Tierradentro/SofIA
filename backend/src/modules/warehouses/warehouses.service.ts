@@ -415,6 +415,56 @@ export class WarehousesService {
   }
 
   /**
+   * I38: ajuste puntual de un estante (niveles y/o alias) SIN reconfigurar la
+   * bodega: las ubicaciones de los productos se conservan. Subir niveles
+   * siempre se permite; bajarlos solo hasta el nivel más alto ocupado — por
+   * debajo de ese nivel quedarían ubicaciones huérfanas.
+   */
+  async actualizarEstante(
+    id: string,
+    dto: { niveles?: number; alias?: string },
+    user: { id: string; username: string },
+  ) {
+    const rack = await this.dataSource
+      .getRepository(WarehouseRack)
+      .findOne({ where: { id } });
+    if (!rack) throw new NotFoundException('Estante no encontrado');
+    if (!rack.activo) throw new BadRequestException('El estante está inactivo');
+
+    const anterior = { niveles: rack.niveles, alias: rack.alias };
+
+    if (dto.niveles != null && dto.niveles !== rack.niveles) {
+      const [{ max }] = await this.dataSource.query(
+        `SELECT COALESCE(MAX(nivel), 0) AS max
+           FROM warehouse_product_locations
+          WHERE rack_id = $1 AND cantidad > 0`,
+        [id],
+      );
+      const nivelOcupado = Number(max) || 0;
+      if (dto.niveles < nivelOcupado) {
+        throw new BadRequestException(
+          `No se puede bajar a ${dto.niveles} niveles: el estante tiene productos ` +
+            `en el nivel ${nivelOcupado}. Reubique primero esos productos.`,
+        );
+      }
+      rack.niveles = dto.niveles;
+    }
+    if (dto.alias != null) rack.alias = dto.alias;
+
+    await this.dataSource.getRepository(WarehouseRack).save(rack);
+    await this.audit.log({
+      usuarioId: user.id,
+      usuarioUsername: user.username,
+      accion: 'AJUSTAR_ESTANTE',
+      tabla: 'warehouse_racks',
+      registroId: id,
+      valorAnterior: anterior,
+      valorNuevo: { niveles: rack.niveles, alias: rack.alias },
+    });
+    return rack;
+  }
+
+  /**
    * Asocia un producto a una ubicación (estante/nivel, bahía o tránsito).
    * La ubicación oficial es la de mayor cantidad.
    */

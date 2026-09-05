@@ -399,6 +399,10 @@ export default function BodegaPage() {
   // I35: movimientos de arrastre pendientes hasta pulsar «Guardar cambios».
   const [pendientes, setPendientes] = useState<Record<string, { posX: number; posY: number }>>({});
   const [guardandoMovimientos, setGuardandoMovimientos] = useState(false);
+  // I38: edición puntual de niveles por estante del pasillo seleccionado
+  // (sin reconfigurar: las ubicaciones de los productos se conservan).
+  const [nivelesEd, setNivelesEd] = useState<Record<string, number>>({});
+  const [guardandoNiveles, setGuardandoNiveles] = useState(false);
 
   async function cargarMapa(): Promise<MapaRespuesta | null> {
     setErrorCarga('');
@@ -673,6 +677,63 @@ export default function BodegaPage() {
     setAltoEd(cajon.altoM);
     setErrorEd('');
     setMensajeEd('');
+    // I38: al seleccionar un pasillo se cargan los niveles actuales de sus
+    // estantes para editarlos de forma puntual (sin perder ubicaciones).
+    const pas = pasilloSeleccionado(cajon);
+    if (pas) {
+      const inicial: Record<string, number> = {};
+      for (const z of pas.zonas) for (const e of z.estantes) inicial[e.id] = e.niveles;
+      setNivelesEd(inicial);
+    } else {
+      setNivelesEd({});
+    }
+  }
+
+  /** I38: pasillo del mapa correspondiente al cajón seleccionado. */
+  function pasilloSeleccionado(cajon: CajonBodega | null): MapaPasillo | null {
+    if (!cajon || cajon.tipo !== 'pasillo' || !mapa) return null;
+    const id = cajon.clave.replace('pasillo:', '');
+    return mapa.pisos[pisoSel]?.pasillos.find((p) => p.id === id) ?? null;
+  }
+
+  /** I38: guarda los niveles modificados estante por estante (PATCH puntual,
+   * sin reconfigurar). El backend rechaza bajar por debajo del nivel ocupado. */
+  async function guardarNivelesEstantes() {
+    const pas = pasilloSeleccionado(seleccion);
+    if (!pas) return;
+    const cambios: { id: string; alias: string; niveles: number; actual: number }[] = [];
+    for (const z of pas.zonas) {
+      for (const e of z.estantes) {
+        const nuevo = nivelesEd[e.id];
+        if (nuevo != null && nuevo !== e.niveles) {
+          cambios.push({ id: e.id, alias: e.alias, niveles: nuevo, actual: e.niveles });
+        }
+      }
+    }
+    if (cambios.length === 0) {
+      setMensajeEd('No hay cambios de niveles por guardar.');
+      return;
+    }
+    setGuardandoNiveles(true);
+    setErrorEd('');
+    setMensajeEd('');
+    for (const c of cambios) {
+      const { status, body } = await api(`/warehouses/racks/${c.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ niveles: c.niveles }),
+      });
+      if (status !== 200) {
+        setGuardandoNiveles(false);
+        setErrorEd(mensajeError(body, `No se pudo guardar los niveles del estante ${c.alias}`));
+        return;
+      }
+    }
+    setGuardandoNiveles(false);
+    setMensajeEd(
+      `Niveles actualizados (${cambios.length} estante${cambios.length === 1 ? '' : 's'}). ` +
+        'Las ubicaciones de los productos se conservaron.',
+    );
+    await cargarMapa();
   }
 
   async function guardarCajon() {
@@ -953,8 +1014,10 @@ export default function BodegaPage() {
                       Cada estante puede tener un número de niveles distinto (2 o más).
                     </p>
                     <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
-                      Estos cambios aún no están aplicados. Baje hasta el final y pulse{' '}
-                      <strong>«Guardar cambios de la bodega»</strong> para que tomen efecto.
+                      Recuerde: estos cambios solo se aplican al pulsar «Reconfigurar bodega» al
+                      final, lo que empieza de cero y pierde las ubicaciones. Para ajustar los
+                      niveles de una bodega ya configurada <strong>sin perder las ubicaciones</strong>,
+                      use la pestaña «Organizar cajones» (toque el pasillo y edite sus estantes).
                     </p>
                   </div>
                 )}
@@ -1044,33 +1107,30 @@ export default function BodegaPage() {
             </div>
 
             <div>
-              {/* I37d: los cambios de niveles NO se aplican al editarlos; hay
-                  que pulsar «Guardar cambios». El aviso lo deja explícito. */}
+              {/* I38: dos opciones claras — «Reconfigurar bodega» empieza de
+                  cero (pierde ubicaciones); para ajustes puntuales sin perder
+                  ubicaciones (p. ej. niveles de un estante) está la pestaña
+                  «Organizar cajones». */}
               {estructuraSucia && !guardando && (
                 <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                  Hay cambios sin guardar (incluidos los niveles de los estantes). Pulse{' '}
-                  <strong>«Guardar cambios»</strong> para aplicarlos; de lo contrario se perderán.
+                  Hay cambios de estructura sin guardar. Al pulsar{' '}
+                  <strong>«Reconfigurar bodega»</strong> se empieza de cero y se pierden las
+                  ubicaciones asignadas a los productos. Si solo desea ajustar los niveles de los
+                  estantes <strong>sin perder las ubicaciones</strong>, use la pestaña{' '}
+                  <strong>«Organizar cajones»</strong> (toque un pasillo y edite sus niveles).
                 </p>
               )}
               <button
                 onClick={guardarEstructura}
                 disabled={guardando}
-                className={`${CLASE_BOTON_PRIMARIO} ${
-                  estructuraSucia && !guardando ? 'ring-2 ring-amber-400 ring-offset-1' : ''
-                }`}
+                className={CLASE_BOTON_PRIMARIO}
               >
-                {guardando
-                  ? 'Guardando…'
-                  : mapa
-                    ? estructuraSucia
-                      ? 'Guardar cambios de la bodega'
-                      : 'Reconfigurar bodega'
-                    : 'Crear bodega'}
+                {guardando ? 'Guardando…' : mapa ? 'Reconfigurar bodega (empezar de cero)' : 'Crear bodega'}
               </button>
-              {estructuraSucia && !guardando && (
-                <p className="mt-2 text-xs text-amber-700">
-                  Importante: si ya hay productos ubicados, guardar reconfigura la estructura y se
-                  pierden las ubicaciones asignadas.
+              {mapa && !estructuraSucia && (
+                <p className="mt-2 text-xs text-slate-400">
+                  Para ajustes puntuales sin perder las ubicaciones (niveles de estantes, alias,
+                  colores, posiciones), use la pestaña «Organizar cajones».
                 </p>
               )}
               {error && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
@@ -1227,6 +1287,57 @@ export default function BodegaPage() {
                     Cerrar
                   </button>
                 </div>
+
+                {/* I38: edición puntual de niveles por estante — no reconfigura
+                    la bodega y conserva las ubicaciones de los productos. */}
+                {seleccion.tipo === 'pasillo' && pasilloSeleccionado(seleccion) && (
+                  <div className="rounded-lg border border-slate-200 p-3">
+                    <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Niveles por estante
+                    </h3>
+                    <p className="mb-2 text-xs text-slate-400">
+                      Ajuste puntual: conserva las ubicaciones de los productos. No se puede bajar
+                      un estante por debajo del nivel más alto ocupado.
+                    </p>
+                    {pasilloSeleccionado(seleccion)!.zonas.map((z) =>
+                      z.estantes.length === 0 ? null : (
+                        <div key={z.id} className="mb-2 last:mb-0">
+                          <p className="mb-1 text-[11px] font-medium text-slate-500">
+                            {z.lado === 'IZQUIERDA' ? 'Izquierda' : z.lado === 'DERECHA' ? 'Derecha' : z.lado}
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {z.estantes.map((e) => (
+                              <label key={e.id} className="text-[10px] text-slate-400">
+                                {e.alias}
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={MAX_NIVELES}
+                                  title={`Niveles del estante ${e.alias}`}
+                                  className="mt-0.5 block w-14 rounded-lg border border-slate-300 px-1.5 py-1 text-sm"
+                                  value={nivelesEd[e.id] ?? e.niveles}
+                                  onChange={(ev) =>
+                                    setNivelesEd((prev) => ({
+                                      ...prev,
+                                      [e.id]: Math.max(1, Math.min(MAX_NIVELES, Number(ev.target.value) || 1)),
+                                    }))
+                                  }
+                                />
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      ),
+                    )}
+                    <button
+                      onClick={guardarNivelesEstantes}
+                      disabled={guardandoNiveles}
+                      className={`mt-2 ${CLASE_BOTON_PRIMARIO}`}
+                    >
+                      {guardandoNiveles ? 'Guardando…' : 'Guardar niveles'}
+                    </button>
+                  </div>
+                )}
                 {errorEd && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{errorEd}</p>}
                 {mensajeEd && <p className="rounded-lg bg-menta-50 px-3 py-2 text-sm text-menta-700">{mensajeEd}</p>}
               </div>

@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { WarehousesService } from './warehouses.service';
 import { ConfigureWarehouseDto } from './dto/configure-warehouse.dto';
-import { AssignLocationDto, MoveCajonDto } from './dto/warehouse-ops.dto';
+import { AssignLocationDto, MoveCajonDto, UpdateRackDto } from './dto/warehouse-ops.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/enums/role.enum';
 import {
@@ -84,6 +84,21 @@ export class WarehousesController {
   @Roles(Role.OPERADOR, Role.GENERADOR, Role.ADMINISTRADOR)
   rackDetalle(@Param('id', ParseUUIDPipe) id: string) {
     return this.warehouses.rackDetalle(id);
+  }
+
+  /**
+   * I38: ajuste puntual de un estante (niveles y/o alias) sin reconfigurar la
+   * bodega: las ubicaciones de los productos se conservan. No permite bajar
+   * los niveles por debajo del nivel más alto ocupado.
+   */
+  @Patch('racks/:id')
+  @Roles(Role.ADMINISTRADOR)
+  actualizarEstante(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateRackDto,
+    @CurrentUser() admin: AuthenticatedUser,
+  ) {
+    return this.warehouses.actualizarEstante(id, dto, admin);
   }
 
   /** Detalle de un área: productos almacenados (bahías/patio). */

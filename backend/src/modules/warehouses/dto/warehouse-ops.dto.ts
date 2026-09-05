@@ -77,6 +77,25 @@ export class MoveCajonDto {
   color?: string;
 }
 
+/**
+ * I38: ajuste puntual de un estante ya configurado (niveles y/o alias),
+ * SIN reconfigurar la bodega — las ubicaciones de los productos se conservan.
+ * Por eso no se permite bajar los niveles por debajo del nivel más alto
+ * ocupado (lo valida el servicio): eso dejaría ubicaciones huérfanas.
+ */
+export class UpdateRackDto {
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  niveles?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  alias?: string;
+}
+
 export class UpdateAliasDto {
   @IsOptional()
   @IsString()
