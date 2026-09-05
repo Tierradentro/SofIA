@@ -131,10 +131,12 @@ export class JwtAuthGuard implements CanActivate {
     return true;
   }
 
-  /** I36: horario de logística con caché de 30 s (se lee en cada petición autenticada). */
+  /** I36: horario de logística con caché de 30 s (se lee en cada petición
+   * autenticada). HORARIO_CACHE_MS permite ajustar el TTL (0 en pruebas). */
   private async getHorarioCache(): Promise<HorarioLogistica> {
+    const ttl = Number(process.env.HORARIO_CACHE_MS ?? 30_000);
     const ahora = Date.now();
-    if (this.horarioCache && ahora - this.horarioCache.at < 30_000) {
+    if (this.horarioCache && ahora - this.horarioCache.at < ttl) {
       return this.horarioCache.valor;
     }
     const valor = await this.params.getHorarioLogistica();

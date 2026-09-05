@@ -93,6 +93,25 @@ describe('AllExceptionsFilter (QA Func. 1.4)', () => {
     expect(JSON.stringify(res.body)).not.toContain('nbtinsert');
   });
 
+  it('I36: 42P01/42703 (migración sin aplicar) → mensaje claro y reintentable', () => {
+    const { host, res } = hostFalso();
+    filter.catch(
+      queryFailed('42P01', 'relation "warehouse_areas" does not exist'),
+      host,
+    );
+    expect(res.statusCode).toBe(500);
+    expect(res.body.message).toContain('se está actualizando');
+    expect(JSON.stringify(res.body)).not.toContain('warehouse_areas');
+
+    const { host: host2, res: res2 } = hostFalso();
+    filter.catch(
+      queryFailed('42703', 'column p.color does not exist'),
+      host2,
+    );
+    expect(res2.body.message).toContain('intente de nuevo');
+    expect(JSON.stringify(res2.body)).not.toContain('p.color');
+  });
+
   it('I28: pool sin conexión (ConnectionNotFoundError) → 503 reintentable', () => {
     const { host, res } = hostFalso();
     const ex = new Error('ConnectionNotFoundError: Connection "default" was not found.');

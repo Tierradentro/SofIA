@@ -80,13 +80,16 @@ export class WarehousesService {
 
     const rackIds = estantes.map((r) => r.id);
     const areaIds = areas.map((a) => a.id);
-    const ubicaciones =
-      rackIds.length || areaIds.length
-        ? await this.locations.find({
-            where: [{ rackId: In(rackIds.length ? rackIds : ['__']) }, { areaId: In(areaIds.length ? areaIds : ['__']) }, { transito: true }] as any,
-            relations: ['product'],
-          })
-        : await this.locations.find({ where: { transito: true }, relations: ['product'] });
+    // I36: sin centinela '__' (rompe el cast uuid cuando una de las dos
+    // listas viene vacía, p. ej. bodega de solo fondo + bahía de empaque).
+    const filtrosUbicacion: any[] = [];
+    if (rackIds.length) filtrosUbicacion.push({ rackId: In(rackIds) });
+    if (areaIds.length) filtrosUbicacion.push({ areaId: In(areaIds) });
+    filtrosUbicacion.push({ transito: true });
+    const ubicaciones = await this.locations.find({
+      where: filtrosUbicacion,
+      relations: ['product'],
+    });
 
     // Ocupación por estante: cantidad total, niveles ocupados y empresas
     // presentes (I33: filtro por empresa en el mapa 2D).

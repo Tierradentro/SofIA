@@ -81,4 +81,17 @@ describe('esErrorConfiguracionBd (I31)', () => {
     (timeout as any).code = 'ETIMEDOUT';
     expect(esErrorConfiguracionBd(timeout)).toBe(false);
   });
+
+  it('I36: reconoce errores de DNS de Node (DB_HOST mal escrito) como configuración', () => {
+    // No llegan del driver de Postgres: la resolución DNS falla antes de
+    // conectar. Se escalan a console.error una vez por minuto; los reintentos
+    // continúan (un DNS caído momentáneamente también cae aquí y avisar más
+    // fuerte es correcto en ambos casos).
+    const enotfound = new Error('getaddrinfo ENOTFOUND posgres-ejemplo.internal');
+    (enotfound as any).code = 'ENOTFOUND';
+    expect(esErrorConfiguracionBd(enotfound)).toBe(true);
+    const eaiagain = new Error('getaddrinfo EAI_AGAIN posgres-ejemplo.internal');
+    (eaiagain as any).code = 'EAI_AGAIN';
+    expect(esErrorConfiguracionBd(eaiagain)).toBe(true);
+  });
 });

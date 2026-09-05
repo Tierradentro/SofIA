@@ -40,7 +40,17 @@ describe('AuthService — login (HU-001, M02)', () => {
       save: jest.fn(async (u) => u),
     };
     const jwt = { sign: () => 'token-falso' } as any;
-    const params = { getPasswordPolicy: async () => POLICY } as any;
+    // I36: getHorarioLogistica desactivado por defecto (no restringe el login)
+    const params = {
+      getPasswordPolicy: async () => POLICY,
+      getHorarioLogistica: async () => ({
+        activo: false,
+        dias: [1, 2, 3, 4, 5, 6],
+        horaInicio: '06:00',
+        horaFin: '18:00',
+        zonaHoraria: 'America/Bogota',
+      }),
+    } as any;
     const policy = new (require('./password-policy.service').PasswordPolicyService)(params);
     const blacklist = { revoke: jest.fn(), isRevoked: jest.fn() } as any;
     const audit = { log: async (e: any) => auditLogs.push(e) } as any;

@@ -205,8 +205,8 @@ describe('I35 ajustes (e2e)', () => {
     const mapa = await t.http.get('/api/v1/warehouses/map').set('Authorization', `Bearer ${tokenAdmin}`);
     expect(mapa.status).toBe(200);
     const piso1 = mapa.body.pisos.find((p: any) => p.numero === 1);
-    // 4 áreas fijas + 2 adicionales (una repite tipo BAHIA_EMPAQUE y ENTRADA)
-    expect(piso1.areas).toHaveLength(6);
+    // I36: 3 áreas fijas (entrada, patio, bahía de empaque) + 2 adicionales
+    expect(piso1.areas).toHaveLength(5);
     expect(piso1.areas.filter((a: any) => a.tipo === 'BAHIA_EMPAQUE')).toHaveLength(2);
     expect(piso1.areas.filter((a: any) => a.tipo === 'ENTRADA')).toHaveLength(2);
     const adicional = piso1.areas.find((a: any) => a.alias === 'Bahía Empaque 2');
