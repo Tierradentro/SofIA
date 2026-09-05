@@ -183,10 +183,36 @@ function MapaPage() {
 
   const piso = mapa?.pisos[pisoSel];
 
+  // I36: cantidad de unidades de una empresa en un cajón (0 si no hay filtro o no tiene).
+  const cantidadDeEmpresa = (empresas: Array<{ empresaId: string; cantidad: number }>) =>
+    empresaFiltro ? (empresas.find((e) => e.empresaId === empresaFiltro)?.cantidad ?? 0) : null;
+
+  // I36: total de unidades de la empresa seleccionada en TODA la bodega.
+  const totalEmpresa = useMemo(() => {
+    if (!empresaFiltro || !mapa) return 0;
+    let total = 0;
+    for (const p of mapa.pisos) {
+      for (const a of p.areas) total += a.empresas.find((e) => e.empresaId === empresaFiltro)?.cantidad ?? 0;
+      for (const pas of p.pasillos) {
+        for (const z of pas.zonas) {
+          for (const e of z.estantes) total += e.empresas.find((em) => em.empresaId === empresaFiltro)?.cantidad ?? 0;
+        }
+      }
+    }
+    return total;
+  }, [empresaFiltro, mapa]);
+
   const cajonesPiso = useMemo<CajonBodega[]>(() => {
     if (!piso) return [];
+    // I36: con empresa seleccionada, las cantidades y los colores del plano
+    // reflejan solo los productos de esa empresa (antes solo se resaltaba la
+    // zona y los porcentajes quedaban iguales).
     const cajones: CajonBodega[] = piso.areas.map((a) => {
-      const colores = colorOcupacion(a.cantidad > 0 ? 1 : 0);
+      const emp = cantidadDeEmpresa(a.empresas);
+      const cantidad = emp ?? a.cantidad;
+      const colores = empresaFiltro
+        ? colorOcupacion(a.cantidad > 0 ? cantidad / a.cantidad : 0)
+        : colorOcupacion(a.cantidad > 0 ? 1 : 0);
       return {
         clave: `area:${a.id}`,
         tipo: 'area' as const,
@@ -196,15 +222,25 @@ function MapaPage() {
         anchoM: a.anchoM,
         altoM: a.altoM,
         ...colores,
-        detalle: a.cantidad > 0 ? `${a.cantidad} und` : undefined,
+        detalle: cantidad > 0 ? `${cantidad} und` : empresaFiltro ? '0 und' : undefined,
         ref: a,
         categoria: 'area',
       } as CajonBodega & { ref: MapaArea; categoria: string };
     });
     for (const pas of piso.pasillos) {
-      const ocup = ocupacionPasillo(pas);
-      const colores = colorOcupacion(ocup);
       const estantes = pas.zonas.reduce((acc, z) => acc + z.estantes.length, 0);
+      let ocup = ocupacionPasillo(pas);
+      let detalle = `${estantes} estantes · ${Math.round(ocup * 100)}%`;
+      if (empresaFiltro) {
+        const total = pas.zonas.reduce((acc, z) => acc + z.estantes.reduce((s, e) => s + e.cantidad, 0), 0);
+        const empCant = pas.zonas.reduce(
+          (acc, z) => acc + z.estantes.reduce((s, e) => s + (e.empresas.find((em) => em.empresaId === empresaFiltro)?.cantidad ?? 0), 0),
+          0,
+        );
+        ocup = total > 0 ? empCant / total : 0;
+        detalle = `${empCant} und de la empresa · ${Math.round(ocup * 100)}% del contenido`;
+      }
+      const colores = colorOcupacion(ocup);
       cajones.push({
         clave: `pasillo:${pas.id}`,
         tipo: 'pasillo',
@@ -214,13 +250,14 @@ function MapaPage() {
         anchoM: pas.anchoM,
         altoM: pas.altoM,
         ...colores,
-        detalle: `${estantes} estantes · ${Math.round(ocup * 100)}%`,
+        detalle,
         ref: pas,
         categoria: 'pasillo',
       } as CajonBodega & { ref: MapaPasillo; categoria: string });
     }
     return cajones;
-  }, [piso]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [piso, empresaFiltro]);
 
   // Resaltado por empresa o por búsqueda.
   const resaltadas = useMemo<string[]>(() => {
@@ -408,6 +445,11 @@ function MapaPage() {
                     <span className="h-2.5 w-2.5 rounded-full border-2 border-amber-500 bg-white" /> Resultado
                   </span>
                 )}
+                {empresaFiltro && (
+                  <span className="flex items-center gap-1.5 font-medium text-sofia-700">
+                    {totalEmpresa} und de la empresa en la bodega
+                  </span>
+                )}
               </div>
             </div>
             {piso && (
@@ -484,7 +526,16 @@ function MapaPage() {
                           <p className="text-sm text-slate-400">Espacio libre (sin estantes).</p>
                         )}
                         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                          {zona.estantes.map((est) => (
+                          {zona.estantes.map((est) => {
+                            // I36: con filtro por empresa, el detalle del estante muestra sus unidades.
+                            const empCant = empresaFiltro
+                              ? (est.empresas.find((em) => em.empresaId === empresaFiltro)?.cantidad ?? 0)
+                              : null;
+                            const cantidadMostrada = empCant ?? est.cantidad;
+                            const anchoBarra = empresaFiltro
+                              ? (est.cantidad > 0 ? (empCant! / est.cantidad) * 100 : 0)
+                              : est.ocupacion * 100;
+                            return (
                             <button
                               key={est.id}
                               onClick={() => {
@@ -500,16 +551,18 @@ function MapaPage() {
                             >
                               <p className="font-semibold text-slate-800">{est.alias}</p>
                               <p className="text-slate-500">
-                                {est.nivelesOcupados}/{est.niveles} niveles · {est.cantidad} und
+                                {est.nivelesOcupados}/{est.niveles} niveles · {cantidadMostrada} und
+                                {empresaFiltro ? ' (empresa)' : ''}
                               </p>
                               <div className="mt-1 h-1.5 w-full rounded-full bg-slate-100">
                                 <div
                                   className="h-1.5 rounded-full bg-menta-500"
-                                  style={{ width: `${Math.round(est.ocupacion * 100)}%` }}
+                                  style={{ width: `${Math.round(anchoBarra)}%` }}
                                 />
                               </div>
                             </button>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     ))}

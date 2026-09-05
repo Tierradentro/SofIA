@@ -164,13 +164,17 @@ function coloresArea(tipo: MapaArea['tipo']) {
 // ---------- Geometría por defecto (idéntica a la que crea el backend) ----------
 
 function areasFijasPiso1(anchoM: number): Array<Omit<MapaArea, 'id' | 'permiteProductos'>> {
+  // I36: las únicas áreas fijas son entrada, patio de maniobras y bahía de
+  // empaque; la bahía temporal pasa a ser un área adicional (crear/eliminar).
   return [
     { tipo: 'ENTRADA', alias: 'Entrada', posX: anchoM / 2 - 3, posY: 0, anchoM: 6, altoM: 0 },
     { tipo: 'PATIO_MANIOBRAS', alias: 'Patio de Maniobras', posX: 2, posY: 1, anchoM: anchoM - 4, altoM: 4 },
     { tipo: 'BAHIA_EMPAQUE', alias: 'Bahía de Empaque', posX: 2, posY: 6, anchoM: 8, altoM: 4 },
-    { tipo: 'BAHIA_TEMPORAL', alias: 'Bahía Temporal', posX: anchoM - 10, posY: 6, anchoM: 8, altoM: 4 },
   ];
 }
+
+/** I36: tipos de las áreas fijas del piso 1 (no se repiten como adicionales). */
+const TIPOS_AREA_FIJA: Array<MapaArea['tipo']> = ['ENTRADA', 'PATIO_MANIOBRAS', 'BAHIA_EMPAQUE'];
 
 /**
  * Posición por defecto de los pasillos de un piso (rejilla horizontal).
@@ -180,8 +184,11 @@ function areasFijasPiso1(anchoM: number): Array<Omit<MapaArea, 'id' | 'permitePr
 function posicionPasillo(form: EstructuraForm, pisoIndice: number, pasilloIndice: number, total: number) {
   const altoP = Math.max(4, Math.min(16, form.altoM - (pisoIndice === 0 ? 12 : 2) - 2));
   const posY = pisoIndice === 0 ? 12 : form.altoM - altoP - 2;
-  const anchoP = Math.max(3, Math.min(12, (form.anchoM - 4 - (total - 1) * 2) / total));
-  return { posX: 2 + pasilloIndice * (anchoP + 2), posY, anchoM: Math.round(anchoP * 10) / 10, altoM: altoP };
+  // I36: posiciones y dimensiones enteras (la validación del API exige
+  // números coherentes; con decimales el guardado fallaba y la estructura
+  // quedaba sin aplicar — p. ej. los niveles por estante).
+  const anchoP = Math.max(3, Math.min(12, Math.floor((form.anchoM - 4 - (total - 1) * 2) / total)));
+  return { posX: 2 + pasilloIndice * (anchoP + 2), posY, anchoM: anchoP, altoM: altoP };
 }
 
 function detallePasillo(p: PasilloForm): string {
@@ -313,12 +320,14 @@ function formDesdeMapa(mapa: MapaRespuesta): EstructuraForm {
     anchoM: mapa.bodega.anchoM,
     altoM: mapa.bodega.altoM,
     pisos: mapa.pisos.map((piso) => {
-      // Las 4 áreas fijas del piso 1 no se repiten como adicionales: se omite
-      // la primera ocurrencia de cada tipo fijo.
+      // Las áreas fijas del piso 1 (entrada, patio, bahía de empaque) no se
+      // repiten como adicionales: se omite la primera ocurrencia de cada tipo
+      // fijo. I36: la bahía temporal ya no es fija — aparece como adicional
+      // y se puede editar o eliminar.
       const omitidos = new Set<string>();
       const areas: AreaForm[] = [];
       for (const a of piso.areas) {
-        if (piso.tieneAreasFijas && TIPOS_AREA.includes(a.tipo) && !omitidos.has(a.tipo)) {
+        if (piso.tieneAreasFijas && TIPOS_AREA_FIJA.includes(a.tipo) && !omitidos.has(a.tipo)) {
           omitidos.add(a.tipo);
           continue;
         }
@@ -799,7 +808,7 @@ export default function BodegaPage() {
                     Piso {i + 1}
                     {i === 0 && (
                       <span className="ml-2 text-xs font-normal normal-case text-slate-400">
-                        (incluye entrada, patio de maniobras, bahía de empaque y bahía temporal)
+                        (incluye entrada, patio de maniobras y bahía de empaque)
                       </span>
                     )}
                     {i > 0 && (
@@ -952,6 +961,10 @@ export default function BodegaPage() {
                       Sin áreas adicionales. Puede añadir bahías, patios o entradas según el piso.
                     </p>
                   )}
+                  <p className="mb-2 text-xs text-slate-400">
+                    La bahía de empaque es obligatoria (allí se ubica la mercancía alistada): si la
+                    elimina, se creará automáticamente al guardar. La bahía temporal es opcional.
+                  </p>
                   {piso.areas.map((a, k) => (
                     <div
                       key={k}

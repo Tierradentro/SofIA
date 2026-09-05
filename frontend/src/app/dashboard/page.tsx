@@ -11,6 +11,7 @@ import {
   Truck,
 } from 'lucide-react';
 import { api, obtenerSesion, Sesion } from '@/lib/api';
+import { tiempoRelativo } from '@/lib/tiempo';
 import { useAvisoEstadosPedidos } from '@/lib/sonido';
 import { AppShell } from '@/components/app-shell';
 import { CajonBodega, MapaBodega } from '@/components/mapa-bodega';
@@ -93,14 +94,8 @@ const ETIQUETA_DESPACHO: Record<string, string> = {
   CANCELADO: 'Cancelado',
 };
 
-/** Minutos transcurridos en lenguaje natural ("hace 15 min", "hace 2 h"). */
-function haceMinutos(fechaIso: string): string {
-  const min = Math.max(0, Math.floor((Date.now() - new Date(fechaIso).getTime()) / 60000));
-  if (min < 1) return 'hace un momento';
-  if (min < 60) return `hace ${min} min`;
-  const horas = Math.floor(min / 60);
-  return `hace ${horas} h`;
-}
+/** I36: escala progresiva compartida (min → h → días → meses) en lib/tiempo. */
+const haceMinutos = tiempoRelativo;
 
 function formatearFecha(fechaIso: string | null): string {
   if (!fechaIso) return '—';
@@ -138,7 +133,9 @@ interface MapaDash {
 /** I35: mapa real del almacén configurado (reemplaza el ilustrativo de I17). */
 function MapaAlmacen({ rol }: { rol: string }) {
   const [mapa, setMapa] = useState<MapaDash | null>(null);
-  const [estado, setEstado] = useState<'cargando' | 'sin-bodega' | 'sin-acceso' | 'error'>('cargando');
+  // I36: estado 'ok' explícito — antes, al cargar con éxito el estado quedaba
+  // en 'cargando' y el mensaje «Cargando mapa…» no desaparecía.
+  const [estado, setEstado] = useState<'cargando' | 'ok' | 'sin-bodega' | 'sin-acceso' | 'error'>('cargando');
   const [piso, setPiso] = useState(0);
 
   useEffect(() => {
@@ -147,12 +144,16 @@ function MapaAlmacen({ rol }: { rol: string }) {
       setEstado('sin-acceso');
       return;
     }
-    api<MapaDash>('/warehouses/map').then(({ status, body }) => {
-      if (status === 200) setMapa(body);
-      else if (status === 404) setEstado('sin-bodega');
-      else if (status === 403) setEstado('sin-acceso');
-      else setEstado('error');
-    });
+    api<MapaDash>('/warehouses/map')
+      .then(({ status, body }) => {
+        if (status === 200) {
+          setMapa(body);
+          setEstado('ok');
+        } else if (status === 404) setEstado('sin-bodega');
+        else if (status === 403) setEstado('sin-acceso');
+        else setEstado('error');
+      })
+      .catch(() => setEstado('error'));
   }, [rol]);
 
   const cajones: CajonBodega[] = [];

@@ -31,7 +31,21 @@ const PARAMS_EDITABLES: Record<string, { campos: { key: string; label: string; t
   'ocr.active_engine': {
     campos: [{ key: 'engine', label: 'Motor OCR activo', tipo: 'select', opciones: ['OCR_LOCAL', 'OCR_LLM'] }],
   },
+  // I36: el horario de logística tiene editor dedicado (días + franja horaria).
+  'logistica.horario_acceso': { campos: [] },
 };
+
+/** I36: clave del parámetro de horario de logística (control de acceso). */
+const CLAVE_HORARIO = 'logistica.horario_acceso';
+const DIAS_SEMANA = [
+  { valor: 1, etiqueta: 'Lun' },
+  { valor: 2, etiqueta: 'Mar' },
+  { valor: 3, etiqueta: 'Mié' },
+  { valor: 4, etiqueta: 'Jue' },
+  { valor: 5, etiqueta: 'Vie' },
+  { valor: 6, etiqueta: 'Sáb' },
+  { valor: 0, etiqueta: 'Dom' },
+];
 
 /** M14: edición de parámetros del sistema con motivo obligatorio. */
 export default function ParametrosPage() {
@@ -158,7 +172,89 @@ export default function ParametrosPage() {
                 </pre>
               )}
 
-              {enEdicion && (
+              {enEdicion && p.clave === CLAVE_HORARIO && (
+                <div className="mt-4 space-y-3 text-sm">
+                  <p className="text-xs text-slate-500">
+                    Control de acceso: fuera de estos días y horarios solo el Administrador puede usar la aplicación.
+                  </p>
+                  <label className="flex items-center gap-2 text-slate-700">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-slate-300"
+                      checked={Boolean(form.activo)}
+                      onChange={(e) => setForm({ ...form, activo: e.target.checked })}
+                    />
+                    Activar restricción de horario
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="w-48 text-slate-600">Días permitidos</span>
+                    {DIAS_SEMANA.map((d) => {
+                      const seleccionados: number[] = Array.isArray(form.dias) ? form.dias : [];
+                      const activo = seleccionados.includes(d.valor);
+                      return (
+                        <button
+                          key={d.valor}
+                          type="button"
+                          onClick={() =>
+                            setForm({
+                              ...form,
+                              dias: activo
+                                ? seleccionados.filter((x) => x !== d.valor)
+                                : [...seleccionados, d.valor],
+                            })
+                          }
+                          className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+                            activo ? 'bg-sofia-700 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                          }`}
+                        >
+                          {d.etiqueta}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <label className="flex flex-wrap items-center gap-3">
+                    <span className="w-48 text-slate-600">Hora de inicio</span>
+                    <input
+                      type="time"
+                      className="rounded-lg border border-slate-300 px-2 py-1.5 focus:border-sofia-500 focus:outline-none focus:ring-1 focus:ring-sofia-500"
+                      value={form.horaInicio ?? '06:00'}
+                      onChange={(e) => setForm({ ...form, horaInicio: e.target.value })}
+                    />
+                  </label>
+                  <label className="flex flex-wrap items-center gap-3">
+                    <span className="w-48 text-slate-600">Hora de cierre</span>
+                    <input
+                      type="time"
+                      className="rounded-lg border border-slate-300 px-2 py-1.5 focus:border-sofia-500 focus:outline-none focus:ring-1 focus:ring-sofia-500"
+                      value={form.horaFin ?? '18:00'}
+                      onChange={(e) => setForm({ ...form, horaFin: e.target.value })}
+                    />
+                  </label>
+                  <label className="flex flex-wrap items-center gap-3">
+                    <span className="w-48 text-slate-600">Motivo (obligatorio)</span>
+                    <input
+                      className="min-w-0 flex-1 rounded-lg border border-slate-300 px-2 py-1.5 focus:border-sofia-500 focus:outline-none focus:ring-1 focus:ring-sofia-500"
+                      value={motivo}
+                      onChange={(e) => setMotivo(e.target.value)}
+                    />
+                  </label>
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={() =>
+                        guardar(p.clave)
+                      }
+                      className={CLASE_BOTON_PRIMARIO}
+                    >
+                      Guardar
+                    </button>
+                    <button onClick={() => setEditando(null)} className={CLASE_BOTON_SECUNDARIO}>
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {enEdicion && p.clave !== CLAVE_HORARIO && (
                 <div className="mt-4 space-y-3 text-sm">
                   {config.campos.map((c) => (
                     <label key={c.key} className="flex flex-wrap items-center gap-3">

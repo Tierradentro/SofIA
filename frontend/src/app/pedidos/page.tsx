@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
+import { tiempoRelativo } from '@/lib/tiempo';
 import { useAvisoEstadosPedidos } from '@/lib/sonido';
 import { AppShell } from '@/components/app-shell';
 import { SelectorEmpresa } from '@/components/selector-empresa';
@@ -439,15 +440,15 @@ function PedidosContenido() {
                 {pedido.cliente?.nombre} · Total ${pedido.valorTotal.toLocaleString()}
                 {pedido.numeroFactura && ` · Factura ${pedido.numeroFactura}`}
               </p>
-              {/* I19: quién realizó cada actividad hasta la aprobación */}
+              {/* I19: quién realizó cada actividad hasta la aprobación; I36: tiempo relativo (h → días → meses) */}
               {pedido.trazabilidad && (
                 <p className="mt-1 text-xs text-slate-500">
                   {pedido.trazabilidad.creadoPor &&
-                    `Creado por ${pedido.trazabilidad.creadoPor.nombre} (${pedido.trazabilidad.creadoPor.username}) · ${new Date(pedido.createdAt).toLocaleString('es-CO')}`}
+                    `Creado por ${pedido.trazabilidad.creadoPor.nombre} (${pedido.trazabilidad.creadoPor.username}) · ${new Date(pedido.createdAt).toLocaleString('es-CO')} (${tiempoRelativo(pedido.createdAt)})`}
                   {pedido.trazabilidad.alistadoPor &&
-                    ` · Alistado por ${pedido.trazabilidad.alistadoPor.nombre} (${pedido.trazabilidad.alistadoPor.username})${pedido.alistadoAt ? ` · ${new Date(pedido.alistadoAt).toLocaleString('es-CO')}` : ''}`}
+                    ` · Alistado por ${pedido.trazabilidad.alistadoPor.nombre} (${pedido.trazabilidad.alistadoPor.username})${pedido.alistadoAt ? ` · ${new Date(pedido.alistadoAt).toLocaleString('es-CO')} (${tiempoRelativo(pedido.alistadoAt)})` : ''}`}
                   {pedido.trazabilidad.aprobadoPor &&
-                    ` · Aprobado por ${pedido.trazabilidad.aprobadoPor.nombre} (${pedido.trazabilidad.aprobadoPor.username})${pedido.aprobadoAt ? ` · ${new Date(pedido.aprobadoAt).toLocaleString('es-CO')}` : ''}`}
+                    ` · Aprobado por ${pedido.trazabilidad.aprobadoPor.nombre} (${pedido.trazabilidad.aprobadoPor.username})${pedido.aprobadoAt ? ` · ${new Date(pedido.aprobadoAt).toLocaleString('es-CO')} (${tiempoRelativo(pedido.aprobadoAt)})` : ''}`}
                 </p>
               )}
             </div>
