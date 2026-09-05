@@ -1,4 +1,9 @@
-import { buildDataSourceOptions, esErrorConfiguracionBd } from './data-source';
+import {
+  asegurarConexion,
+  buildDataSourceOptions,
+  conectarConReintentos,
+  esErrorConfiguracionBd,
+} from './data-source';
 
 /**
  * I28: el pool de conexiones debe sobrevivir a un redespliegue — keep-alive
@@ -93,5 +98,68 @@ describe('esErrorConfiguracionBd (I31)', () => {
     const eaiagain = new Error('getaddrinfo EAI_AGAIN posgres-ejemplo.internal');
     (eaiagain as any).code = 'EAI_AGAIN';
     expect(esErrorConfiguracionBd(eaiagain)).toBe(true);
+  });
+});
+
+/**
+ * I37: tras un redespliegue del stack la BD puede reiniciarse y dejar el
+ * pool con sockets muertos mientras el DataSource sigue marcado como
+ * inicializado. asegurarConexion lo detecta con un SELECT 1 y destruye el
+ * pool para que el siguiente reintento lo recree; conectarConReintentos
+ * verifica la conexión de verdad aunque isInitialized sea true.
+ */
+describe('I37: reconexión tras pérdida de la conexión', () => {
+  function dataSourceFalso(opts: {
+    queryFalla: boolean;
+    initializeFalla?: boolean;
+  }) {
+    const ds: any = {
+      isInitialized: true,
+      query: jest.fn(async () => {
+        if (opts.queryFalla) throw new Error('Connection terminated unexpectedly');
+        return [];
+      }),
+      initialize: jest.fn(async () => {
+        if (opts.initializeFalla) throw new Error('connect ECONNREFUSED');
+        ds.isInitialized = true;
+      }),
+      destroy: jest.fn(async () => {
+        ds.isInitialized = false;
+      }),
+    };
+    return ds;
+  }
+
+  it('asegurarConexion: con el pool vivo no toca nada', async () => {
+    const ds = dataSourceFalso({ queryFalla: false });
+    await asegurarConexion(ds);
+    expect(ds.query).toHaveBeenCalledWith('SELECT 1');
+    expect(ds.destroy).not.toHaveBeenCalled();
+    expect(ds.isInitialized).toBe(true);
+  });
+
+  it('asegurarConexion: con el pool muerto destruye y propaga el error', async () => {
+    const ds = dataSourceFalso({ queryFalla: true });
+    await expect(asegurarConexion(ds)).rejects.toThrow('Connection terminated');
+    expect(ds.destroy).toHaveBeenCalled();
+    expect(ds.isInitialized).toBe(false);
+  });
+
+  it('conectarConReintentos: verifica una conexión ya inicializada y reconecta si está muerta', async () => {
+    const ds = dataSourceFalso({ queryFalla: true });
+    let consultas = 0;
+    ds.query.mockImplementation(async () => {
+      consultas += 1;
+      if (consultas === 1) throw new Error('Connection terminated unexpectedly');
+      return [];
+    });
+    const conectado = await conectarConReintentos(ds, 1);
+    expect(conectado).toBe(ds);
+    // Primer ciclo: SELECT 1 falla → destroy → espera; segundo ciclo:
+    // isInitialized=false → initialize() reconecta → listo.
+    expect(ds.destroy).toHaveBeenCalledTimes(1);
+    expect(ds.initialize).toHaveBeenCalledTimes(1);
+    expect(ds.query).toHaveBeenCalledTimes(1);
+    expect(ds.isInitialized).toBe(true);
   });
 });

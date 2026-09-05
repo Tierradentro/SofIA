@@ -244,6 +244,28 @@ export function esErrorConfiguracionBd(err: unknown): boolean {
 const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
+ * I37: si el DataSource quedó marcado como inicializado pero el pool de pg
+ * perdió sus conexiones (la BD se reinició, la red del PaaS cortó los
+ * sockets y ninguna consulta ha vuelto a ejecutarse), `initialize()` de
+ * TypeORM no reconecta — retorna de inmediato al ver isInitialized. Este
+ * wrapper sí: hace un SELECT 1 y, si la conexión murió, destruye el pool
+ * (destroy → isInitialized=false) y deja que el reintento la recree.
+ * Así el servicio se recupera SOLO tras una caída de la BD, sin redeploy.
+ */
+export async function asegurarConexion(ds: DataSource): Promise<void> {
+  try {
+    await ds.query('SELECT 1');
+  } catch (err) {
+    console.warn(
+      `La conexión con la base de datos se perdió (${(err as Error).message}); ` +
+        'reconectando…',
+    );
+    await ds.destroy().catch(() => undefined);
+    throw err;
+  }
+}
+
+/**
  * I30/I31: conecta a la BD con reintentos. Los errores transitorios
  * (Postgres aún no arranca, red del PaaS) se reintentan para siempre con
  * pausa creciente; un error de configuración se reporta UNA vez por minuto
@@ -256,9 +278,17 @@ export async function conectarConReintentos(
 ): Promise<DataSource> {
   let ultimoAvisoConfig = 0;
   for (let i = 1; ; i++) {
-    if (ds.isInitialized) return ds;
     try {
-      await ds.initialize();
+      // I37: tras un isInitialized=false siempre toca initialize(); si sigue
+      // inicializado, verificar de verdad con un SELECT 1 (el pool puede
+      // estar muerto aunque el DataSource diga que está listo — antes este
+      // camino retornaba sin comprobar y el servicio quedaba caído para
+      // siempre tras un reinicio de la BD).
+      if (!ds.isInitialized) {
+        await ds.initialize();
+      } else {
+        await asegurarConexion(ds);
+      }
       if (i > 1) console.log(`Conexión a la base de datos establecida (intento ${i}).`);
       return ds;
     } catch (err) {
@@ -291,11 +321,43 @@ export async function conectarConReintentos(
  * variable en false el pool podía quedar arriba con un esquema vacío o
  * desactualizado y todo el API caía. Las migraciones son idempotentes y la
  * semilla inicial también, así que correrlas en cada arranque es seguro.
+ * I37: si la conexión se pierde (p. ej. la BD reiniciada por un redeploy del
+ * stack), se detecta con un SELECT 1 y se reconecta sola con reintentos.
  */
 export async function prepararBaseDeDatos(): Promise<DataSource> {
-  const ds = await conectarConReintentos(AppDataSource);
-  await ds.runMigrations();
-  await runInitialSeed(ds);
-  console.log('Migraciones y semillas aplicadas; base de datos lista.');
+  let ds: DataSource;
+  try {
+    ds = await conectarConReintentos(AppDataSource);
+    await ds.runMigrations();
+    await runInitialSeed(ds);
+    console.log('Migraciones y semillas aplicadas; base de datos lista.');
+  } catch (err) {
+    console.error('Error preparando la base de datos:', err);
+    throw err;
+  }
+  // I37: vigilante de reconexión. Un reinicio de la BD o un corte de red
+  // pueden dejar el pool muerto sin que ninguna consulta lo note; cada 15 s
+  // se verifica con un SELECT 1 y, si falla, se reconecta y se re-aplican
+  // migraciones y semillas (idempotentes).
+  let vigilando = false;
+  setInterval(async () => {
+    if (vigilando) return;
+    vigilando = true;
+    try {
+      if (AppDataSource.isInitialized) await AppDataSource.query('SELECT 1');
+    } catch (err) {
+      console.error(
+        `Vigilante de BD: conexión perdida (${(err as Error).message}); ` +
+          'reconectando en segundo plano…',
+      );
+      try {
+        await prepararBaseDeDatos();
+      } catch {
+        // conectarConReintentos ya registra los reintentos; no propagar.
+      }
+    } finally {
+      vigilando = false;
+    }
+  }, 15_000).unref();
   return ds;
 }
