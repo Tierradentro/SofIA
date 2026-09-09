@@ -276,6 +276,76 @@ describe('Ingreso de mercancía (e2e)', () => {
     expect(p[0].cantidad).toBe(10);
   });
 
+  it('I39: ingreso desde la FCE 61 (factura de importación sin columna de referencia)', async () => {
+    // PDF real adjunto por el usuario: 38 ítems "solo descripción" de
+    // Magneti Marelli. El producto que ya existe se cruza por descripción;
+    // los demás quedan con referencia provisional SR-61-## como nuevos.
+    await crearProducto('AMO-GOLF3', {
+      descripcion: 'AMORTIGUADOR TRAS GOLF3 CON PLATO COFAP',
+    });
+
+    const FCE61 = readFileSync(
+      join(__dirname, 'fixtures', 'factura-importacion-fce61.pdf'),
+    );
+    const ocr = await t.http
+      .post('/api/v1/ocr/documents')
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .field('tipoDocumento', 'FACTURA_IMPORTACION')
+      .attach('file', FCE61, {
+        filename: 'FCE 61.pdf',
+        contentType: 'application/pdf',
+      });
+    expect(ocr.status).toBe(201);
+    expect(ocr.body.datosExtraidos.numeroFactura).toBe('61');
+    expect(ocr.body.datosExtraidos.proveedor).toBe('MAGNETI MARELLI');
+    expect(ocr.body.datosExtraidos.fecha).toBe('2026-07-24');
+    expect(ocr.body.datosExtraidos.items).toHaveLength(38);
+
+    const ingreso = await t.http
+      .post('/api/v1/inbound')
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ empresaId: ireId, ocrDocumentId: ocr.body.id });
+    expect(ingreso.status).toBe(201);
+    expect(ingreso.body.numeroFactura).toBe('61');
+    expect(ingreso.body.proveedor).toBe('MAGNETI MARELLI');
+    expect(ingreso.body.items).toHaveLength(38);
+
+    // Cruce por descripción: el producto existente conserva su código
+    const cruzado = ingreso.body.items.find(
+      (i: any) => i.descripcion === 'AMORTIGUADOR TRAS GOLF3 CON PLATO COFAP',
+    );
+    expect(cruzado.referencia).toBe('AMO-GOLF3');
+    expect(cruzado.esNuevo).toBe(false);
+    expect(cruzado.cantidadFacturada).toBe(92);
+
+    // Los demás quedan con referencia provisional y marcados como nuevos
+    const provisionales = ingreso.body.items.filter((i: any) =>
+      /^SR-61-\d{2}[A-Z]?$/.test(i.referencia),
+    );
+    expect(provisionales).toHaveLength(37);
+    expect(provisionales.every((i: any) => i.esNuevo)).toBe(true);
+
+    // Flujo completo: recepción y aprobación crean los productos nuevos
+    await flujoRecepcion(ingreso.body.id, {});
+    const aprob = await t.http
+      .post(`/api/v1/inbound/${ingreso.body.id}/approve`)
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ observacion: 'FCE 61 sin referencias: productos nuevos por descripción' });
+    expect(aprob.status).toBe(201);
+    const creado = await t.dataSource.query(
+      `SELECT codigo, descripcion, cantidad FROM products WHERE codigo='SR-61-01' AND empresa_id=$1`,
+      [ireId],
+    );
+    expect(creado).toHaveLength(1);
+    expect(creado[0].descripcion).toBe('AMORTIGUADOR TRAS GOL BRASIL 95>08 COFAP');
+    expect(creado[0].cantidad).toBe(84);
+    const cruzadoFinal = await t.dataSource.query(
+      `SELECT cantidad FROM products WHERE codigo='AMO-GOLF3' AND empresa_id=$1`,
+      [ireId],
+    );
+    expect(cruzadoFinal[0].cantidad).toBe(92);
+  });
+
   it('Cancelación: el Generador cancela en cualquier momento; aprobado no cancela', async () => {
     await crearProducto('ING-030');
     const ingreso = await crearIngreso([

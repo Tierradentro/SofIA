@@ -2,7 +2,14 @@ import { Product } from '../products/entities/product.entity';
 
 export interface MatchResult {
   producto: Product | null;
-  criterio: 'CODIGO' | 'CODIGO_OE' | 'REF_CRUZADA_1' | 'REF_CRUZADA_2' | 'BARCODE' | null;
+  criterio:
+    | 'CODIGO'
+    | 'CODIGO_OE'
+    | 'REF_CRUZADA_1'
+    | 'REF_CRUZADA_2'
+    | 'BARCODE'
+    | 'DESCRIPCION'
+    | null;
 }
 
 /**
@@ -40,6 +47,41 @@ export class InboundMatcher {
     }
     return { producto: null, criterio: null };
   }
+
+  /**
+   * I39: cruce por descripción para documentos SIN columna de referencia
+   * (facturas de compra extranjera de proveedores como Magneti Marelli).
+   * Normaliza (mayúsculas, sin tildes, espacios colapsados) y exige
+   * coincidencia única y exacta — si dos productos comparten la descripción
+   * no se adivina: queda como producto nuevo para corrección.
+   */
+  matchPorDescripcion(descripcion: string | null | undefined): MatchResult {
+    const objetivo = normalizarDescripcion(descripcion);
+    if (!objetivo) return { producto: null, criterio: null };
+    const candidatos = this.productos.filter(
+      (p) => normalizarDescripcion(p.descripcion) === objetivo,
+    );
+    if (candidatos.length === 1) {
+      return { producto: candidatos[0], criterio: 'DESCRIPCION' };
+    }
+    return { producto: null, criterio: null };
+  }
+
+  /** I39: ¿ya existe un producto con este código en la empresa? */
+  existeCodigo(codigo: string): boolean {
+    const ref = codigo.trim().toUpperCase();
+    return this.productos.some((p) => (p.codigo ?? '').trim().toUpperCase() === ref);
+  }
+}
+
+/** I39: normalización de descripciones para el cruce exacto tolerante. */
+function normalizarDescripcion(s: string | null | undefined): string {
+  return (s ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .trim();
 }
 
 export type EstadoComparacion = 'COINCIDE' | 'FALTANTE' | 'SOBRANTE' | 'NUEVO';

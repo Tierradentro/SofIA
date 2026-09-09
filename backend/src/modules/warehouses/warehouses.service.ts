@@ -646,14 +646,16 @@ export class WarehousesService {
     if (!texto) throw new BadRequestException('q es requerido');
     const textoUpper = texto.toUpperCase();
     const products = this.dataSource.getRepository(Product);
-    let product = await products.findOne({
-      where: [
-        { codigo: textoUpper },
-        { codigoOE: textoUpper },
-        { refCruzada1: textoUpper },
-        { refCruzada2: textoUpper },
-      ],
-    });
+    // I39: coincidencia sin distinguir mayúsculas — hay códigos guardados
+    // con mezcla (p. ej. "RT-9828Vit") y antes solo se comparaba contra el
+    // texto en MAYÚSCULAS, por lo que esos productos no se localizaban.
+    let product = await products
+      .createQueryBuilder('p')
+      .where(
+        'UPPER(p.codigo) = :t OR UPPER(p.codigoOE) = :t OR UPPER(p.refCruzada1) = :t OR UPPER(p.refCruzada2) = :t',
+        { t: textoUpper },
+      )
+      .getOne();
     if (!product) {
       // Código de barras: coincidencia exacta en las etiquetas del producto.
       const barcode = await this.dataSource.getRepository(ProductBarcode).findOne({

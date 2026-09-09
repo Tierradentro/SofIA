@@ -2,12 +2,25 @@
 
 import { useEffect, useState } from 'react';
 import { api, obtenerSesion, mensajeError } from '@/lib/api';
+import {
+  ConteoItems,
+  docCampo,
+  docInput,
+  docInputDisabled,
+  EncabezadoTablaDoc,
+  MarcoDocumento,
+  TarjetaEmisor,
+  TotalDocumento,
+} from '@/components/orden-pedido';
 
 /**
  * QA Func. 3.2 + 3.3: creación de pedido en formato "Orden de Pedido" papel.
- * Tres bloques: Encabezado (cliente autocompleta NIT/Dirección/Teléfono),
- * Tabla de ítems (Referencia, Marca, Descripción, Cantidad, Valor Unitario,
- * Valor Total) y Pie (Total automático + Observaciones).
+ * I39: visual unificado con la consulta del pedido (componentes
+ * orden-pedido): empresa emisora con NIT, caja de número/estado, filas
+ * Fecha/Ciudad/Vendedor y Cliente/NIT/Dirección/Teléfono, tabla con
+ * encabezado azul y pie con conteo, observaciones y total.
+ * I39: el pedido SOLO se crea con el botón "Crear pedido" — la tecla Enter
+ * dentro del formulario nunca lo envía.
  * Vías de captura unificadas: manual, OCR (con revisión previa a crear) y
  * Excel. La vía OCR prellena este mismo panel con la extracción editable y
  * solo crea el pedido cuando el humano confirma.
@@ -75,7 +88,7 @@ export function NuevoPedido({
   onCancelar,
 }: {
   empresaId: string;
-  empresas: { id: string; nombre: string }[];
+  empresas: { id: string; nombre: string; identificacion?: string | null }[];
   clientes: Cliente[];
   comerciales: Comercial[];
   productos: ProductoLite[];
@@ -154,6 +167,12 @@ export function NuevoPedido({
     }, 0);
   }
 
+  function unidadesCargadas(): number {
+    return items
+      .filter((i) => i.referencia.trim())
+      .reduce((acc, i) => acc + (Number(i.cantidad) || 0), 0);
+  }
+
   function setItem(idx: number, campo: keyof ItemForm, valor: string) {
     const copia = [...items];
     copia[idx] = { ...copia[idx], [campo]: valor };
@@ -230,8 +249,8 @@ export function NuevoPedido({
     setMensaje('');
   }
 
-  async function crear(e: React.FormEvent) {
-    e.preventDefault();
+  /** I39: solo la llamada explícita del botón crea el pedido (sin evento de formulario). */
+  async function crear() {
     setCargando(true);
     setError('');
     try {
@@ -299,29 +318,46 @@ export function NuevoPedido({
   }
 
   return (
-    <form onSubmit={crear} className="mb-6 max-w-5xl rounded-lg bg-white shadow">
-      <div className="flex items-center justify-between border-b bg-sofia-900 px-5 py-3 text-white">
-        <h2 className="font-semibold">Orden de pedido</h2>
-        <div className="flex gap-2 text-sm">
-          {(['MANUAL', 'OCR', 'EXCEL'] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => { setVia(v); setError(''); }}
-              className={`rounded px-3 py-1 ${via === v ? 'bg-white text-sofia-900' : 'bg-sofia-700 hover:bg-sofia-600'}`}
-            >
-              {v === 'MANUAL' ? 'Manual' : v === 'OCR' ? 'Cargar por OCR' : 'Cargar por Excel'}
+    // I39: onSubmit solo previene el envío implícito — Enter nunca crea el
+    // pedido; la creación queda exclusiva del botón "Crear pedido".
+    <form onSubmit={(e) => e.preventDefault()}>
+      <MarcoDocumento
+        titulo="Crear Orden de Pedido"
+        acciones={
+          <>
+            {(['MANUAL', 'OCR', 'EXCEL'] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => { setVia(v); setError(''); }}
+                className={`rounded px-3 py-1 ${via === v ? 'bg-white text-sofia-900' : 'bg-sofia-700 hover:bg-sofia-600'}`}
+              >
+                {v === 'MANUAL' ? 'Manual' : v === 'OCR' ? 'Cargar por OCR' : 'Cargar por Excel'}
+              </button>
+            ))}
+            <button type="button" onClick={onCancelar} className="rounded bg-white px-3 py-1 text-sofia-900 hover:bg-slate-100">
+              ✕ Cerrar
             </button>
-          ))}
-          <button type="button" onClick={onCancelar} className="rounded bg-sofia-700 px-3 py-1 hover:bg-sofia-600">
-            Cerrar
-          </button>
-        </div>
-      </div>
-
-      <div className="p-5">
+          </>
+        }
+      >
         {mensaje && <p className="mb-3 rounded bg-green-50 px-3 py-2 text-sm text-green-700">{mensaje}</p>}
         {error && <p className="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+
+        <TarjetaEmisor
+          numero="Nueva"
+          estado="DIGITACION"
+          empresa={
+            <select value={empresaId} onChange={(e) => onCambiarEmpresa(e.target.value)}
+              className={docInput} required>
+              {empresas.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.nombre}{e.identificacion ? ` (NIT: ${e.identificacion})` : ''}
+                </option>
+              ))}
+            </select>
+          }
+        />
 
         {/* Vía OCR: subir y revisar antes de crear */}
         {via === 'OCR' && !ocrDocId && (
@@ -368,37 +404,38 @@ export function NuevoPedido({
           </div>
         )}
 
-        {/* Encabezado */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <label className="text-sm">
-            Empresa *
-            <select value={empresaId} onChange={(e) => onCambiarEmpresa(e.target.value)}
-              className="mt-1 block w-full rounded border px-2 py-1.5" required>
-              {empresas.map((e) => (
-                <option key={e.id} value={e.id}>{e.nombre}</option>
-              ))}
-            </select>
+        {/* Encabezado del documento */}
+        <div className="mb-4 grid grid-cols-2 gap-3 rounded-lg border p-4 sm:grid-cols-6">
+          <label className={docCampo}>
+            Fecha:
+            <input value={new Date().toLocaleDateString('es-CO')} disabled className={docInputDisabled} />
           </label>
-          <label className="text-sm">
-            Fecha
-            <input value={new Date().toLocaleDateString('es-CO')} disabled
-              className="mt-1 block w-full rounded border bg-slate-50 px-2 py-1.5" />
+          <label className={`${docCampo} sm:col-span-2`}>
+            Ciudad:
+            <input value={ciudad} onChange={(e) => setCiudad(e.target.value)} className={docInput} />
           </label>
-          <label className="text-sm">
-            Ciudad
-            <input value={ciudad} onChange={(e) => setCiudad(e.target.value)}
-              className="mt-1 block w-full rounded border px-2 py-1.5" />
+          <label className={`${docCampo} sm:col-span-3`}>
+            Vendedor:
+            {rol === 'COMERCIAL' ? (
+              <input value="Automático (su usuario)" disabled className={docInputDisabled} />
+            ) : (
+              <select value={comercialId} onChange={(e) => setComercialId(e.target.value)} className={docInput}>
+                {comerciales.map((c) => (
+                  <option key={c.id} value={c.id}>{c.nombre}</option>
+                ))}
+              </select>
+            )}
           </label>
-          <div className="text-sm sm:col-span-2">
-            Cliente *
+          <div className={`${docCampo} col-span-2 sm:col-span-4`}>
+            Cliente: *
             <input
               value={busquedaCliente}
               onChange={(e) => setBusquedaCliente(e.target.value)}
               placeholder="Buscar por nombre o identificación"
-              className="mt-1 block w-full rounded border px-2 py-1 text-[13px]"
+              className={`${docInput} mt-1 text-[13px]`}
             />
             <select value={clienteId} onChange={(e) => setClienteId(e.target.value)}
-              className="mt-1 block w-full rounded border px-2 py-1.5" required>
+              className={docInput} required>
               {clientesFiltrados.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.nombre}{c.identificacion ? ` — ${c.identificacion}` : ''}
@@ -406,21 +443,19 @@ export function NuevoPedido({
               ))}
             </select>
             {termino && (
-              <p className="mt-0.5 text-xs text-slate-500">
+              <p className="mt-0.5 text-xs font-normal normal-case text-slate-500">
                 {clientesFiltrados.length} resultado(s)
               </p>
             )}
           </div>
-          <label className="text-sm">
-            NIT
-            <input value={cliente?.identificacion ?? ''} disabled
-              className="mt-1 block w-full rounded border bg-slate-50 px-2 py-1.5" />
+          <label className={`${docCampo} sm:col-span-2`}>
+            Nit:
+            <input value={cliente?.identificacion ?? ''} disabled className={docInputDisabled} />
           </label>
-          <label className="text-sm sm:col-span-2">
-            Dirección de despacho
+          <label className={`${docCampo} col-span-2 sm:col-span-4`}>
+            Dirección:
             {direcciones.length > 1 ? (
-              <select value={direccionId} onChange={(e) => setDireccionId(e.target.value)}
-                className="mt-1 block w-full rounded border px-2 py-1.5">
+              <select value={direccionId} onChange={(e) => setDireccionId(e.target.value)} className={docInput}>
                 {direcciones.map((d) => (
                   <option key={d.id} value={d.id}>
                     {d.direccion}{d.ciudad ? ` — ${d.ciudad}` : ''}{d.esPrincipal ? ' (principal)' : ''}
@@ -431,77 +466,57 @@ export function NuevoPedido({
               <input
                 value={direcciones[0]?.direccion ?? cliente?.direccion ?? ''}
                 disabled
-                className="mt-1 block w-full rounded border bg-slate-50 px-2 py-1.5" />
+                className={docInputDisabled}
+              />
             )}
           </label>
-          <label className="text-sm">
-            Teléfono
-            <input value={cliente?.telefonos ?? ''} disabled
-              className="mt-1 block w-full rounded border bg-slate-50 px-2 py-1.5" />
-          </label>
-          <label className="text-sm">
-            Vendedor / Comercial
-            {rol === 'COMERCIAL' ? (
-              <input value="Automático (su usuario)" disabled
-                className="mt-1 block w-full rounded border bg-slate-50 px-2 py-1.5" />
-            ) : (
-              <select value={comercialId} onChange={(e) => setComercialId(e.target.value)}
-                className="mt-1 block w-full rounded border px-2 py-1.5">
-                {comerciales.map((c) => (
-                  <option key={c.id} value={c.id}>{c.nombre}</option>
-                ))}
-              </select>
-            )}
+          <label className={`${docCampo} sm:col-span-2`}>
+            Teléfono:
+            <input value={cliente?.telefonos ?? ''} disabled className={docInputDisabled} />
           </label>
         </div>
 
         {/* Tabla de ítems */}
         {via !== 'EXCEL' && (
           <>
-            <div className="overflow-x-auto">
-            <table className="mt-4 w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-xs uppercase text-slate-400">
-                  <th className="py-1">Referencia</th>
-                  <th>Marca</th>
-                  <th>Descripción</th>
-                  <th className="w-20">Cantidad</th>
-                  <th className="w-28">Valor unitario</th>
-                  <th className="w-28 text-right">Valor total</th>
-                  <th className="w-14"></th>
-                </tr>
-              </thead>
+            <div className="overflow-x-auto rounded-lg border">
+            <table className="w-full text-sm">
+              <EncabezadoTablaDoc
+                columnas={['#', 'Referencia', 'Marca', 'Descripción', 'Cant.', 'Vr. Unit', 'Vr. Total', '']}
+              />
               <tbody>
                 {items.map((item, idx) => (
                   <tr key={idx} className="border-b">
-                    <td className="py-1 pr-2">
+                    <td className="px-2 py-1 text-center text-slate-400">{idx + 1}</td>
+                    <td className="px-1 py-1">
                       <input value={item.referencia} onChange={(e) => setItem(idx, 'referencia', e.target.value)}
-                        list="productos-ref" className="w-full rounded border px-2 py-1" placeholder="Código / OE / ref." />
+                        list="productos-ref" className="w-full rounded border px-2 py-1" placeholder="Ingresar ref..." />
                     </td>
-                    <td className="pr-2">
+                    <td className="px-1 py-1">
                       <input value={item.marca} onChange={(e) => setItem(idx, 'marca', e.target.value)}
-                        className="w-full rounded border px-2 py-1" />
+                        className="w-full rounded border px-2 py-1" placeholder="Marca" />
                     </td>
-                    <td className="pr-2">
+                    <td className="px-1 py-1">
                       <input value={item.descripcion} onChange={(e) => setItem(idx, 'descripcion', e.target.value)}
-                        className="w-full rounded border px-2 py-1" />
+                        className="w-full rounded border px-2 py-1" placeholder="Descripción del repuesto" />
                     </td>
-                    <td>
+                    <td className="w-20 px-1 py-1">
                       <input type="number" min={1} value={item.cantidad} onChange={(e) => setItem(idx, 'cantidad', e.target.value)}
                         className="w-full rounded border px-2 py-1" />
                     </td>
-                    <td>
+                    <td className="w-28 px-1 py-1">
                       <input type="number" min={0} step="0.01" value={item.valorUnidad} onChange={(e) => setItem(idx, 'valorUnidad', e.target.value)}
-                        className="w-full rounded border px-2 py-1" />
+                        className="w-full rounded border px-2 py-1" placeholder="$ 0" />
                     </td>
-                    <td className="text-right font-medium">
-                      {((Number(item.cantidad) || 0) * (Number(item.valorUnidad) || 0)).toLocaleString('es-CO')}
+                    <td className="w-28 px-2 py-1 text-right font-medium">
+                      $ {((Number(item.cantidad) || 0) * (Number(item.valorUnidad) || 0)).toLocaleString('es-CO')}
                     </td>
-                    <td>
+                    <td className="w-12 px-1 py-1 text-center">
                       {items.length > 1 && (
                         <button type="button" onClick={() => setItems(items.filter((_, i) => i !== idx))}
-                          className="text-red-700 hover:underline">
-                          Quitar
+                          title="Quitar ítem"
+                          className="rounded bg-red-50 px-2 py-1 text-xs text-red-700 hover:bg-red-100">
+                          ✕
                         </button>
                       )}
                     </td>
@@ -523,35 +538,44 @@ export function NuevoPedido({
                 No hay productos con existencias en esta empresa; registre ingresos primero.
               </p>
             )}
-            <button type="button" onClick={() => setItems([...items, { ...ITEM_VACIO }])}
-              className="mt-2 text-sm text-sofia-700 hover:underline">
-              + Agregar producto
-            </button>
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+              <button type="button" onClick={() => setItems([...items, { ...ITEM_VACIO }])}
+                className="text-sm font-medium text-sofia-700 hover:underline">
+                + Agregar ítem a la orden
+              </button>
+              <ConteoItems
+                productos={items.filter((i) => i.referencia.trim()).length}
+                unidades={unidadesCargadas()}
+              />
+            </div>
           </>
         )}
 
-        {/* Pie */}
-        <div className="mt-4 flex flex-wrap items-end justify-between gap-3 border-t pt-4">
-          <label className="min-w-72 flex-1 text-sm">
-            Observaciones / Notas
-            <textarea value={notas} onChange={(e) => setNotas(e.target.value)} rows={2}
-              className="mt-1 block w-full rounded border px-2 py-1.5" />
+        {/* Pie del documento */}
+        <div className="mt-4 flex flex-wrap items-stretch justify-between gap-3">
+          <label className={`${docCampo} min-w-72 flex-1`}>
+            <span className="flex items-center justify-between">
+              Observaciones / Notas
+              <span className="text-xs font-normal normal-case text-slate-400">Instrucciones operativas</span>
+            </span>
+            <textarea value={notas} onChange={(e) => setNotas(e.target.value)} rows={3}
+              className={`${docInput} mt-1`} />
           </label>
-          <div className="text-right">
-            <p className="text-xs uppercase text-slate-400">Total</p>
-            <p className="text-2xl font-bold text-sofia-900">
-              $ {totalPie().toLocaleString('es-CO')}
-            </p>
-          </div>
+          <TotalDocumento valor={totalPie()} />
         </div>
 
-        <button
-          disabled={cargando}
-          className="mt-4 w-full rounded bg-sofia-600 py-2.5 font-medium text-white hover:bg-sofia-700 disabled:opacity-50"
-        >
-          {cargando ? 'Creando…' : via === 'OCR' ? 'Confirmar y crear pedido' : 'Crear pedido'}
-        </button>
-      </div>
+        {/* I39: sin "Guardar borrador" — el pedido solo se crea con este botón */}
+        <div className="mt-4 flex justify-end">
+          <button
+            type="button"
+            onClick={crear}
+            disabled={cargando}
+            className="rounded bg-sofia-900 px-8 py-2.5 font-medium text-white hover:bg-sofia-700 disabled:opacity-50"
+          >
+            {cargando ? 'Creando…' : via === 'OCR' ? 'Confirmar y crear pedido' : 'Crear pedido'}
+          </button>
+        </div>
+      </MarcoDocumento>
     </form>
   );
 }

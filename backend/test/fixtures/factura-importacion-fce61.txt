@@ -1,0 +1,60 @@
+IMPORT - REPUESTOS EL ESCARABAJO S A S                                 FACTURA DE COMPRA                     61
+                                                                          EXTRANJERA
+Nit       900349362                                                        Documento Externo No.             208
+PROVEEDO MAGNETI MARELLI                                         POR CONCEPTO DE
+NIT       444444404                                              FACTURA DE COMPRA EXTRANJERA
+DIRECCION              CIUDAD           TELEFONO
+AV MANOEL DA NOBREGA 1
+         FECHA DOCUMENTO                FECHA VENCIMIENTO                   COMPRÓ                    FORMA DE PAGO
+      viernes, 24 de julio de 2026           24-jul-26           ORLANDO LAGOS SUAREZ                Entrada de Producto
+                          Descripción                Cantidad U Medida    Valor Unitario      IVA         Total
+AMORTIGUADOR TRAS GOLF3 CON PLATO COFAP                      92 Und.                12.877      0%                1.184.706
+AMORTIGUADOR TRAS GOL BRASIL 95>08 COFAP                     84 Und.                50.543      0%                4.245.626
+AMORTIGUADOR TRAS POLO CLASSIC BRASIL COFAP                   8 Und.                57.957      0%                 463.658
+BOBINA IGNICION GOL 1.6 MAGNETI                              20 Und.                22.535      0%                 450.703
+BOBINA IGNICION CLIO MEGANE SYMBOL MAGNETI                  204 Und.                20.604      0%                4.203.131
+BOBINA ENCENDIDO VW BORA 2.5 MAGNETI                         30 Und.                44.426      0%                1.332.794
+TIJERA GOL COFAP                                             60 Und.                27.042      0%                1.622.532
+TIJERA GOL COFAP                                            100 Und.                27.364      0%                2.736.414
+BUJE BARRA DIR GOL PLUS COFAP                               500 Und.                  3.541     0%                1.770.621
+INSTALACION ALTA GOL 1.6 1.8 MULTIPUNTO MAGNETI             200 Und.                25.754      0%                5.150.896
+INSTALACION ALTA GOL 1.6 1.8 MULTIPUNTO MAGNETI             150 Und.                26.720      0%                4.008.041
+SOPORTE CAJA ESC COFAP                                       99 Und.                  6.439     0%                 637.423
+BASE AMORTIGUADOR DEL GOL 98 GOLF3 COFAP                    100 Und.                15.453      0%                1.545.269
+SOPORTE MOTOR IZQ VW GOL GV 2010 COFAP                       28 Und.                36.507      0%                1.022.195
+SOPORTE MOTOR DER GOL SAVEIRO VOYAGE 2009 COFAP              17 Und.                56.145      0%                 954.461
+MOTOVENTILADOR VW NUEVO GOL CROSSFOX MAGNETI                  6 Und.                83.702      0%                 502.212
+AMORTIGUADOR DEL IZQ ASTRA ZAFIRA 98>06 GAS COFAP            76 Und.                98.350      0%                7.474.594
+AMORTIGUADOR DEL DER ASTRA ZAFIRA COFAP                      79 Und.                19.316      0%                1.525.953
+HOMOCINETICA LADO CAJA GOL 1.0 COFAP                          2 Und.                41.207      0%                  82.414
+KIT GUARDAPOLVO HOMOCINETICA GOL 1.0 1.6 COFAP              195 Und.                  9.014     0%                1.757.743
+KIT GUARDAPOLVO PUNTA EJE GOLF3 COFAP                       105 Und.                  6.439     0%                 676.055
+KIT GUARDAPOLVO PUNTA EJE GOL 1.6 1.8 BRASIL COFAP          105 Und.                  6.567     0%                 689.576
+KIT TOPE Y GUARDAPOLVO AMORT DEL GOL X2P BRASIL             300 Und.                  3.863     0%                1.158.952
+COFAP
+KIT TOPE Y GUARDAPOLVO AMORT TRAS GOL 95>15 BRASIL          304 Und.                  6.761     0%                2.055.208
+COFAP
+KIT TOPE Y GUARDAPOLVO AMORT TRAS JETTA4 X2P COFAP          104 Und.                  8.370     0%                 870.501
+KIT TOPE Y GUARDAPOLVO TRAS CROSSFOX COFAP                   48 Und.                  4.507     0%                 216.338
+KIT TOPE Y GUARDAPOLVO AMORT DEL CHEVROLET TRACKER           24 Und.                14.165      0%                 339.959
+2014 COFAP
+KIT TOPE Y GUARDAPOLVO AMORT DEL TUCSON COFAP               150 Und.                  9.014     0%                1.352.110
+ESPIRAL TRAS GOL 98 COFAP                                    30 Und.                32.193      0%                 965.793
+ESPIRAL DEL GOL 1.6 1.8 00>09 COFAP                           4 Und.                32.193      0%                 128.772
+RADIADOR AGUA NVO GOL 1.6 MAGNETI                             6 Und.                75.654      0%                 453.923
+AMORTIGUADOR DIRECCION ESC M67 COFAP                         46 Und.                26.398      0%                1.214.324
+AMORTIGUADOR DIRECCION ESC M67 COFAP                        200 Und.                28.974      0%                5.794.758
+AMORTIGUADOR DEL GOL BRASIL 95>08 COFAP                     104 Und.                41.851      0%                4.352.507
+VALVULA IAC CORSA MAGNETI                                    50 Und.                27.047      0%                1.352.335
+INYECTOR CLIO MEGANES VERDE MAGNETI                         100 Und.                35.412      0%                3.541.241
+INYECTOR MEGANE 1.4 MULT MAGNETI                            100 Und.                28.974      0%                2.897.379
+AMORTIGUADOR TRAS GOL BRASIL 95>08 COFAP                    214 Und.                40.241      0%                8.611.654
+
+Valor en Letras                                                     SUBTOTAL                                 79.342.772
+SETENTA Y CUATRO MILLONES OCHOCIENTOS OCHENTA MIL SEISCIENTOS DESCUENTO                                       4.462.109
+SESENTA Y TRES PESOS M/CTE                                          IVA                                               0
+                                                                    RETEFUENTE                                        0
+                                                                    RETEIVA                                           0
+                                                                    RETEICA                                           0
+Firma Responsable________________ Entregado Por____________________ TOTAL DOCUMENTO                          74.880.663
+

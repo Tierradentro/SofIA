@@ -586,6 +586,17 @@ describe('Despachos y cajas (e2e)', () => {
       .get('/api/v1/boxes/CJA-999999')
       .set('Authorization', `Bearer ${operadorToken}`);
     expect(noExiste.status).toBe(404);
+
+    // I39: el lector de código de barras (según la distribución de teclado)
+    // puede enviar apóstrofe/acento donde la etiqueta tiene el guion —
+    // "CJA'000001" debe encontrar la caja "CJA-000001"
+    for (const variante of ["CJA'000001", 'CJA´000001', 'CJA`000001', "cja'000001"]) {
+      const r = await t.http
+        .get(`/api/v1/boxes/${encodeURIComponent(variante)}`)
+        .set('Authorization', `Bearer ${operadorToken}`);
+      expect(r.status).toBe(200);
+      expect(r.body.boxId).toBe('CJA-000001');
+    }
   });
 
   it('M09 paso 4/5: finalizar empaque completo y transporte EXTERNA con guía (HU-039)', async () => {

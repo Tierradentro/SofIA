@@ -17,7 +17,8 @@ export default function NuevoPedidoPage() {
   const router = useRouter();
   const [sesion, setSesion] = useState<Sesion | null>(null);
   // I18: el pedido manual permite elegir la empresa registrada
-  const [empresas, setEmpresas] = useState<{ id: string; nombre: string }[]>([]);
+  // I39: la razón social emisora se muestra con su NIT
+  const [empresas, setEmpresas] = useState<{ id: string; nombre: string; identificacion?: string | null }[]>([]);
   const [empresaId, setEmpresaId] = useState('');
   const [clientes, setClientes] = useState<any[]>([]);
   const [comerciales, setComerciales] = useState<any[]>([]);
@@ -28,7 +29,7 @@ export default function NuevoPedidoPage() {
     if (!s) return router.replace('/login');
     if (s.usuario.rol === 'API') return router.replace('/dashboard');
     setSesion(s);
-    api<{ id: string; nombre: string }[]>('/companies').then(({ status, body }) => {
+    api<{ id: string; nombre: string; identificacion?: string | null }[]>('/companies').then(({ status, body }) => {
       if (status === 200 && body.length) {
         setEmpresas(body);
         setEmpresaId((prev) => prev || body[0].id);

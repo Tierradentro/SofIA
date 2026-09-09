@@ -44,7 +44,7 @@ export const OCR_CAMPOS_POR_TIPO: Record<
   [DocumentType.FACTURA_IMPORTACION]: {
     cabecera: [
       'numeroFactura', 'fecha', 'proveedor', 'numeroGuia',
-      'transportadora', 'direccion',
+      'transportadora', 'direccion', 'total',
     ],
     itemFields: ['referencia', 'descripcion', 'cantidad', 'unidad'],
   },
@@ -98,6 +98,9 @@ const UNIDADES = ['UND', 'UN', 'UNIDAD', 'PCS', 'PZA', 'CAJA', 'CJ', 'PAR', 'JGO
 const MESES_ES: Record<string, number> = {
   ene: 1, feb: 2, mar: 3, abr: 4, may: 5, jun: 6,
   jul: 7, ago: 8, sep: 9, sept: 9, oct: 10, nov: 11, dic: 12,
+  // I39: nombres completos para fechas largas ("24 de julio de 2026")
+  enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6,
+  julio: 7, agosto: 8, septiembre: 9, octubre: 10, noviembre: 11, diciembre: 12,
 };
 
 /**
@@ -106,6 +109,9 @@ const MESES_ES: Record<string, number> = {
  * Patrones tolerantes a los rótulos comunes; captura prefijo + número.
  */
 const PATRONES_FOLIO: RegExp[] = [
+  // I39: factura de compra extranjera — "FACTURA DE COMPRA  61" (el folio va
+  // al final de la línea del título, sin prefijo ni rótulo "No.")
+  /factura\s+de\s+compra(?:\s+extranjera)?\s+(\d{1,7})\b/i,
   /factura\s+electr[oó]nica(?:\s+de\s+venta)?[^A-Z0-9]{0,10}(?:n[°.o:]?\s*)?([A-Z]{1,6}[- ]?\d{3,})/i,
   // I26: prefijo y número separados por muchos espacios (layout de columnas):
   // "FACTURA ELECTRÓNICA FE                                  9832"
@@ -252,11 +258,13 @@ export class OcrFieldParser {
   /**
    * I26: ¿la línea es continuación de la descripción del ítem anterior?
    * (solo palabras, sin valores monetarios ni rótulos conocidos)
+   * I39: la continuación puede arrancar con el modelo/año ("2014 COFAP").
    */
   private esContinuacionDescripcion(l: string): boolean {
-    if (!/^[A-ZÁÉÍÓÚÑ(]/i.test(l)) return false;
+    const iniciaConAnio = /^\d{4}\s+[A-Za-zÁÉÍÓÚÑ(]/.test(l);
+    if (!/^[A-ZÁÉÍÓÚÑ(]/i.test(l) && !iniciaConAnio) return false;
     if (/\d{1,3}[.,]\d{3}/.test(l)) return false; // valores de miles
-    if (/\d{3,}/.test(l)) return false; // CUFE, teléfonos, cuentas
+    if (!iniciaConAnio && /\d{3,}/.test(l)) return false; // CUFE, teléfonos, cuentas
     if (l.length > 70) return false;
     return !/VALOR EN LETRAS|SUBTOTAL|TOTAL|DESCUENTO|RETE|IVA\b|CLIENTE|NIT\b|DIRECCION|CIUDAD|TELEFONO|FECHA|VENDEDOR|FORMA DE PAGO|FAVOR|DAVIVIENDA|RECIBIDO|FIRMA|CUFE|PESOS|CHEQUE|FABRICANTE|REPRESENTACI|ITEM|REFERENCIA|DESCRIPCI|VENCE|MEDIOS DE PAGO/i.test(l);
   }
@@ -305,9 +313,17 @@ export class OcrFieldParser {
       const lat = /(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})/.exec(l);
       const textoMes =
         /(\d{1,2})\s*[-/]\s*([a-záéíóú]{3,5})\.?\s*[-/]\s*(\d{2,4})/i.exec(l);
+      // I39: fecha larga en español ("viernes, 24 de julio de 2026") — no
+      // exige rótulo porque el formato es inequívoco
+      const larga =
+        /(\d{1,2})\s+de\s+([a-záéíóú]{3,10})\s+de\s+(\d{4})/i.exec(l);
+      if (larga) {
+        const mes = MESES_ES[larga[2].toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')];
+        if (mes) data.fecha = toIso(larga[1], String(mes), larga[3]);
+      }
       // I26: la fecha ISO también exige contexto — "Vence 2027-07-13" del
       // encabezado DIAN no es la fecha de la factura
-      if (iso && /fecha|date|generaci|expedici|emisi/i.test(l)) {
+      if (!data.fecha && iso && /fecha|date|generaci|expedici|emisi/i.test(l)) {
         data.fecha = toIso(iso[3], iso[2], iso[1]);
       } else if (textoMes && /fecha|date|factura/i.test(l)) {
         const mes = MESES_ES[textoMes[2].toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')];
@@ -337,7 +353,10 @@ export class OcrFieldParser {
     if (!data.proveedor && aplica('proveedor')) {
       const v =
         campo(new RegExp(`(?:^|\\s)(?:proveedor|supplier|vendor|remitente)\\s*[:.-]\\s*(.+?)\\s*(?=${CORTE}\\s|$)`, 'i')) ??
-        campo(/(?:proveedor|supplier|vendor|remitente)\s{2,}(\S(?:.+?))\s*(?=FECHA|VENDEDOR|FORMA|$)/i);
+        campo(/(?:proveedor|supplier|vendor|remitente)\s{2,}(\S(?:.+?))\s*(?=FECHA|VENDEDOR|FORMA|$)/i) ??
+        // I39 (FCE): el rótulo puede venir truncado ("PROVEEDO") y con un
+        // solo espacio — "PROVEEDO MAGNETI MARELLI   POR CONCEPTO DE"
+        campo(/(?:^|\s)proveedo?r?\s+(\S(?:.*?))\s*(?:\s{2,}|\bPOR CONCEPTO\b(?:\s*DE)?|$)/i);
       if (v) data.proveedor = v;
     }
     if (!data.cliente && aplica('cliente')) {
@@ -422,7 +441,9 @@ export class OcrFieldParser {
           }
         }
       }
-      if (!capturarRef(ref)) return null;
+      // I39: la línea no arranca con referencia — puede ser un ítem
+      // "solo descripción" (facturas de importación sin columna de ref.)
+      if (!capturarRef(ref)) return this.parseLineaSinRef(linea);
       // I22: en documentos de venta las columnas son …cantidad, valorUnitario,
       // valorTotal. La cantidad puede tener decimales ("4,00") y el patrón
       // monetario se la traga; por eso se extraen los números del FINAL de la
@@ -501,7 +522,9 @@ export class OcrFieldParser {
     // Línea plana: REF DESCRIPCION CANTIDAD [UNIDAD]
     const m =
       /^([A-Z0-9][A-Z0-9\-_./]{2,24})\s+(.+?)\s+(\d{1,6})(?:\s+([A-Z]{2,7}))?$/i.exec(linea);
-    if (!m) return null;
+    // I39: ítem "solo descripción" en texto plano (Tesseract colapsa las
+    // columnas a un solo espacio)
+    if (!m) return this.parseLineaSinRef(linea);
     const unidad = m[4] && UNIDADES.includes(m[4].toUpperCase()) ? m[4].toUpperCase() : m[4] ? null : 'UND';
     if (m[4] && unidad === null) {
       // La palabra final no es unidad conocida: la tratamos como parte de la descripción con cantidad ambigua → descartar
@@ -515,6 +538,48 @@ export class OcrFieldParser {
       descripcion: m[2].trim(),
       cantidad: parseInt(m[3], 10),
       unidad: unidad ?? 'UND',
+    };
+  }
+
+  /**
+   * I39: ítem SIN columna de referencia — "descripción + cantidad + unidad +
+   * valores". Formato de las facturas de compra extranjera (FCE) de
+   * proveedores como Magneti Marelli / COFAP:
+   *   AMORTIGUADOR TRAS GOLF3 CON PLATO COFAP   92 Und.   12.877   0%   1.184.706
+   * Tolera la cantidad pegada a la unidad ("92Und.") y el IVA% intermedio.
+   * La referencia queda vacía: el flujo de ingreso cruza por descripción o
+   * genera una provisional para corrección.
+   */
+  private parseLineaSinRef(linea: string): OcrItem | null {
+    const m =
+      /^(.+?)\s+(\d{1,6})\s*(UNIDAD(?:ES)?|UND|UN|PCS|PZA|CAJA|CJ|PAR|JGO|KIT|LT|KG)\.?(?=\s|$)(.*)$/i.exec(
+        linea,
+      );
+    if (!m) return null;
+    const descripcion = m[1].trim();
+    // La descripción debe ser texto real (varias letras), no cifras sueltas
+    if (descripcion.length < 4 || !/[A-ZÁÉÍÓÚÑ]{3,}/i.test(descripcion)) return null;
+    const cantidad = Math.round(Number(m[2]));
+    if (!Number.isFinite(cantidad) || cantidad <= 0) return null;
+    const unidadRaw = m[3].toUpperCase();
+    const unidad = ['UN', 'UND', 'UNIDAD', 'UNIDADES'].includes(unidadRaw)
+      ? 'UND'
+      : unidadRaw;
+    // Cola de valores: unitario, IVA% (se descarta) y total
+    const colaLimpia = (m[4] ?? '').replace(/\d+(?:[.,]\d+)?\s*%/g, ' ');
+    const nums = [
+      ...colaLimpia.matchAll(
+        /(\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?|\d+[.,]\d{1,2}|\d+)/g,
+      ),
+    ].map((x) => Number(x[1].replace(/\./g, '').replace(',', '.')));
+    if (!nums.length) return null;
+    return {
+      referencia: '',
+      descripcion,
+      cantidad,
+      unidad,
+      valorUnitario: nums.length >= 2 ? nums[0] : null,
+      valorTotal: nums[nums.length - 1],
     };
   }
 

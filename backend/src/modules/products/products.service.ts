@@ -8,6 +8,7 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, MoreThan, Repository } from 'typeorm';
 import { Product } from './entities/product.entity';
 import { ProductBarcode } from './entities/product-barcode.entity';
+import { WarehouseProductLocation } from '../warehouses/entities/warehouse-product-location.entity';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { AssignBarcodeDto } from './dto/assign-barcode.dto';
@@ -205,20 +206,28 @@ export class ProductsService {
    * e inventario (cantidad y bloqueada).
    */
   async lookup(codigo: string, empresaId?: string) {
+    const texto = (codigo || '').trim();
     // 1. Código de barras (global)
-    const porBarcode = await this.barcodes.findOne({ where: { barcode: codigo } });
+    const porBarcode = await this.barcodes.findOne({ where: { barcode: texto } });
     if (porBarcode) {
       return this.detalle(await this.findById(porBarcode.productId));
     }
-    // 2. Código exacto (por empresa si se indica)
-    const whereCodigo: any = { codigo };
-    if (empresaId) whereCodigo.empresaId = empresaId;
-    const porCodigo = await this.products.findOne({ where: whereCodigo });
+    // 2. Código (por empresa si se indica). I39: sin distinguir mayúsculas —
+    // hay códigos guardados con mezcla (p. ej. "RT-9828Vit") y la consulta
+    // debe encontrarlos igual.
+    const qbCodigo = this.products
+      .createQueryBuilder('p')
+      .where('UPPER(p.codigo) = :c', { c: texto.toUpperCase() });
+    if (empresaId) qbCodigo.andWhere('p.empresa_id = :empresaId', { empresaId });
+    const porCodigo = await qbCodigo.getOne();
     if (porCodigo) return this.detalle(porCodigo);
-    // 3. Código OE / referencias cruzadas (misma empresa)
+    // 3. Código OE / referencias cruzadas (misma empresa, también I39)
     const qb = this.products
       .createQueryBuilder('p')
-      .where('p.codigo_oe = :c OR p.ref_cruzada_1 = :c OR p.ref_cruzada_2 = :c', { c: codigo });
+      .where(
+        'UPPER(p.codigo_oe) = :c OR UPPER(p.ref_cruzada_1) = :c OR UPPER(p.ref_cruzada_2) = :c',
+        { c: texto.toUpperCase() },
+      );
     if (empresaId) qb.andWhere('p.empresa_id = :empresaId', { empresaId });
     const porRef = await qb.getOne();
     if (porRef) return this.detalle(porRef);
@@ -286,8 +295,15 @@ export class ProductsService {
     const empresa = (await this.dataSource
       .getRepository('companies')
       .findOne({ where: { id: product.empresaId } })) as any;
+    // I39: la ubicación que se muestra es la real de bodega (oficial o la de
+    // mayor cantidad); el campo de texto heredado del MVP solo queda como
+    // respaldo cuando el producto aún no tiene ubicación en la estructura.
+    const ubicaciones = await this.ubicacionesLegibles(product.id);
+    const oficial = ubicaciones.find((u) => u.esOficial) ?? ubicaciones[0];
     return {
       ...conBarcode,
+      ubicacion: oficial?.etiqueta ?? product.ubicacion ?? null,
+      ubicaciones,
       empresa: empresa
         ? { id: empresa.id, nombre: empresa.nombre, siglas: empresa.siglas }
         : { id: product.empresaId },
@@ -297,6 +313,39 @@ export class ProductsService {
         disponible: product.cantidad - product.cantidadBloqueada,
       },
     };
+  }
+
+  /** I39: todas las ubicaciones del producto con su etiqueta legible. */
+  private async ubicacionesLegibles(productId: string) {
+    const locs = await this.dataSource.getRepository(WarehouseProductLocation).find({
+      where: { productId },
+      relations: ['rack', 'rack.zone', 'rack.zone.aisle', 'rack.zone.aisle.floor', 'area'],
+      order: { cantidad: 'DESC' },
+    });
+    return locs.map((loc) => ({
+      id: loc.id,
+      cantidad: loc.cantidad,
+      esOficial: loc.esOficial,
+      etiqueta: this.etiquetaUbicacion(loc),
+    }));
+  }
+
+  /** I39: etiqueta humana de una ubicación (estante/nivel, área o tránsito). */
+  private etiquetaUbicacion(loc: WarehouseProductLocation): string {
+    if (loc.transito) return 'Tránsito';
+    if (loc.area) return loc.area.alias ?? 'Área';
+    if (loc.rack) {
+      const piso = loc.rack.zone?.aisle?.floor;
+      const pasillo = loc.rack.zone?.aisle;
+      const partes = [
+        piso ? (piso.alias ?? `Piso ${piso.numero}`) : null,
+        pasillo ? (pasillo.alias ?? `Pasillo ${pasillo.numero}`) : null,
+        loc.rack.alias ?? `Estante ${loc.rack.numero}`,
+        `Nivel ${loc.nivel ?? 1}`,
+      ];
+      return partes.filter(Boolean).join(' · ');
+    }
+    return 'Sin ubicación';
   }
 
   private async withBarcode(product: Product) {

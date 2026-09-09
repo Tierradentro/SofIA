@@ -57,4 +57,32 @@ describe('InboundMatcher', () => {
     expect(compararItem({ cantidadFacturada: 5, cantidadRecibida: 5, esNuevo: true }).estado)
       .toBe('NUEVO');
   });
+
+  it('I39: cruza por descripción normalizada cuando el documento no trae referencia', () => {
+    const prods = [
+      prod({ id: 'p9', codigo: 'AMO-G3', descripcion: 'Amortiguador tras Golf3 con plato Cofap' }),
+      prod({ id: 'p10', codigo: 'DUP-1', descripcion: 'BUJE BARRA DIR GOL PLUS COFAP' }),
+      prod({ id: 'p11', codigo: 'DUP-2', descripcion: 'BUJE BARRA DIR GOL PLUS COFAP' }),
+    ] as Product[];
+    const m = new InboundMatcher(prods, new Map());
+    // Coincidencia única tolerante a mayúsculas/tildes/puntuación
+    const r = m.matchPorDescripcion('AMORTIGUADOR TRAS GOLF3 CON PLATO COFAP');
+    expect(r.producto?.id).toBe('p9');
+    expect(r.criterio).toBe('DESCRIPCION');
+    // Descripción duplicada: no se adivina
+    expect(m.matchPorDescripcion('BUJE BARRA DIR GOL PLUS COFAP').producto).toBeNull();
+    // Desconocida o vacía: null
+    expect(m.matchPorDescripcion('NO EXISTE ESTE REPUESTO').producto).toBeNull();
+    expect(m.matchPorDescripcion('').producto).toBeNull();
+    expect(m.matchPorDescripcion(null).producto).toBeNull();
+  });
+
+  it('I39: existeCodigo compara sin distinguir mayúsculas', () => {
+    const m = new InboundMatcher(
+      [prod({ id: 'p1', codigo: 'SR-61-01' })] as Product[],
+      new Map(),
+    );
+    expect(m.existeCodigo('sr-61-01')).toBe(true);
+    expect(m.existeCodigo('SR-61-02')).toBe(false);
+  });
 });

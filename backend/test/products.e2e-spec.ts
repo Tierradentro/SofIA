@@ -304,6 +304,34 @@ describe('Productos (e2e)', () => {
     expect(cambioEmpresa.status).toBe(400);
   });
 
+  it('I39: la consulta por código muestra la ubicación real de bodega y no distingue mayúsculas', async () => {
+    // Reporte del usuario: "RT-9828Vit" no se encontraba por código y la
+    // ubicación salía vacía aun con localización asignada en la bodega.
+    const p = await crearProducto(ireId, 'RT-9828Vit', 'Amortiguador trasero Vitara');
+    const mapa = await t.http
+      .get('/api/v1/warehouses/map')
+      .set('Authorization', `Bearer ${generadorToken}`);
+    const rack = mapa.body.pisos[0].pasillos[0].zonas
+      .find((z: any) => z.estantes.length > 0).estantes[0];
+    const loc = await t.http
+      .post('/api/v1/warehouses/locations')
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ productId: p.id, rackId: rack.id, nivel: 2, cantidad: 5 });
+    expect(loc.status).toBe(201);
+
+    // Consulta con otro patrón de mayúsculas: lo encuentra igual
+    const res = await t.http
+      .get(`/api/v1/products/lookup/rt-9828vit?empresaId=${ireId}`)
+      .set('Authorization', `Bearer ${operadorToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.codigo).toBe('RT-9828Vit');
+    // La ubicación ya NO es el campo de texto heredado: es la real de bodega
+    expect(res.body.ubicacion).toContain('Nivel 2');
+    expect(res.body.ubicacion).toContain(rack.alias);
+    expect(res.body.ubicaciones).toHaveLength(1);
+    expect(res.body.ubicaciones[0].esOficial).toBe(true);
+  });
+
   it('Aislamiento multiempresa: listado por empresa nunca mezcla productos', async () => {
     const ire = await t.http
       .get(`/api/v1/products?empresaId=${ireId}`)

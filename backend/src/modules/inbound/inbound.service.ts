@@ -92,13 +92,31 @@ export class InboundService {
         'La actividad de ingreso requiere al menos un producto (items)',
       );
     }
+    const matcher = await this.buildMatcher(dto.empresaId);
+    // I39: las facturas de compra extranjera de algunos proveedores no traen
+    // columna de referencia — el OCR extrae los ítems solo con descripción.
+    // Se intenta cruzar por descripción exacta normalizada; si no hay
+    // producto, se genera una referencia provisional SR-<factura>-<##> que
+    // queda marcada como producto nuevo para corrección posterior.
+    let seqProvisional = 0;
     for (const it of itemsDto) {
-      if (!it.referencia?.trim()) {
+      if (it.referencia?.trim()) continue;
+      if (!it.descripcion?.trim()) {
         throw new BadRequestException('Cada item requiere referencia');
       }
+      const porDesc = matcher.matchPorDescripcion(it.descripcion);
+      if (porDesc.producto) {
+        it.referencia = porDesc.producto.codigo;
+        continue;
+      }
+      seqProvisional += 1;
+      it.referencia = this.referenciaProvisional(
+        matcher,
+        numeroFactura,
+        seqProvisional,
+      );
     }
 
-    const matcher = await this.buildMatcher(dto.empresaId);
     const receipt = await this.dataSource.transaction(async (em) => {
       const saved = await em.save(
         em.create(InboundReceipt, {
@@ -490,6 +508,29 @@ export class InboundService {
       if (ids.has(b.productId)) map.set(b.barcode.trim().toUpperCase(), b.productId);
     }
     return new InboundMatcher(productos, map);
+  }
+
+  /**
+   * I39: referencia provisional para ítems sin código en el documento
+   * (SR-<factura>-<##>), única contra los códigos existentes de la empresa.
+   * El producto creado al aprobar queda con este código, editable después.
+   */
+  private referenciaProvisional(
+    matcher: InboundMatcher,
+    numeroFactura: string | null,
+    seq: number,
+  ): string {
+    const base = (
+      (numeroFactura ?? 'SINFACTURA').replace(/[^A-Za-z0-9]/g, '').toUpperCase() ||
+      'SINFACTURA'
+    ).slice(0, 12);
+    let candidato = `SR-${base}-${String(seq).padStart(2, '0')}`;
+    let extra = 0;
+    while (matcher.existeCodigo(candidato)) {
+      extra += 1;
+      candidato = `SR-${base}-${String(seq).padStart(2, '0')}${String.fromCharCode(64 + extra)}`;
+    }
+    return candidato;
   }
 
   /** CU-001: creación automática de producto nuevo (ubicación pendiente). */

@@ -504,11 +504,19 @@ export class DispatchesService {
   /**
    * M10/HU-053: consulta de caja por su box_id visible (contenido del QR).
    * Muestra productos, cantidades, cliente, empresas, documentos y fecha.
+   * I39: algunos lectores de código de barras (según la distribución de
+   * teclado del equipo) envían un apóstrofe/acento donde la etiqueta tiene
+   * el guion (CJA'000001 en vez de CJA-000001); se normaliza para que la
+   * caja se encuentre igual.
    */
   async consultaCaja(boxId: string) {
+    const normalizado = boxId
+      .trim()
+      .toUpperCase()
+      .replace(/[''’`´]/g, '-');
     const box = await this.dataSource
       .getRepository(Box)
-      .findOne({ where: { boxId: boxId.trim().toUpperCase() } });
+      .findOne({ where: { boxId: normalizado } });
     if (!box) throw new NotFoundException(`Caja ${boxId} no encontrada`);
     const items = await this.dataSource
       .getRepository(BoxItem)

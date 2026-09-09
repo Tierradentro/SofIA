@@ -113,6 +113,39 @@ describe('Warehouses (e2e)', () => {
     expect(res.body.ubicaciones[0].rack.zone.aisle.numero).toBe(1);
   });
 
+  it('I39: localiza un código guardado con mayúsculas y minúsculas mezcladas', async () => {
+    // Reporte del usuario: "RT-9828Vit" no se encontraba por código en el
+    // mapa (sí por código de barras) porque la comparación era exacta contra
+    // el texto en MAYÚSCULAS.
+    const prod = await t.http
+      .post('/api/v1/products')
+      .set('Authorization', `Bearer ${tokenGenerador}`)
+      .send({
+        empresaId,
+        codigo: 'RT-9828Vit',
+        descripcion: 'Amortiguador trasero Vitara',
+        unidadMedida: 'UND',
+        precio: 50000,
+      });
+    expect(prod.status).toBe(201);
+    const mapa = await t.http.get('/api/v1/warehouses/map').set('Authorization', `Bearer ${tokenAdmin}`);
+    const rack = mapa.body.pisos[0].pasillos[0].zonas.find((z: any) => z.estantes.length > 0).estantes[1];
+    await t.http
+      .post('/api/v1/warehouses/locations')
+      .set('Authorization', `Bearer ${tokenGenerador}`)
+      .send({ productId: prod.body.id, rackId: rack.id, nivel: 1, cantidad: 3 });
+
+    for (const q of ['RT-9828Vit', 'rt-9828vit', 'RT-9828VIT']) {
+      const res = await t.http
+        .get('/api/v1/warehouses/locate')
+        .query({ q })
+        .set('Authorization', `Bearer ${tokenOperador}`);
+      expect(res.status).toBe(200);
+      expect(res.body.product.codigo).toBe('RT-9828Vit');
+      expect(res.body.ubicaciones.length).toBeGreaterThanOrEqual(1);
+    }
+  });
+
   it('GET /warehouses/racks/:id devuelve niveles con productos y empresa', async () => {
     const mapa = await t.http.get('/api/v1/warehouses/map').set('Authorization', `Bearer ${tokenAdmin}`);
     const rack = mapa.body.pisos[0].pasillos[0].zonas.find((z: any) => z.estantes.length > 0).estantes[0];

@@ -8,9 +8,18 @@ import { useAvisoEstadosPedidos } from '@/lib/sonido';
 import { AppShell } from '@/components/app-shell';
 import { SelectorEmpresa } from '@/components/selector-empresa';
 import { COLORES_PESTANA, EncabezadoPagina } from '@/components/ui';
+import {
+  ConteoItems,
+  docCampo,
+  docInputDisabled,
+  EncabezadoTablaDoc,
+  MarcoDocumento,
+  TarjetaEmisor,
+  TotalDocumento,
+} from '@/components/orden-pedido';
 
 
-interface Empresa { id: string; nombre: string; siglas: string }
+interface Empresa { id: string; nombre: string; siglas: string; identificacion?: string | null }
 
 interface OrderItem {
   id: string;
@@ -38,16 +47,18 @@ interface Pedido {
   numero: string;
   ordenPedido: string | null;
   ciudad: string | null;
+  direccionDespacho?: string | null;
   clienteId: string;
   comercialId: string | null;
   notas: string | null;
   numeroFactura: string | null;
+  motivoCancelacion?: string | null;
   estado: 'ABIERTO' | 'ALISTADO' | 'APROBADO' | 'PENDIENTE_CORRECCION' | 'CANCELADO' | 'DESPACHADO';
   createdAt: string;
   createdBy: string;
   items: OrderItem[];
   valorTotal: number;
-  cliente: { id: string; nombre: string; identificacion: string; ciudad: string } | null;
+  cliente: { id: string; nombre: string; identificacion: string; ciudad: string; direccion?: string | null; telefonos?: string | null } | null;
   alistadoAt?: string | null;
   aprobadoAt?: string | null;
   trazabilidad?: {
@@ -79,6 +90,8 @@ function PedidosContenido() {
   const [sesion, setSesion] = useState<Sesion | null>(null);
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
   const [empresaId, setEmpresaId] = useState('');
+  // I39: nombre del vendedor en la cabecera del documento del pedido
+  const [comerciales, setComerciales] = useState<{ id: string; nombre: string }[]>([]);
   const [lista, setLista] = useState<Pedido[]>([]);
   // QA Func. 3.1: pestañas principales (ciclo activo) + "Otros estados" secundario
   const [pestana, setPestana] = useState<'ABIERTO' | 'ALISTADO' | 'APROBADO' | 'DESPACHADO' | 'OTROS'>('ABIERTO');
@@ -128,6 +141,9 @@ function PedidosContenido() {
         setEmpresas(body);
         setEmpresaId(body[0].id);
       }
+    });
+    api<{ id: string; nombre: string }[]>('/comerciales').then(({ status, body }) => {
+      if (status === 200) setComerciales(body);
     });
   }, [router]);
 
@@ -427,30 +443,122 @@ function PedidosContenido() {
           </div>
         </section>
 
+        {/* I39: el detalle (Pedidos y Alistamiento → Abrir) usa el mismo
+            visual del documento de creación; la cabecera adiciona el estado,
+            la factura relacionada y la trazabilidad desde la creación hasta
+            la última novedad */}
         {pedido && (
-          <section className="rounded-lg bg-white p-5 shadow">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h2 className="font-semibold">
-                Pedido {pedido.numero} ·{' '}
-                <span className={pedido.estado === 'PENDIENTE_CORRECCION' ? 'text-red-700' : ''}>
-                  {ESTADOS[pedido.estado]}
-                </span>
-              </h2>
-              <p className="text-sm text-slate-600">
-                {pedido.cliente?.nombre} · Total ${pedido.valorTotal.toLocaleString()}
-                {pedido.numeroFactura && ` · Factura ${pedido.numeroFactura}`}
-              </p>
-              {/* I19: quién realizó cada actividad hasta la aprobación; I36: tiempo relativo (h → días → meses) */}
-              {pedido.trazabilidad && (
-                <p className="mt-1 text-xs text-slate-500">
-                  {pedido.trazabilidad.creadoPor &&
-                    `Creado por ${pedido.trazabilidad.creadoPor.nombre} (${pedido.trazabilidad.creadoPor.username}) · ${new Date(pedido.createdAt).toLocaleString('es-CO')} (${tiempoRelativo(pedido.createdAt)})`}
-                  {pedido.trazabilidad.alistadoPor &&
-                    ` · Alistado por ${pedido.trazabilidad.alistadoPor.nombre} (${pedido.trazabilidad.alistadoPor.username})${pedido.alistadoAt ? ` · ${new Date(pedido.alistadoAt).toLocaleString('es-CO')} (${tiempoRelativo(pedido.alistadoAt)})` : ''}`}
-                  {pedido.trazabilidad.aprobadoPor &&
-                    ` · Aprobado por ${pedido.trazabilidad.aprobadoPor.nombre} (${pedido.trazabilidad.aprobadoPor.username})${pedido.aprobadoAt ? ` · ${new Date(pedido.aprobadoAt).toLocaleString('es-CO')} (${tiempoRelativo(pedido.aprobadoAt)})` : ''}`}
-                </p>
-              )}
+          <MarcoDocumento
+            titulo="Orden de Pedido"
+            acciones={
+              <button type="button" onClick={() => setPedido(null)}
+                className="rounded bg-white px-3 py-1 text-sofia-900 hover:bg-slate-100">
+                ✕ Cerrar
+              </button>
+            }
+          >
+            <TarjetaEmisor
+              numero={pedido.numero}
+              estado={pedido.estado}
+              factura={pedido.numeroFactura}
+              empresa={
+                <input
+                  disabled
+                  className={docInputDisabled}
+                  value={(() => {
+                    const emp = empresas.find((e) => e.id === (pedido.empresaId ?? empresaId));
+                    return emp ? `${emp.nombre}${emp.identificacion ? ` (NIT: ${emp.identificacion})` : ''}` : '';
+                  })()}
+                />
+              }
+              trazabilidad={
+                pedido.trazabilidad && (
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-600">
+                    <span className="font-semibold uppercase tracking-wide text-slate-400">Trazabilidad:</span>
+                    {/* I19: quién realizó cada hito; I36: tiempo relativo */}
+                    <span className="rounded bg-slate-100 px-2 py-0.5">
+                      Creado por {pedido.trazabilidad.creadoPor ? `${pedido.trazabilidad.creadoPor.nombre} (${pedido.trazabilidad.creadoPor.username})` : '—'}
+                      {' · '}{new Date(pedido.createdAt).toLocaleString('es-CO')} ({tiempoRelativo(pedido.createdAt)})
+                    </span>
+                    {pedido.trazabilidad.alistadoPor && (
+                      <>
+                        <span className="text-slate-400">→</span>
+                        <span className="rounded bg-slate-100 px-2 py-0.5">
+                          Alistado por {pedido.trazabilidad.alistadoPor.nombre} ({pedido.trazabilidad.alistadoPor.username})
+                          {pedido.alistadoAt ? ` · ${new Date(pedido.alistadoAt).toLocaleString('es-CO')} (${tiempoRelativo(pedido.alistadoAt)})` : ''}
+                        </span>
+                      </>
+                    )}
+                    {pedido.trazabilidad.aprobadoPor && (
+                      <>
+                        <span className="text-slate-400">→</span>
+                        <span className="rounded bg-slate-100 px-2 py-0.5">
+                          Aprobado por {pedido.trazabilidad.aprobadoPor.nombre} ({pedido.trazabilidad.aprobadoPor.username})
+                          {pedido.aprobadoAt ? ` · ${new Date(pedido.aprobadoAt).toLocaleString('es-CO')} (${tiempoRelativo(pedido.aprobadoAt)})` : ''}
+                        </span>
+                      </>
+                    )}
+                    {pedido.estado === 'DESPACHADO' && (
+                      <>
+                        <span className="text-slate-400">→</span>
+                        <span className="rounded bg-slate-100 px-2 py-0.5">Despachado</span>
+                      </>
+                    )}
+                    {pedido.estado === 'CANCELADO' && (
+                      <>
+                        <span className="text-slate-400">→</span>
+                        <span className="rounded bg-red-50 px-2 py-0.5 text-red-700">
+                          Cancelado{pedido.motivoCancelacion ? `: ${pedido.motivoCancelacion}` : ''}
+                        </span>
+                      </>
+                    )}
+                    {pedido.estado === 'PENDIENTE_CORRECCION' && (
+                      <>
+                        <span className="text-slate-400">→</span>
+                        <span className="rounded bg-red-50 px-2 py-0.5 text-red-700">
+                          Última novedad: pendiente de corrección
+                        </span>
+                      </>
+                    )}
+                  </div>
+                )
+              }
+            />
+
+            {/* Datos del documento (solo lectura) */}
+            <div className="mb-4 grid grid-cols-2 gap-3 rounded-lg border p-4 sm:grid-cols-6">
+              <label className={docCampo}>
+                Fecha:
+                <input disabled className={docInputDisabled}
+                  value={new Date(pedido.createdAt).toLocaleDateString('es-CO')} />
+              </label>
+              <label className={`${docCampo} sm:col-span-2`}>
+                Ciudad:
+                <input disabled className={docInputDisabled}
+                  value={pedido.ciudad ?? pedido.cliente?.ciudad ?? ''} />
+              </label>
+              <label className={`${docCampo} sm:col-span-3`}>
+                Vendedor:
+                <input disabled className={docInputDisabled}
+                  value={comerciales.find((c) => c.id === pedido.comercialId)?.nombre ?? '—'} />
+              </label>
+              <label className={`${docCampo} col-span-2 sm:col-span-4`}>
+                Cliente:
+                <input disabled className={docInputDisabled} value={pedido.cliente?.nombre ?? ''} />
+              </label>
+              <label className={`${docCampo} sm:col-span-2`}>
+                Nit:
+                <input disabled className={docInputDisabled} value={pedido.cliente?.identificacion ?? ''} />
+              </label>
+              <label className={`${docCampo} col-span-2 sm:col-span-4`}>
+                Dirección:
+                <input disabled className={docInputDisabled}
+                  value={pedido.direccionDespacho ?? pedido.cliente?.direccion ?? ''} />
+              </label>
+              <label className={`${docCampo} sm:col-span-2`}>
+                Teléfono:
+                <input disabled className={docInputDisabled} value={pedido.cliente?.telefonos ?? ''} />
+              </label>
             </div>
 
             {pedido.estado === 'PENDIENTE_CORRECCION' && (
@@ -521,35 +629,34 @@ function PedidosContenido() {
               </div>
             )}
 
-            <div className="overflow-x-auto">
+            {/* I39: tabla de ítems con el formato del documento */}
+            <div className="overflow-x-auto rounded-lg border">
             <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left">
-                  <th className="py-1">Código</th>
-                  <th>Descripción</th>
-                  <th>Marca</th>
-                  <th className="w-20">Pedida</th>
-                  <th className="w-20">Alistada</th>
-                  <th className="w-20">Pendiente</th>
-                  <th className="w-24">V. Unidad</th>
-                  <th className="w-24">V. Total</th>
-                </tr>
-              </thead>
+              <EncabezadoTablaDoc
+                columnas={['#', 'Referencia', 'Marca', 'Descripción', 'Cant.', 'Alistada', 'Pend.', 'Vr. Unit', 'Vr. Total']}
+              />
               <tbody>
-                {pedido.items.map((i) => (
+                {pedido.items.map((i, idx) => (
                   <tr key={i.id} className="border-b">
-                    <td className="py-1 font-medium">{i.codigo}</td>
-                    <td>{i.descripcion}</td>
-                    <td>{i.marca ?? '—'}</td>
-                    <td>{i.cantidad}</td>
-                    <td className={i.cantidadAlistada === i.cantidad ? 'text-green-700' : ''}>{i.cantidadAlistada}</td>
-                    <td className={i.pendiente > 0 ? 'text-lg font-bold text-amber-700' : ''}>{i.pendiente}</td>
-                    <td>${Number(i.valorUnidad).toLocaleString()}</td>
-                    <td>${Number(i.valorTotal).toLocaleString()}</td>
+                    <td className="px-2 py-1.5 text-center text-slate-400">{idx + 1}</td>
+                    <td className="px-2 py-1.5 font-medium">{i.codigo}</td>
+                    <td className="px-2 py-1.5">{i.marca ?? '—'}</td>
+                    <td className="px-2 py-1.5">{i.descripcion}</td>
+                    <td className="w-16 px-2 py-1.5">{i.cantidad}</td>
+                    <td className={`w-16 px-2 py-1.5 ${i.cantidadAlistada === i.cantidad ? 'text-green-700' : ''}`}>{i.cantidadAlistada}</td>
+                    <td className={`w-16 px-2 py-1.5 ${i.pendiente > 0 ? 'text-lg font-bold text-amber-700' : ''}`}>{i.pendiente}</td>
+                    <td className="w-24 px-2 py-1.5">$ {Number(i.valorUnidad).toLocaleString('es-CO')}</td>
+                    <td className="w-24 px-2 py-1.5">$ {Number(i.valorTotal).toLocaleString('es-CO')}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            </div>
+            <div className="mt-2 flex justify-end">
+              <ConteoItems
+                productos={pedido.items.length}
+                unidades={pedido.items.reduce((acc, i) => acc + i.cantidad, 0)}
+              />
             </div>
 
             {/* Corrección del creador */}
@@ -626,6 +733,15 @@ function PedidosContenido() {
               </div>
             )}
 
+            {/* I39: pie del documento — observaciones y total */}
+            <div className="mt-4 flex flex-wrap items-stretch justify-between gap-3">
+              <label className={`${docCampo} min-w-72 flex-1`}>
+                Observaciones / Notas
+                <textarea disabled rows={3} value={pedido.notas ?? ''} className={`${docInputDisabled} mt-1`} />
+              </label>
+              <TotalDocumento valor={pedido.valorTotal} />
+            </div>
+
             {/* HU-032: factura de venta (Generador) */}
             {esGenerador && pedido.estado === 'ALISTADO' && (
               <div className="mt-4 rounded bg-slate-50 p-3">
@@ -651,7 +767,7 @@ function PedidosContenido() {
                 Cancelar pedido
               </button>
             )}
-          </section>
+          </MarcoDocumento>
         )}
       </div>
         </AppShell>

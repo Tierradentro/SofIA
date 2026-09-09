@@ -236,4 +236,65 @@ describe('OcrFieldParser', () => {
     expect(r.items[0].valorTotal).toBe(91000);
     expect(r.total).toBe(91000);
   });
+
+  it('I39: factura de compra extranjera FCE 61 (Magneti Marelli) sin columna de referencia', () => {
+    // Texto tal como lo devuelve `pdftotext -layout` del PDF adjunto por el
+    // usuario: ítems "solo descripción" con la cantidad junto a "Und.",
+    // IVA% intermedio y descripciones que continúan tras la cola numérica.
+    const texto = readFileSync(
+      join(__dirname, '../../../test/fixtures/factura-importacion-fce61.txt'),
+      'utf8',
+    );
+    const r = parser.parse(texto, DocumentType.FACTURA_IMPORTACION);
+    // Cabecera: folio del título, fecha larga en español, proveedor truncado
+    expect(r.numeroFactura).toBe('61');
+    expect(r.fecha).toBe('2026-07-24'); // "viernes, 24 de julio de 2026"
+    expect(r.proveedor).toBe('MAGNETI MARELLI');
+    expect(r.direccion).toBe('AV MANOEL DA NOBREGA 1');
+    expect(r.total).toBe(74880663); // TOTAL DOCUMENTO
+    // Los 38 ítems de la factura, todos sin referencia y con valores
+    expect(r.items).toHaveLength(38);
+    expect(r.items[0]).toEqual({
+      referencia: '',
+      descripcion: 'AMORTIGUADOR TRAS GOLF3 CON PLATO COFAP',
+      cantidad: 92,
+      unidad: 'UND',
+      valorUnitario: 12877,
+      valorTotal: 1184706,
+    });
+    // Descripciones que envuelven a la línea siguiente se reconstruyen
+    const kitX2p = r.items.find((i) => i.cantidad === 300);
+    expect(kitX2p?.descripcion).toBe(
+      'KIT TOPE Y GUARDAPOLVO AMORT DEL GOL X2P BRASIL COFAP',
+    );
+    const tracker = r.items.find((i) => i.cantidad === 24);
+    expect(tracker?.descripcion).toBe(
+      'KIT TOPE Y GUARDAPOLVO AMORT DEL CHEVROLET TRACKER 2014 COFAP',
+    );
+    // Cantidades con modelos/años dentro de la descripción no se confunden
+    const espiral = r.items.find((i) => i.cantidad === 4);
+    expect(espiral?.descripcion).toBe('ESPIRAL DEL GOL 1.6 1.8 00>09 COFAP');
+    // La suma de los totales cuadra con el SUBTOTAL del documento (±1 peso
+    // de redondeo propio de la factura original)
+    const suma = r.items.reduce((a, i) => a + (i.valorTotal ?? 0), 0);
+    expect(Math.abs(suma - 79342772)).toBeLessThanOrEqual(1);
+  });
+
+  it('I39: tolera la cantidad pegada a la unidad ("92Und.") como sale de Tesseract', () => {
+    const texto = [
+      'AMORTIGUADOR TRAS GOLF3 CON PLATO COFAP 92Und. 12.877 0% 1.184.706',
+      'BOBINA IGNICION GOL 1.6 MAGNETI 20Und. 22.535 0% 450.703',
+    ].join('\n');
+    const r = parser.parse(texto, DocumentType.FACTURA_IMPORTACION);
+    expect(r.items).toHaveLength(2);
+    expect(r.items[0]).toMatchObject({
+      referencia: '',
+      descripcion: 'AMORTIGUADOR TRAS GOLF3 CON PLATO COFAP',
+      cantidad: 92,
+      unidad: 'UND',
+      valorUnitario: 12877,
+      valorTotal: 1184706,
+    });
+    expect(r.items[1].cantidad).toBe(20);
+  });
 });
