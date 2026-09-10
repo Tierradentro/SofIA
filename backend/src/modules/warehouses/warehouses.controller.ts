@@ -108,6 +108,13 @@ export class WarehousesController {
     return this.warehouses.areaDetalle(id);
   }
 
+  /** I40: detalle del fondo del pasillo (zona FONDO): productos almacenados. */
+  @Get('zones/:id')
+  @Roles(Role.OPERADOR, Role.GENERADOR, Role.ADMINISTRADOR)
+  zonaDetalle(@Param('id', ParseUUIDPipe) id: string) {
+    return this.warehouses.zonaDetalle(id);
+  }
+
   /** Ubicaciones de un producto — roles operativos. */
   @Get('products/:id/locations')
   @Roles(Role.OPERADOR, Role.GENERADOR, Role.ADMINISTRADOR)

@@ -272,4 +272,59 @@ describe('Warehouses (e2e)', () => {
     expect(movido.body.alias).toBe('Pasillo central');
     expect(movido.body.posX).toBe(5);
   });
+
+  it('I40: el fondo del pasillo se puede asignar, aparece en el mapa y tiene detalle propio', async () => {
+    const mapa = await t.http.get('/api/v1/warehouses/map').set('Authorization', `Bearer ${tokenAdmin}`);
+    const pasillo = mapa.body.pisos[0].pasillos[0];
+    const fondo = pasillo.zonas.find((z: any) => z.lado === 'FONDO');
+    expect(fondo).toBeDefined();
+    expect(fondo.estantes).toHaveLength(0);
+
+    // Asignar producto al fondo con la mayor cantidad → pasa a ser la oficial
+    const asignar = await t.http
+      .post('/api/v1/warehouses/locations')
+      .set('Authorization', `Bearer ${tokenGenerador}`)
+      .send({ productId: productoId, zonaId: fondo.id, cantidad: 50 });
+    expect(asignar.status).toBe(201);
+
+    // El mapa reporta la ocupación en la zona misma (no tiene estantes)
+    const mapa2 = await t.http.get('/api/v1/warehouses/map').set('Authorization', `Bearer ${tokenAdmin}`);
+    const fondo2 = mapa2.body.pisos[0].pasillos[0].zonas.find((z: any) => z.lado === 'FONDO');
+    expect(fondo2.cantidad).toBe(50);
+    expect(fondo2.empresas).toHaveLength(1);
+    expect(fondo2.empresas[0].cantidad).toBe(50);
+
+    // Detalle del fondo: productos almacenados en ese espacio
+    const det = await t.http.get(`/api/v1/warehouses/zones/${fondo.id}`).set('Authorization', `Bearer ${tokenOperador}`);
+    expect(det.status).toBe(200);
+    expect(det.body.zona.lado).toBe('FONDO');
+    expect(det.body.productos).toHaveLength(1);
+    expect(det.body.productos[0].codigo).toBe('MAPA-001');
+    expect(det.body.productos[0].cantidad).toBe(50);
+
+    // El detalle por zona solo aplica al fondo (los lados se ven por estante)
+    const lado = pasillo.zonas.find((z: any) => z.estantes.length > 0);
+    const detLado = await t.http.get(`/api/v1/warehouses/zones/${lado.id}`).set('Authorization', `Bearer ${tokenOperador}`);
+    expect(detLado.status).toBe(400);
+
+    // Localizar devuelve la cadena zona → pasillo → piso
+    const loc = await t.http.get('/api/v1/warehouses/locate').query({ q: 'MAPA-001' }).set('Authorization', `Bearer ${tokenOperador}`);
+    const enFondo = loc.body.ubicaciones.find((u: any) => u.zone);
+    expect(enFondo).toBeDefined();
+    expect(enFondo.zone.lado).toBe('FONDO');
+    expect(enFondo.zone.aisle.numero).toBe(1);
+
+    // Solo se puede asignar a zonas FONDO; lado con estantes → 400, inexistente → 404
+    const malLado = await t.http.post('/api/v1/warehouses/locations').set('Authorization', `Bearer ${tokenGenerador}`)
+      .send({ productId: productoId, zonaId: lado.id, cantidad: 1 });
+    expect(malLado.status).toBe(400);
+    const inexistente = await t.http.post('/api/v1/warehouses/locations').set('Authorization', `Bearer ${tokenGenerador}`)
+      .send({ productId: productoId, zonaId: '00000000-0000-0000-0000-000000000000', cantidad: 1 });
+    expect(inexistente.status).toBe(404);
+
+    // La ubicación oficial (mayor cantidad) codifica el fondo en la exportación
+    const csv = await t.http.get(`/api/v1/exports/products.csv?empresaId=${empresaId}`).set('Authorization', `Bearer ${tokenGenerador}`);
+    expect(csv.status).toBe(200);
+    expect(csv.text).toContain('P1-A1-FONDO');
+  });
 });

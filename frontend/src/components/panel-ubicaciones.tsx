@@ -23,6 +23,11 @@ interface OpcionArea {
   areaId: string;
   etiqueta: string;
 }
+/** I40: fondo del pasillo (zona FONDO configurada, un solo espacio). */
+interface OpcionFondo {
+  zonaId: string;
+  etiqueta: string;
+}
 interface Ubicacion {
   id: string;
   nivel?: number | null;
@@ -30,6 +35,8 @@ interface Ubicacion {
   esOficial: boolean;
   transito: boolean;
   rack?: { id: string; alias: string; numero: number; zone?: { lado: string; aisle?: { numero: number; floor?: { numero: number } } } } | null;
+  /** I40: ubicación en el fondo del pasillo (sin estante). */
+  zone?: { id: string; lado: string; alias?: string | null; aisle?: { numero: number; floor?: { numero: number } } } | null;
   area?: { id: string; alias: string; tipo: string } | null;
 }
 
@@ -43,6 +50,12 @@ const ETIQUETA_AREA: Record<string, string> = {
 
 export function etiquetaUbicacion(u: Ubicacion): string {
   if (u.transito) return 'En tránsito';
+  // I40: fondo del pasillo
+  if (u.zone) {
+    const piso = u.zone.aisle?.floor?.numero ?? 1;
+    const pasillo = u.zone.aisle?.numero ?? 0;
+    return `P${piso} · Pasillo ${pasillo} · ${u.zone.alias || 'Fondo del pasillo'}`;
+  }
   if (u.rack) {
     const piso = u.rack.zone?.aisle?.floor?.numero ?? 1;
     const pasillo = u.rack.zone?.aisle?.numero ?? 0;
@@ -76,27 +89,31 @@ export function PanelUbicaciones({
   const [ubicaciones, setUbicaciones] = useState<Ubicacion[]>([]);
   const [estantes, setEstantes] = useState<OpcionEstante[]>([]);
   const [areas, setAreas] = useState<OpcionArea[]>([]);
+  // I40: fondos de pasillo configurados (aparecen solo si la bodega los tiene)
+  const [fondos, setFondos] = useState<OpcionFondo[]>([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
   const [mensaje, setMensaje] = useState('');
 
   // formulario de asignación
-  const [destino, setDestino] = useState<'rack' | 'area' | 'transito'>('rack');
+  const [destino, setDestino] = useState<'rack' | 'area' | 'fondo' | 'transito'>('rack');
   const [rackId, setRackId] = useState('');
   const [nivel, setNivel] = useState(1);
   const [areaId, setAreaId] = useState('');
+  const [zonaId, setZonaId] = useState('');
   const [cantidad, setCantidad] = useState(1);
   const [guardando, setGuardando] = useState(false);
 
   // I35: edición en línea de una ubicación existente (modificar)
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [edit, setEdit] = useState<{
-    destino: 'rack' | 'area' | 'transito';
+    destino: 'rack' | 'area' | 'fondo' | 'transito';
     rackId: string;
     nivel: number;
     areaId: string;
+    zonaId: string;
     cantidad: number;
-  }>({ destino: 'rack', rackId: '', nivel: 1, areaId: '', cantidad: 0 });
+  }>({ destino: 'rack', rackId: '', nivel: 1, areaId: '', zonaId: '', cantidad: 0 });
   const [guardandoEd, setGuardandoEd] = useState(false);
 
   async function cargar() {
@@ -111,9 +128,17 @@ export function PanelUbicaciones({
       if (mapa.status === 200) {
         const opsE: OpcionEstante[] = [];
         const opsA: OpcionArea[] = [];
+        const opsF: OpcionFondo[] = [];
         for (const piso of mapa.body.pisos) {
           for (const pas of piso.pasillos) {
             for (const z of pas.zonas) {
+              // I40: el fondo del pasillo es asignable (un solo espacio)
+              if (z.lado === 'FONDO') {
+                opsF.push({
+                  zonaId: z.id,
+                  etiqueta: `P${piso.numero} · Pasillo ${pas.numero} · ${z.alias || 'Fondo del pasillo'}`,
+                });
+              }
               for (const e of z.estantes) {
                 opsE.push({
                   rackId: e.id,
@@ -131,8 +156,10 @@ export function PanelUbicaciones({
         }
         setEstantes(opsE);
         setAreas(opsA);
+        setFondos(opsF);
         if (opsE.length && !rackId) setRackId(opsE[0].rackId);
         if (opsA.length && !areaId) setAreaId(opsA[0].areaId);
+        if (opsF.length && !zonaId) setZonaId(opsF[0].zonaId);
       }
     } catch {
       setError('No se pudieron cargar las ubicaciones.');
@@ -157,6 +184,8 @@ export function PanelUbicaciones({
       payload.nivel = nivel;
     } else if (destino === 'area') {
       payload.areaId = areaId;
+    } else if (destino === 'fondo') {
+      payload.zonaId = zonaId;
     } else {
       payload.transito = true;
     }
@@ -179,17 +208,25 @@ export function PanelUbicaciones({
     setError('');
     setMensaje('');
     setEditandoId(u.id);
+    const base = {
+      rackId: estantes[0]?.rackId ?? '',
+      nivel: 1,
+      areaId: areas[0]?.areaId ?? '',
+      zonaId: fondos[0]?.zonaId ?? '',
+      cantidad: u.cantidad,
+    };
     if (u.transito) {
-      setEdit({ destino: 'transito', rackId: estantes[0]?.rackId ?? '', nivel: 1, areaId: areas[0]?.areaId ?? '', cantidad: u.cantidad });
+      setEdit({ ...base, destino: 'transito' });
+    } else if (u.zone) {
+      setEdit({ ...base, destino: 'fondo', zonaId: u.zone.id });
     } else if (u.area) {
-      setEdit({ destino: 'area', rackId: estantes[0]?.rackId ?? '', nivel: 1, areaId: u.area.id, cantidad: u.cantidad });
+      setEdit({ ...base, destino: 'area', areaId: u.area.id });
     } else {
       setEdit({
+        ...base,
         destino: 'rack',
-        rackId: u.rack?.id ?? estantes[0]?.rackId ?? '',
+        rackId: u.rack?.id ?? base.rackId,
         nivel: u.nivel ?? 1,
-        areaId: areas[0]?.areaId ?? '',
-        cantidad: u.cantidad,
       });
     }
   }
@@ -204,6 +241,8 @@ export function PanelUbicaciones({
       payload.nivel = edit.nivel;
     } else if (edit.destino === 'area') {
       payload.areaId = edit.areaId;
+    } else if (edit.destino === 'fondo') {
+      payload.zonaId = edit.zonaId;
     } else {
       payload.transito = true;
     }
@@ -282,8 +321,9 @@ export function PanelUbicaciones({
                     [
                       ['rack', 'Estante + nivel'],
                       ['area', 'Bahía'],
+                      ...(fondos.length ? ([['fondo', 'Fondo del pasillo']] as const) : []),
                       ['transito', 'Tránsito'],
-                    ] as Array<['rack' | 'area' | 'transito', string]>
+                    ] as Array<['rack' | 'area' | 'fondo' | 'transito', string]>
                   ).map(([valor, etiqueta]) => (
                     <label key={valor} className="flex items-center gap-1.5">
                       <input
@@ -345,6 +385,23 @@ export function PanelUbicaciones({
                     </select>
                   </label>
                 )}
+                {/* I40: fondo del pasillo como destino de la reubicación */}
+                {edit.destino === 'fondo' && (
+                  <label className="block text-xs text-slate-600">
+                    Fondo del pasillo
+                    <select
+                      className={`mt-1 ${CLASE_INPUT}`}
+                      value={edit.zonaId}
+                      onChange={(e) => setEdit({ ...edit, zonaId: e.target.value })}
+                    >
+                      {fondos.map((f) => (
+                        <option key={f.zonaId} value={f.zonaId}>
+                          {f.etiqueta}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <div className="flex flex-wrap items-end gap-2">
                   <label className="text-xs text-slate-600">
                     Cantidad
@@ -377,8 +434,9 @@ export function PanelUbicaciones({
               [
                 ['rack', 'Estante + nivel'],
                 ['area', 'Bahía'],
+                ...(fondos.length ? ([['fondo', 'Fondo del pasillo']] as const) : []),
                 ['transito', 'Tránsito'],
-              ] as Array<['rack' | 'area' | 'transito', string]>
+              ] as Array<['rack' | 'area' | 'fondo' | 'transito', string]>
             ).map(([valor, etiqueta]) => (
               <label key={valor} className="flex items-center gap-1.5">
                 <input
@@ -424,6 +482,19 @@ export function PanelUbicaciones({
                 {areas.map((a) => (
                   <option key={a.areaId} value={a.areaId}>
                     {a.etiqueta}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {/* I40: asignación al fondo del pasillo (solo si está configurado) */}
+          {destino === 'fondo' && (
+            <label className="block text-sm text-slate-600">
+              Fondo del pasillo
+              <select className={`mt-1 ${CLASE_INPUT}`} value={zonaId} onChange={(e) => setZonaId(e.target.value)}>
+                {fondos.map((f) => (
+                  <option key={f.zonaId} value={f.zonaId}>
+                    {f.etiqueta}
                   </option>
                 ))}
               </select>

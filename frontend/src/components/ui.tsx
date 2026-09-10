@@ -67,6 +67,10 @@ const TONOS_INSIGNIA = {
  * `punto` = indicador circular.
  */
 export const COLORES_PESTANA: Record<string, { activa: string; punto: string }> = {
+  CREADO: {
+    activa: 'border-slate-500 text-slate-700 bg-slate-50',
+    punto: 'bg-slate-500',
+  },
   ABIERTO: {
     activa: 'border-amber-500 text-amber-700 bg-amber-50',
     punto: 'bg-amber-500',
@@ -82,6 +86,10 @@ export const COLORES_PESTANA: Record<string, { activa: string; punto: string }> 
   PENDIENTE_CORRECCION: {
     activa: 'border-red-500 text-red-700 bg-red-50',
     punto: 'bg-red-500',
+  },
+  PARCIAL: {
+    activa: 'border-orange-500 text-orange-700 bg-orange-50',
+    punto: 'bg-orange-500',
   },
   CANCELADO: {
     activa: 'border-slate-400 text-slate-600 bg-slate-100',

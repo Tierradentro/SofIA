@@ -30,6 +30,9 @@ interface MapaZona {
   id: string;
   lado: 'IZQUIERDA' | 'DERECHA' | 'FONDO';
   alias?: string;
+  /** I40: ocupación del fondo del pasillo (zonas sin estantes). */
+  cantidad?: number;
+  empresas?: Array<{ empresaId: string; cantidad: number }>;
   estantes: MapaRack[];
 }
 interface MapaPasillo {
@@ -89,6 +92,8 @@ interface UbicacionLocalizada {
   esOficial: boolean;
   transito: boolean;
   rack?: { id: string; numero: number; alias: string; zone?: { lado: string; aisle?: { id: string; numero: number; floor?: { numero: number } } } };
+  /** I40: ubicación en el fondo del pasillo. */
+  zone?: { id: string; lado: string; alias?: string | null; aisle?: { id: string; numero: number; floor?: { numero: number } } };
   area?: { id: string; tipo: string; alias: string };
 }
 
@@ -139,6 +144,9 @@ function MapaPage() {
   const [errorBusqueda, setErrorBusqueda] = useState('');
   const [detalleRack, setDetalleRack] = useState<RackDetalle | null>(null);
   const [productosArea, setProductosArea] = useState<UbicacionProducto[] | null>(null);
+  // I40: productos del fondo del pasillo seleccionado (panel derecho)
+  const [zonaSelId, setZonaSelId] = useState<string | null>(null);
+  const [productosFondo, setProductosFondo] = useState<UbicacionProducto[] | null>(null);
   const [rackSelId, setRackSelId] = useState<string | null>(null);
   const [nivelSel, setNivelSel] = useState<number | null>(null);
 
@@ -263,7 +271,7 @@ function MapaPage() {
   const resaltadas = useMemo<string[]>(() => {
     if (resultadoBusqueda) {
       return resultadoBusqueda.ubicaciones
-        .map((u) => (u.rack?.zone?.aisle ? `pasillo:${u.rack.zone.aisle.id}` : u.area ? `area:${u.area.id}` : null))
+        .map((u) => (u.rack?.zone?.aisle ? `pasillo:${u.rack.zone.aisle.id}` : u.zone?.aisle ? `pasillo:${u.zone.aisle.id}` : u.area ? `area:${u.area.id}` : null))
         .filter((c): c is string => Boolean(c));
     }
     if (empresaFiltro && piso) {
@@ -291,20 +299,27 @@ function MapaPage() {
     if (status === 200) {
       const ubicaciones = (body.ubicaciones ?? []) as UbicacionLocalizada[];
       setResultadoBusqueda({ producto: body.product, ubicaciones });
-      const primeraConRack = ubicaciones.find((u) => u.rack?.zone?.aisle?.floor || u.area);
+      // I40: también considera ubicaciones en el fondo del pasillo
+      const primeraConRack = ubicaciones.find((u) => u.rack?.zone?.aisle?.floor || u.zone?.aisle || u.area);
       if (primeraConRack && mapa) {
         const numeroPiso =
           primeraConRack.rack?.zone?.aisle?.floor?.numero ??
+          primeraConRack.zone?.aisle?.floor?.numero ??
           mapa.pisos.find((p) => p.areas.some((a) => a.id === primeraConRack.area?.id))?.numero;
         const idx = mapa.pisos.findIndex((p) => p.numero === numeroPiso);
         if (idx >= 0) setPisoSel(idx);
-        const pasillo = primeraConRack.rack?.zone?.aisle;
+        const pasillo = primeraConRack.rack?.zone?.aisle ?? primeraConRack.zone?.aisle;
         if (pasillo) seleccionarCajonPorClave(`pasillo:${pasillo.id}`);
         else if (primeraConRack.area) seleccionarCajonPorClave(`area:${primeraConRack.area.id}`);
         if (primeraConRack.rack) {
           setRackSelId(primeraConRack.rack.id);
           setNivelSel(primeraConRack.nivel ?? null);
           cargarDetalleRack(primeraConRack.rack.id);
+        }
+        // I40: si la ubicación es el fondo, abrir su detalle en el panel
+        if (primeraConRack.zone) {
+          setZonaSelId(primeraConRack.zone.id);
+          cargarDetalleFondo(primeraConRack.zone.id);
         }
       }
     } else {
@@ -317,6 +332,12 @@ function MapaPage() {
     if (status === 200) setDetalleRack(body);
   }
 
+  /** I40: productos del fondo del pasillo (zona FONDO). */
+  async function cargarDetalleFondo(zonaId: string) {
+    const { status, body } = await api<{ productos: UbicacionProducto[] }>(`/warehouses/zones/${zonaId}`);
+    if (status === 200) setProductosFondo(body.productos);
+  }
+
   async function seleccionarCajonPorClave(clave: string) {
     const cajon = cajonesPiso.find((c) => c.clave === clave);
     if (cajon) seleccionarCajon(cajon);
@@ -326,6 +347,8 @@ function MapaPage() {
     setSeleccion(cajon);
     setDetalleRack(null);
     setProductosArea(null);
+    setZonaSelId(null);
+    setProductosFondo(null);
     setRackSelId(null);
     setNivelSel(null);
     if (cajon.tipo === 'area') {
@@ -494,6 +517,8 @@ function MapaPage() {
                           `Piso ${u.rack.zone.aisle.floor?.numero} · Pasillo ${u.rack.zone.aisle.numero} · ${ETIQUETA_LADO[u.rack.zone.lado] ?? u.rack.zone.lado} · ${u.rack.alias}` +
                             (u.nivel ? ` · Nivel ${u.nivel}` : '')}
                         {!u.transito && u.area && `${ETIQUETA_AREA[u.area.tipo] ?? u.area.alias}`}
+                        {!u.transito && u.zone?.aisle &&
+                          `Piso ${u.zone.aisle.floor?.numero} · Pasillo ${u.zone.aisle.numero} · ${u.zone.alias || 'Fondo del pasillo'}`}
                       </span>
                       <span className="ml-2 flex items-center gap-1">
                         <Insignia tono="azul">{u.cantidad} und</Insignia>
@@ -522,9 +547,70 @@ function MapaPage() {
                         <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
                           {zona.alias || ETIQUETA_LADO[zona.lado]}
                         </p>
-                        {zona.estantes.length === 0 && (
+                        {zona.estantes.length === 0 && zona.lado !== 'FONDO' && (
                           <p className="text-sm text-slate-400">Espacio libre (sin estantes).</p>
                         )}
+                        {zona.lado === 'FONDO' && (() => {
+                          // I40: el fondo del pasillo es un único cajón; solo aparece si la zona está configurada.
+                          const empCant = empresaFiltro
+                            ? (zona.empresas?.find((em) => em.empresaId === empresaFiltro)?.cantidad ?? 0)
+                            : null;
+                          const cantidadMostrada = empCant ?? zona.cantidad ?? 0;
+                          return (
+                            <div>
+                              <button
+                                onClick={() => {
+                                  setZonaSelId(zona.id);
+                                  setRackSelId(null);
+                                  setNivelSel(null);
+                                  setDetalleRack(null);
+                                  cargarDetalleFondo(zona.id);
+                                }}
+                                className={`w-full rounded-lg border px-3 py-2 text-left text-xs transition-colors sm:max-w-xs ${
+                                  zonaSelId === zona.id
+                                    ? 'border-sofia-600 bg-sofia-50'
+                                    : 'border-slate-200 bg-white hover:bg-slate-50'
+                                }`}
+                              >
+                                <p className="font-semibold text-slate-800">
+                                  {zona.alias || 'Fondo del pasillo'}
+                                </p>
+                                <p className="text-slate-500">
+                                  Espacio único · {cantidadMostrada} und{empresaFiltro ? ' (empresa)' : ''}
+                                </p>
+                                <div className="mt-1 h-1.5 w-full rounded-full bg-slate-100">
+                                  <div
+                                    className="h-1.5 rounded-full bg-menta-500"
+                                    style={{ width: `${cantidadMostrada > 0 ? 100 : 0}%` }}
+                                  />
+                                </div>
+                              </button>
+                              {zonaSelId === zona.id && (
+                                <div className="mt-2">
+                                  {productosFondo === null && (
+                                    <p className="text-sm text-slate-400">Cargando…</p>
+                                  )}
+                                  {productosFondo !== null && productosFondo.length === 0 && (
+                                    <p className="text-sm text-slate-500">Sin productos en el fondo del pasillo.</p>
+                                  )}
+                                  {productosFondo && productosFondo.length > 0 && (
+                                    <ul className="space-y-1.5">
+                                      {productosFondo.map((p) => (
+                                        <li key={p.ubicacionId} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
+                                          <span className="text-slate-700">
+                                            <span className="font-medium">{p.codigo}</span> · {p.descripcion}
+                                            {p.empresa && <span className="ml-1 text-xs text-slate-400">({p.empresa})</span>}
+                                          </span>
+                                          <Insignia tono="azul">{p.cantidad} und</Insignia>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
                         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                           {zona.estantes.map((est) => {
                             // I36: con filtro por empresa, el detalle del estante muestra sus unidades.
@@ -541,6 +627,8 @@ function MapaPage() {
                               onClick={() => {
                                 setRackSelId(est.id);
                                 setNivelSel(null);
+                                setZonaSelId(null);
+                                setProductosFondo(null);
                                 cargarDetalleRack(est.id);
                               }}
                               className={`rounded-lg border px-2 py-2 text-left text-xs transition-colors ${

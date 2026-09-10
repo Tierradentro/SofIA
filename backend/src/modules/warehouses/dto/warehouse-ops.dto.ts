@@ -32,6 +32,11 @@ export class AssignLocationDto {
   @IsUUID()
   areaId?: string;
 
+  /** I40: fondo del pasillo (zona FONDO — un solo espacio, sin estantes). */
+  @IsOptional()
+  @IsUUID()
+  zonaId?: string;
+
   /** Zona de tránsito (sin ubicación definida). */
   @IsOptional()
   @IsBoolean()

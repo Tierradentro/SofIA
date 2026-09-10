@@ -85,6 +85,8 @@ export class WarehousesService {
     const filtrosUbicacion: any[] = [];
     if (rackIds.length) filtrosUbicacion.push({ rackId: In(rackIds) });
     if (areaIds.length) filtrosUbicacion.push({ areaId: In(areaIds) });
+    // I40: ubicaciones del fondo del pasillo (zonas FONDO, un solo espacio)
+    if (zoneIds.length) filtrosUbicacion.push({ zoneId: In(zoneIds) });
     filtrosUbicacion.push({ transito: true });
     const ubicaciones = await this.locations.find({
       where: filtrosUbicacion,
@@ -95,6 +97,8 @@ export class WarehousesService {
     // presentes (I33: filtro por empresa en el mapa 2D).
     const porRack = new Map<string, { cantidad: number; niveles: Set<number>; empresas: Map<string, number> }>();
     const porArea = new Map<string, { cantidad: number; empresas: Map<string, number> }>();
+    // I40: ocupación del fondo del pasillo (por zona)
+    const porZona = new Map<string, { cantidad: number; empresas: Map<string, number> }>();
     let enTransito = 0;
     const sumarEmpresa = (m: Map<string, number>, empresaId: string | undefined, cantidad: number) => {
       if (!empresaId) return;
@@ -113,6 +117,11 @@ export class WarehousesService {
         e.cantidad += u.cantidad;
         sumarEmpresa(e.empresas, u.product?.empresaId, u.cantidad);
         porArea.set(u.areaId, e);
+      } else if (u.zoneId) {
+        const e = porZona.get(u.zoneId) ?? { cantidad: 0, empresas: new Map<string, number>() };
+        e.cantidad += u.cantidad;
+        sumarEmpresa(e.empresas, u.product?.empresaId, u.cantidad);
+        porZona.set(u.zoneId, e);
       }
     }
 
@@ -138,6 +147,10 @@ export class WarehousesService {
               .filter((z) => z.aisleId === pasillo.id)
               .map((zona) => ({
                 ...zona,
+                // I40: el fondo del pasillo lleva su ocupación en la zona
+                // misma (no tiene estantes donde reportarla)
+                cantidad: porZona.get(zona.id)?.cantidad ?? 0,
+                empresas: porZona.has(zona.id) ? empresasDe(porZona.get(zona.id)!.empresas) : [],
                 estantes: estantes
                   .filter((r) => r.zoneId === zona.id)
                   .map((rack) => {
@@ -205,6 +218,37 @@ export class WarehousesService {
     });
     return {
       area,
+      productos: ubicaciones.map((u) => ({
+        ubicacionId: u.id,
+        productoId: u.productId,
+        codigo: u.product?.codigo,
+        descripcion: u.product?.descripcion,
+        empresa: u.product?.empresa?.nombre,
+        cantidad: u.cantidad,
+        esOficial: u.esOficial,
+      })),
+    };
+  }
+
+  /**
+   * I40: detalle del fondo del pasillo (zona FONDO): productos almacenados
+   * en ese espacio. Espejo de areaDetalle para el drill-down del mapa.
+   */
+  async zonaDetalle(zonaId: string) {
+    const zona = await this.dataSource.getRepository(WarehouseZone).findOne({
+      where: { id: zonaId },
+      relations: ['aisle', 'aisle.floor'],
+    });
+    if (!zona) throw new NotFoundException('Zona no encontrada');
+    if (zona.lado !== ZonaLado.FONDO) {
+      throw new BadRequestException('El detalle por zona aplica solo al fondo del pasillo');
+    }
+    const ubicaciones = await this.locations.find({
+      where: { zoneId: zonaId },
+      relations: ['product', 'product.empresa'],
+    });
+    return {
+      zona,
       productos: ubicaciones.map((u) => ({
         ubicacionId: u.id,
         productoId: u.productId,
@@ -473,8 +517,8 @@ export class WarehousesService {
     if (!product) throw new NotFoundException('Producto no encontrado');
 
     const esTransito = dto.transito === true;
-    if (!esTransito && !dto.rackId && !dto.areaId) {
-      throw new BadRequestException('Indique rackId+nivel, areaId o transito');
+    if (!esTransito && !dto.rackId && !dto.areaId && !dto.zonaId) {
+      throw new BadRequestException('Indique rackId+nivel, areaId, zonaId (fondo) o transito');
     }
     if (dto.rackId && !dto.nivel) {
       throw new BadRequestException('El nivel es requerido cuando se asigna un estante');
@@ -493,6 +537,7 @@ export class WarehousesService {
         throw new BadRequestException('Esta área no almacena productos');
       }
     }
+    await this.validarZonaFondo(dto.zonaId);
 
     const saved = await this.dataSource.transaction(async (m) => {
       const loc = m.getRepository(WarehouseProductLocation).create({
@@ -500,6 +545,7 @@ export class WarehousesService {
         rackId: dto.rackId ?? null,
         nivel: dto.nivel ?? null,
         areaId: dto.areaId ?? null,
+        zoneId: dto.zonaId ?? null,
         transito: esTransito,
         cantidad: dto.cantidad,
         esOficial: false,
@@ -529,14 +575,31 @@ export class WarehousesService {
       accion: 'ASIGNAR_UBICACION',
       tabla: 'warehouse_product_locations',
       registroId: saved.id,
-      valorNuevo: { productId: dto.productId, rackId: dto.rackId, nivel: dto.nivel, areaId: dto.areaId, transito: esTransito, cantidad: dto.cantidad },
+      valorNuevo: { productId: dto.productId, rackId: dto.rackId, nivel: dto.nivel, areaId: dto.areaId, zonaId: dto.zonaId, transito: esTransito, cantidad: dto.cantidad },
     });
     return saved;
   }
 
+  /**
+   * I40: valida el destino "fondo del pasillo": la zona debe existir, estar
+   * activa y ser del lado FONDO (los lados con estantes se asignan por rack).
+   */
+  private async validarZonaFondo(zonaId?: string) {
+    if (!zonaId) return;
+    const zona = await this.dataSource.getRepository(WarehouseZone).findOne({ where: { id: zonaId } });
+    if (!zona) throw new NotFoundException('Zona no encontrada');
+    if (zona.lado !== ZonaLado.FONDO) {
+      throw new BadRequestException('Solo se puede asignar al fondo del pasillo; los lados se asignan por estante');
+    }
+    if (!zona.activo) throw new BadRequestException('La zona está inactiva');
+  }
+
   /** Ubicaciones de un producto (para la ficha y el mapa). */
   async locationsOfProduct(productId: string) {
-    return this.locations.find({ where: { productId }, relations: ['rack', 'rack.zone', 'rack.zone.aisle', 'area'] });
+    return this.locations.find({
+      where: { productId },
+      relations: ['rack', 'rack.zone', 'rack.zone.aisle', 'zone', 'zone.aisle', 'zone.aisle.floor', 'area'],
+    });
   }
 
   /**
@@ -547,11 +610,17 @@ export class WarehousesService {
   async codigoUbicacionOficial(productId: string): Promise<string | null> {
     const oficial = await this.locations.findOne({
       where: { productId, esOficial: true },
-      relations: ['rack', 'rack.zone', 'rack.zone.aisle', 'rack.zone.aisle.floor', 'area'],
+      relations: ['rack', 'rack.zone', 'rack.zone.aisle', 'rack.zone.aisle.floor', 'zone', 'zone.aisle', 'zone.aisle.floor', 'area'],
     });
     if (!oficial) return null;
     if (oficial.transito) return 'TRANSITO';
     if (oficial.area) return `AREA-${oficial.area.tipo}`;
+    // I40: fondo del pasillo
+    if (oficial.zone) {
+      const piso = oficial.zone.aisle?.floor?.numero ?? 1;
+      const pasillo = oficial.zone.aisle?.numero ?? 0;
+      return `P${piso}-A${pasillo}-FONDO`;
+    }
     if (oficial.rack) {
       const piso = oficial.rack.zone?.aisle?.floor?.numero ?? 1;
       const pasillo = oficial.rack.zone?.aisle?.numero ?? 0;
@@ -583,11 +652,11 @@ export class WarehousesService {
   async updateLocation(id: string, dto: AssignLocationDto, user: { id: string; username: string }) {
     const loc = await this.locations.findOne({ where: { id } });
     if (!loc) throw new NotFoundException('Ubicación no encontrada');
-    const anterior = { rackId: loc.rackId, nivel: loc.nivel, areaId: loc.areaId, transito: loc.transito, cantidad: loc.cantidad };
+    const anterior = { rackId: loc.rackId, nivel: loc.nivel, areaId: loc.areaId, zonaId: loc.zoneId, transito: loc.transito, cantidad: loc.cantidad };
 
     const esTransito = dto.transito === true;
-    if (!esTransito && !dto.rackId && !dto.areaId) {
-      throw new BadRequestException('Indique rackId+nivel, areaId o transito');
+    if (!esTransito && !dto.rackId && !dto.areaId && !dto.zonaId) {
+      throw new BadRequestException('Indique rackId+nivel, areaId, zonaId (fondo) o transito');
     }
     if (dto.rackId && !dto.nivel) throw new BadRequestException('El nivel es requerido cuando se asigna un estante');
     if (dto.rackId) {
@@ -600,10 +669,12 @@ export class WarehousesService {
       if (!area) throw new NotFoundException('Área no encontrada');
       if (!area.permiteProductos) throw new BadRequestException('Esta área no almacena productos');
     }
+    await this.validarZonaFondo(dto.zonaId);
 
     loc.rackId = dto.rackId ?? null;
     loc.nivel = dto.nivel ?? null;
     loc.areaId = dto.areaId ?? null;
+    loc.zoneId = dto.zonaId ?? null;
     loc.transito = esTransito;
     loc.cantidad = dto.cantidad;
     await this.locations.save(loc);
@@ -615,7 +686,7 @@ export class WarehousesService {
       tabla: 'warehouse_product_locations',
       registroId: id,
       valorAnterior: anterior,
-      valorNuevo: { rackId: loc.rackId, nivel: loc.nivel, areaId: loc.areaId, transito: loc.transito, cantidad: loc.cantidad },
+      valorNuevo: { rackId: loc.rackId, nivel: loc.nivel, areaId: loc.areaId, zonaId: loc.zoneId, transito: loc.transito, cantidad: loc.cantidad },
     });
     return loc;
   }
@@ -668,7 +739,7 @@ export class WarehousesService {
     if (!product) throw new NotFoundException('Producto no encontrado');
     const ubicaciones = await this.locations.find({
       where: { productId: product.id },
-      relations: ['rack', 'rack.zone', 'rack.zone.aisle', 'rack.zone.aisle.floor', 'area'],
+      relations: ['rack', 'rack.zone', 'rack.zone.aisle', 'rack.zone.aisle.floor', 'zone', 'zone.aisle', 'zone.aisle.floor', 'area'],
     });
     return { product, ubicaciones };
   }

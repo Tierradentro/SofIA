@@ -319,7 +319,7 @@ export class ProductsService {
   private async ubicacionesLegibles(productId: string) {
     const locs = await this.dataSource.getRepository(WarehouseProductLocation).find({
       where: { productId },
-      relations: ['rack', 'rack.zone', 'rack.zone.aisle', 'rack.zone.aisle.floor', 'area'],
+      relations: ['rack', 'rack.zone', 'rack.zone.aisle', 'rack.zone.aisle.floor', 'zone', 'zone.aisle', 'zone.aisle.floor', 'area'],
       order: { cantidad: 'DESC' },
     });
     return locs.map((loc) => ({
@@ -334,6 +334,17 @@ export class ProductsService {
   private etiquetaUbicacion(loc: WarehouseProductLocation): string {
     if (loc.transito) return 'Tránsito';
     if (loc.area) return loc.area.alias ?? 'Área';
+    // I40: fondo del pasillo (zona FONDO, sin estante ni nivel)
+    if (loc.zone) {
+      const piso = loc.zone.aisle?.floor;
+      const pasillo = loc.zone.aisle;
+      const partes = [
+        piso ? (piso.alias ?? `Piso ${piso.numero}`) : null,
+        pasillo ? (pasillo.alias ?? `Pasillo ${pasillo.numero}`) : null,
+        loc.zone.alias ?? 'Fondo del pasillo',
+      ];
+      return partes.filter(Boolean).join(' · ');
+    }
     if (loc.rack) {
       const piso = loc.rack.zone?.aisle?.floor;
       const pasillo = loc.rack.zone?.aisle;

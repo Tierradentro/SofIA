@@ -56,6 +56,7 @@ import { WarehouseArea } from '../modules/warehouses/entities/warehouse-area.ent
 import { WarehouseProductLocation } from '../modules/warehouses/entities/warehouse-product-location.entity';
 import { WarehousesI321753000016000 } from './migrations/1753000016000-warehouses-i32';
 import { AreasConfigurablesI351753000017000 } from './migrations/1753000017000-areas-configurables-i35';
+import { FondoPasilloI401753000018000 } from './migrations/1753000018000-fondo-pasillo-i40';
 import { runInitialSeed } from './seeds/initial.seed';
 
 export function buildDataSourceOptions(): DataSourceOptions {
@@ -127,6 +128,7 @@ export function buildDataSourceOptions(): DataSourceOptions {
       PedidoDespachadoI251753000015000,
       WarehousesI321753000016000,
       AreasConfigurablesI351753000017000,
+      FondoPasilloI401753000018000,
     ],
     synchronize: false,
     logging: false,

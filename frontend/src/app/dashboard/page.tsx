@@ -71,6 +71,15 @@ const PESTANAS: { valor: PedidoCola['estado']; etiqueta: string }[] = [
   { valor: 'PENDIENTE_CORRECCION', etiqueta: 'Pendiente corrección' },
 ];
 
+/** I40: pestañas de la Cola de Despachos (misma forma que la de pedidos). */
+const PESTANAS_DESPACHO: { valor: string; etiqueta: string }[] = [
+  { valor: 'CREADO', etiqueta: 'Creado' },
+  { valor: 'ABIERTO', etiqueta: 'Abierto' },
+  { valor: 'PARCIAL', etiqueta: 'Parcial' },
+  { valor: 'DESPACHADO', etiqueta: 'Despachado' },
+  { valor: 'PENDIENTE_CORRECCION', etiqueta: 'Pendiente corrección' },
+];
+
 /**
  * I21: color por estado en las pestañas de la cola — el mismo código de
  * color se reutiliza en Pedidos y alistamiento (definido en ui.tsx).
@@ -265,6 +274,8 @@ export default function DashboardPage() {
   const [recibosPendientes, setRecibosPendientes] = useState<number | null>(null);
   const [nombreClientes, setNombreClientes] = useState<Record<string, string>>({});
   const [pestana, setPestana] = useState<PedidoCola['estado']>('ABIERTO');
+  // I40: pestaña activa de la Cola de Despachos.
+  const [pestanaDespacho, setPestanaDespacho] = useState<string>('CREADO');
 
   useEffect(() => {
     const s = obtenerSesion();
@@ -300,11 +311,17 @@ export default function DashboardPage() {
       api<PedidoCola[]>('/orders').then(({ status, body }) => {
         if (status === 200) setPedidos(body);
       });
-    cargarPedidos();
-    const sondeo = setInterval(cargarPedidos, 20000);
-    api<DespachoTraza[]>('/dispatches').then(({ status, body }) => {
-      if (status === 200) setDespachos(body);
-    });
+    // I40: los despachos también se sondean con el mismo ciclo.
+    const cargarDespachos = () =>
+      api<DespachoTraza[]>('/dispatches').then(({ status, body }) => {
+        if (status === 200) setDespachos(body);
+      });
+    const sondear = () => {
+      cargarPedidos();
+      cargarDespachos();
+    };
+    sondear();
+    const sondeo = setInterval(sondear, 20000);
     // KPI Recibos pendientes: recibos de ingreso aún no aprobados
     api<InboundPendiente[]>('/inbound').then(({ status, body }) => {
       if (status === 200) {
@@ -335,6 +352,10 @@ export default function DashboardPage() {
   ).length;
   const enPestana = pedidos
     .filter((p) => p.estado === pestana)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  // I40: despachos de la pestaña activa de la Cola de Despachos.
+  const enPestanaDespacho = despachos
+    .filter((d) => d.estado === pestanaDespacho)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   const trazabilidad = [...despachos]
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
@@ -463,6 +484,68 @@ export default function DashboardPage() {
         ) : (
           <p className="py-8 text-center text-sm text-slate-400">
             No hay pedidos en estado «{PESTANAS.find((t) => t.valor === pestana)?.etiqueta}».
+          </p>
+        )}
+      </Tarjeta>
+
+      {/* I40: Cola de Despachos — misma forma que la de pedidos, icono camión */}
+      <Tarjeta className="mb-8 p-5">
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold text-slate-900">Cola de Despachos</h2>
+          <p className="text-sm text-slate-500">Despachos según su estado de salida.</p>
+        </div>
+        <div className="mb-4 flex flex-wrap gap-1 border-b border-slate-200">
+          {PESTANAS_DESPACHO.map((t) => {
+            const n = despachos.filter((d) => d.estado === t.valor).length;
+            const activa = pestanaDespacho === t.valor;
+            const color = COLORES_PESTANA[t.valor] ?? COLORES_PESTANA.OTROS;
+            return (
+              <button
+                key={t.valor}
+                onClick={() => setPestanaDespacho(t.valor)}
+                className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-2 text-sm transition-colors ${
+                  activa
+                    ? `${color.activa} font-semibold`
+                    : 'border-transparent text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <span className={`h-2 w-2 rounded-full ${color.punto}`} />
+                {t.etiqueta} <span className="text-xs text-slate-400">({n})</span>
+              </button>
+            );
+          })}
+        </div>
+        {enPestanaDespacho.length ? (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {enPestanaDespacho.map((d) => (
+              <button
+                key={d.id}
+                onClick={() => router.push('/despachos')}
+                className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 text-left transition-shadow hover:shadow-md"
+              >
+                <div className="mb-6 flex items-start justify-between">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-sofia-700">
+                    <Truck size={18} />
+                  </span>
+                  {d.estado === 'PENDIENTE_CORRECCION' && <Insignia tono="rojo">Corrección</Insignia>}
+                  {d.estado === 'DESPACHADO' && <Insignia tono="verde">Salió</Insignia>}
+                </div>
+                <p className="font-semibold text-slate-800">{d.numero}</p>
+                <p className="truncate text-sm font-medium text-sofia-700">
+                  {nombreClientes[d.clienteId] ?? 'Sin cliente'}
+                </p>
+                <p className="mt-1 truncate text-xs text-slate-500">
+                  {d.tipoTransporte ? `Transporte ${d.tipoTransporte}` : 'Sin transporte'}
+                </p>
+                <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-400">
+                  <Clock size={13} /> {haceMinutos(d.createdAt)}
+                </p>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="py-8 text-center text-sm text-slate-400">
+            No hay despachos en estado «{PESTANAS_DESPACHO.find((t) => t.valor === pestanaDespacho)?.etiqueta}».
           </p>
         )}
       </Tarjeta>

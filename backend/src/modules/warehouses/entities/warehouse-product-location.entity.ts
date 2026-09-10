@@ -11,6 +11,7 @@ import {
 } from 'typeorm';
 import { WarehouseRack } from './warehouse-rack.entity';
 import { WarehouseArea } from './warehouse-area.entity';
+import { WarehouseZone } from './warehouse-zone.entity';
 import { Product } from '../../products/entities/product.entity';
 
 /**
@@ -18,7 +19,9 @@ import { Product } from '../../products/entities/product.entity';
  * Un producto puede tener varias ubicaciones (multi-zona); la oficial es la
  * de mayor cantidad (es_oficial). La zona de tránsito es una ubicación sin
  * estante (producto que ingresó sin ubicación definida). Solo una de
- * rackId/areaId/transito está definida.
+ * rackId/areaId/zoneId/transito está definida.
+ * I40: zoneId apunta a una zona FONDO del pasillo (un solo espacio, sin
+ * estantes); permite asignar y localizar productos en el fondo.
  */
 @Entity('warehouse_product_locations')
 @Unique(['productId', 'rackId', 'nivel'])
@@ -47,6 +50,15 @@ export class WarehouseProductLocation {
   /** Nivel dentro del estante (1 = nivel inferior). */
   @Column({ type: 'int', nullable: true })
   nivel: number;
+
+  /** I40: fondo del pasillo (zona FONDO, un solo espacio sin estantes). */
+  @Index()
+  @Column({ name: 'zone_id', nullable: true })
+  zoneId: string;
+
+  @ManyToOne(() => WarehouseZone, { onDelete: 'CASCADE', nullable: true })
+  @JoinColumn({ name: 'zone_id' })
+  zone: WarehouseZone;
 
   /** Área fija con productos (bahía temporal/empaque), si aplica. */
   @Column({ name: 'area_id', nullable: true })
