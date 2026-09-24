@@ -136,6 +136,13 @@ export class DocumentsService {
     return join(this.filesDir(), doc.path);
   }
 
+  /** I41: consulta puntual por id (foto de producto reemplazada/eliminada). */
+  async findById(id: string): Promise<Document> {
+    const doc = await this.documents.findOne({ where: { id } });
+    if (!doc) throw new NotFoundException('Documento no encontrado');
+    return doc;
+  }
+
   async removeFile(doc: Document): Promise<void> {
     try {
       unlinkSync(join(this.filesDir(), doc.path));

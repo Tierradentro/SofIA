@@ -71,6 +71,46 @@ describe('Clientes y Comerciales (e2e)', () => {
     expect(logs.length).toBe(1);
   });
 
+  it('I41: correo electrónico del cliente — opcional, validado y editable', async () => {
+    // Sin correo: permitido (no se exige para la orden de pedido)
+    const sinCorreo = await t.http
+      .post('/api/v1/clients')
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ nombre: 'Cliente Sin Correo I41' });
+    expect(sinCorreo.status).toBe(201);
+    expect(sinCorreo.body.email ?? null).toBeNull();
+
+    // Con correo válido
+    const conCorreo = await t.http
+      .post('/api/v1/clients')
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ nombre: 'Cliente Con Correo I41', email: 'Ventas@ClienteI41.com' });
+    expect(conCorreo.status).toBe(201);
+    expect(conCorreo.body.email).toBe('Ventas@ClienteI41.com');
+
+    // Correo inválido → 400
+    const invalido = await t.http
+      .post('/api/v1/clients')
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ nombre: 'Cliente Correo Malo I41', email: 'no-es-correo' });
+    expect(invalido.status).toBe(400);
+    expect(JSON.stringify(invalido.body)).toContain('correo');
+
+    // Edición: cambiar y luego borrar (cadena vacía → null)
+    const edita = await t.http
+      .patch(`/api/v1/clients/${conCorreo.body.id}`)
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ email: 'compras@clientei41.com' });
+    expect(edita.status).toBe(200);
+    expect(edita.body.email).toBe('compras@clientei41.com');
+    const borra = await t.http
+      .patch(`/api/v1/clients/${conCorreo.body.id}`)
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ email: '' });
+    expect(borra.status).toBe(200);
+    expect(borra.body.email ?? null).toBeNull();
+  });
+
   it('QA Func. 4.1: la dirección del alta migra como principal; CRUD de direcciones con máximo 10', async () => {
     // La dirección del formulario de creación quedó registrada como principal
     const lista = await t.http

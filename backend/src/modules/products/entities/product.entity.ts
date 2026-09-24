@@ -112,6 +112,10 @@ export class Product {
   @Column({ name: 'grupo_ocho', length: 60, nullable: true })
   grupoOcho: string;
 
+  /** I41: foto del producto (documento almacenado; visible en la consulta). */
+  @Column({ name: 'foto_document_id', nullable: true })
+  fotoDocumentId: string;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

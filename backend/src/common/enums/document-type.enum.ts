@@ -11,6 +11,8 @@ export enum DocumentType {
   GUIA_TRANSPORTE = 'GUIA_TRANSPORTE',
   SOPORTE_PQRS = 'SOPORTE_PQRS',
   LOGO = 'LOGO',
+  /** I41: foto del producto (reemplazable; se puede eliminar). */
+  FOTO_PRODUCTO = 'FOTO_PRODUCTO',
 }
 
 /** Tipos que no pueden eliminarse una vez almacenados (permanentes). */

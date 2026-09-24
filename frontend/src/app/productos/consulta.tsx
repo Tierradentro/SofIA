@@ -7,6 +7,7 @@
  */
 import { useState } from 'react';
 import { api, mensajeError } from '@/lib/api';
+import { FotoProducto } from '@/components/foto-producto';
 
 export interface ProductoDetalle {
   id: string;
@@ -17,6 +18,8 @@ export interface ProductoDetalle {
   codigoBarras?: { barcode: string; origen: string } | null;
   empresa: { nombre: string; siglas: string };
   inventario: { cantidad: number; cantidadBloqueada: number; disponible: number };
+  /** I41: señal de foto cargada (la imagen se sirve protegida). */
+  tieneFoto?: boolean;
 }
 
 export function ConsultaProducto({ empresaId }: { empresaId?: string }) {
@@ -50,7 +53,18 @@ export function ConsultaProducto({ empresaId }: { empresaId?: string }) {
       </form>
       {error && <p className="mt-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
       {resultado && (
-        <div className="mt-4 grid grid-cols-2 gap-3 rounded-lg bg-slate-50 p-4 text-sm">
+        <div className="mt-4 flex flex-col gap-3 rounded-lg bg-slate-50 p-4 text-sm sm:flex-row">
+          {/* I41: la foto se muestra en la tarjeta de consulta */}
+          {resultado.tieneFoto && (
+            <FotoProducto
+              productoId={resultado.id}
+              tieneFoto
+              puedeEliminar={false}
+              soloLectura
+              className="shrink-0"
+            />
+          )}
+          <div className="grid flex-1 grid-cols-2 content-start gap-3">
           <p><span className="font-medium">Empresa:</span> {resultado.empresa.nombre}</p>
           <p><span className="font-medium">Referencia:</span> {resultado.codigo}</p>
           <p className="col-span-2"><span className="font-medium">Descripción:</span> {resultado.descripcion}</p>
@@ -61,6 +75,7 @@ export function ConsultaProducto({ empresaId }: { empresaId?: string }) {
           <p><span className="font-medium">Ubicación:</span> {resultado.ubicacion || '—'}</p>
           <p><span className="font-medium">Existencia:</span> {resultado.inventario.cantidad}</p>
           <p><span className="font-medium">Disponible:</span> {resultado.inventario.disponible}</p>
+          </div>
         </div>
       )}
     </div>

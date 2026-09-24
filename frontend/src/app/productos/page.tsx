@@ -15,6 +15,7 @@ import {
 } from '@/components/ui';
 import { ConsultaProducto } from './consulta';
 import { PanelUbicaciones } from '@/components/panel-ubicaciones';
+import { FotoProducto } from '@/components/foto-producto';
 
 interface Empresa {
   id: string;
@@ -49,6 +50,8 @@ interface Producto {
   cantidadBloqueada: number;
   codigoBarras?: { barcode: string; origen: string } | null;
   empresa?: { id: string; nombre: string; siglas: string };
+  /** I41: foto del producto (documento almacenado). */
+  fotoDocumentId?: string | null;
 }
 
 const FORM_VACIO = {
@@ -164,6 +167,13 @@ export default function ProductosPage() {
     } else {
       setError(mensajeError(body, 'No se pudo cargar la ficha'));
     }
+  }
+
+  /** I41: tras cargar/eliminar la foto se refresca la ficha. */
+  async function recargarFicha() {
+    if (!ficha) return;
+    const { status, body } = await api<Producto>(`/products/${ficha.id}`);
+    if (status === 200) setFicha(body);
   }
 
   function abrirEdicion(p: Producto) {
@@ -423,6 +433,16 @@ export default function ProductosPage() {
                 Cerrar
               </button>
             </div>
+          </div>
+          {/* I41: foto del producto junto a la ficha (carga: los tres
+              roles; eliminar: Generador/Administrador) */}
+          <div className="mb-4 flex flex-col gap-4 border-b border-slate-100 pb-4 sm:flex-row">
+            <FotoProducto
+              productoId={ficha.id}
+              tieneFoto={!!ficha.fotoDocumentId}
+              puedeEliminar={puedeEditar}
+              onCambio={recargarFicha}
+            />
           </div>
           <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
             {(

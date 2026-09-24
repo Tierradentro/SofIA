@@ -83,6 +83,8 @@ export const OCR_CAMPOS_POR_TIPO: Record<
     itemFields: ['referencia', 'descripcion', 'cantidad', 'unidad'],
   },
   [DocumentType.LOGO]: { cabecera: [], itemFields: [] },
+  // I41: la foto del producto no pasa por OCR
+  [DocumentType.FOTO_PRODUCTO]: { cabecera: [], itemFields: [] },
 };
 
 /** Tipos cuyos ítems llevan valor/precio. */

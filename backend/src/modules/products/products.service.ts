@@ -13,6 +13,9 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { AssignBarcodeDto } from './dto/assign-barcode.dto';
 import { AuditService } from '../audit/audit.service';
+import { DocumentsService, UploadedFilePayload } from '../documents/documents.service';
+import { Document } from '../documents/entities/document.entity';
+import { DocumentType } from '../../common/enums/document-type.enum';
 import { ProductStatus } from '../../common/enums/product-status.enum';
 
 const TABLA = 'Productos'; // una de las 6 entidades auditables
@@ -25,6 +28,7 @@ export class ProductsService {
     private readonly barcodes: Repository<ProductBarcode>,
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly audit: AuditService,
+    private readonly documents: DocumentsService,
   ) {}
 
   /**
@@ -289,6 +293,69 @@ export class ProductsService {
     return product;
   }
 
+  // ------------------------------------------------------------------
+  // I41: foto del producto.
+  // Carga: Operador, Generador y Administrador (el Operador solo ingresa;
+  // no puede eliminar). Eliminación: Generador y Administrador.
+  // ------------------------------------------------------------------
+  async subirFoto(productId: string, file: UploadedFilePayload, user: { id: string; username: string }) {
+    const product = await this.findById(productId);
+    if (!file) throw new BadRequestException('Archivo requerido');
+    if (!file.mimetype?.startsWith('image/')) {
+      throw new BadRequestException('La foto del producto debe ser una imagen');
+    }
+    const anteriorId = product.fotoDocumentId;
+    // El store usa su propio repositorio: va FUERA de la transacción (en
+    // pruebas el pool tiene una sola conexión y un repo externo dentro de la
+    // transacción bloquea).
+    const doc = await this.documents.store('productos', DocumentType.FOTO_PRODUCTO, file, user.id);
+    await this.dataSource.transaction(async (em) => {
+      await em.getRepository(Document).update(doc.id, { ownerId: productId });
+      await em.getRepository(Product).update(productId, { fotoDocumentId: doc.id });
+    });
+    // El archivo anterior queda por fuera de la transacción (ya reemplazado)
+    if (anteriorId) {
+      const viejo = await this.documents.findById(anteriorId).catch(() => null);
+      if (viejo) await this.documents.removeFile(viejo);
+    }
+    await this.audit.log({
+      usuarioId: user.id,
+      usuarioUsername: user.username,
+      accion: 'PRODUCTO_FOTO',
+      tabla: TABLA,
+      registroId: productId,
+      valorNuevo: { codigo: product.codigo, foto: file.originalname },
+    });
+    return { ok: true, fotoDocumentId: doc.id };
+  }
+
+  /** I41: eliminar la foto (solo Generador/Administrador — ver controller). */
+  async eliminarFoto(productId: string, user: { id: string; username: string }) {
+    const product = await this.findById(productId);
+    if (!product.fotoDocumentId) throw new NotFoundException('El producto no tiene foto');
+    const doc = await this.documents.findById(product.fotoDocumentId);
+    await this.products.update(productId, { fotoDocumentId: null });
+    await this.documents.removeFile(doc);
+    await this.audit.log({
+      usuarioId: user.id,
+      usuarioUsername: user.username,
+      accion: 'PRODUCTO_FOTO_ELIMINADA',
+      tabla: TABLA,
+      registroId: productId,
+      valorAnterior: { codigo: product.codigo, foto: doc.nombreOriginal },
+    });
+    return { ok: true };
+  }
+
+  /** I41: archivo de la foto para visualización en las tarjetas. */
+  async obtenerFoto(productId: string) {
+    const product = await this.findById(productId);
+    if (!product.fotoDocumentId) return { doc: null, absolutePath: null };
+    const doc = await this.documents.findById(product.fotoDocumentId).catch(() => null);
+    if (!doc) return { doc: null, absolutePath: null };
+    return { doc, absolutePath: this.documents.absolutePath(doc) };
+  }
+
   /** Detalle HU-013: empresa, referencia, descripción, barcode, ubicación e inventario. */
   async detalle(product: Product) {
     const conBarcode = await this.withBarcode(product);
@@ -302,6 +369,8 @@ export class ProductsService {
     const oficial = ubicaciones.find((u) => u.esOficial) ?? ubicaciones[0];
     return {
       ...conBarcode,
+      // I41: la foto se sirve en /products/:id/foto; aquí solo la señal
+      tieneFoto: !!product.fotoDocumentId,
       ubicacion: oficial?.etiqueta ?? product.ubicacion ?? null,
       ubicaciones,
       empresa: empresa

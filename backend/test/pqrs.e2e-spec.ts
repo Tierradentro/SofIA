@@ -466,6 +466,7 @@ describe('Devoluciones PQRS (e2e)', () => {
     expect(cerrado.status).toBe(201);
     expect(cerrado.body.estado).toBe('CERRADA');
     expect(cerrado.body.cerradaAt).toBeTruthy();
+    (global as any).__caso1 = cerrado.body; // I41: el global queda con el caso ya cerrado
 
     // Soporte de respuesta del proveedor (M11 Solución)
     const sopSol = await t.http
@@ -538,6 +539,40 @@ describe('Devoluciones PQRS (e2e)', () => {
       expect(m.tipo).toBe('REINGRESO_DEVOLUCION');
       expect(m.cantidad_delta).toBe(1);
     }
+  });
+
+  it('I41: la mercancía se puede aceptar al inventario aunque el caso ya esté CERRADO', async () => {
+    // Reporte del usuario: no se encontraba cómo aceptar la mercancía que
+    // vuelve al inventario; si el Operador cerraba el caso sin reingreso,
+    // las unidades quedaban sin camino de regreso. El backend lo permite en
+    // cualquier estado no CANCELADO; la aprobación es solo del Generador.
+    const caso1 = (global as any).__caso1; // CERRADA, 2 und de PQRS-001 (IRE), sin reingresar
+    expect(caso1.estado).toBe('CERRADA');
+    const antes = await stock('PQRS-001', ireId);
+
+    // El Operador no puede aprobar la aceptación (rol Generador)
+    const op = await t.http
+      .post(`/api/v1/pqrs/${caso1.id}/reingresar`)
+      .set('Authorization', `Bearer ${operadorToken}`)
+      .send({});
+    expect(op.status).toBe(403);
+
+    const r = await t.http
+      .post(`/api/v1/pqrs/${caso1.id}/reingresar`)
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ notas: 'Pieza verificada en buen estado tras el cierre del caso' });
+    expect(r.status).toBe(201);
+    expect(r.body.cantidadReingresada).toBe(2);
+
+    const despues = await stock('PQRS-001', ireId);
+    expect(despues.cantidad).toBe(antes.cantidad + 2);
+
+    // Ya nada pendiente → 400
+    const otra = await t.http
+      .post(`/api/v1/pqrs/${caso1.id}/reingresar`)
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({});
+    expect(otra.status).toBe(400);
   });
 
   it('Cancelación por Generador en cualquier parte del flujo', async () => {

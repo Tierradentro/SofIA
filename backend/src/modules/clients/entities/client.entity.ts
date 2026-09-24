@@ -31,6 +31,10 @@ export class Client {
   @Column({ length: 120, nullable: true })
   ciudad: string;
 
+  /** I41: correo electrónico (opcional; manual o por importación). */
+  @Column({ length: 160, nullable: true })
+  email: string;
+
   @Column({ default: true })
   activo: boolean;
 

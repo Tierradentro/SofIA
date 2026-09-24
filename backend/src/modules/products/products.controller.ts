@@ -1,18 +1,27 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  NotFoundException,
   Param,
   ParseUUIDPipe,
   Patch,
   Post,
   Put,
   Query,
+  Res,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { createReadStream } from 'fs';
+import type { Response } from 'express';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { AssignBarcodeDto } from './dto/assign-barcode.dto';
+import { UploadedFilePayload } from '../documents/documents.service';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/enums/role.enum';
 import {
@@ -97,5 +106,40 @@ export class ProductsController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.products.replaceBarcode(id, dto, user);
+  }
+
+  /**
+   * I41: foto del producto. La cargan los tres roles operativos (Operador,
+   * Generador y Administrador); se muestra en la consulta y en la ficha.
+   */
+  @Post(':id/foto')
+  @Roles(Role.OPERADOR, Role.GENERADOR, Role.ADMINISTRADOR)
+  @UseInterceptors(FileInterceptor('file'))
+  subirFoto(
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() file: UploadedFilePayload,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.products.subirFoto(id, file, user);
+  }
+
+  /** I41: imagen de la foto (todos los roles autenticados la visualizan). */
+  @Get(':id/foto')
+  async verFoto(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
+    const { doc, absolutePath } = await this.products.obtenerFoto(id);
+    if (!doc || !absolutePath) throw new NotFoundException('El producto no tiene foto');
+    res.setHeader('Content-Type', doc.mime);
+    res.setHeader('Cache-Control', 'no-store');
+    createReadStream(absolutePath).pipe(res);
+  }
+
+  /** I41: solo el Operador NO puede eliminar; Generador y Administrador sí. */
+  @Delete(':id/foto')
+  @Roles(Role.GENERADOR, Role.ADMINISTRADOR)
+  eliminarFoto(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.products.eliminarFoto(id, user);
   }
 }

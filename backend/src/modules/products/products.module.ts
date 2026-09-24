@@ -5,9 +5,10 @@ import { ProductBarcode } from './entities/product-barcode.entity';
 import { ProductsService } from './products.service';
 import { ProductsController } from './products.controller';
 import { AuditModule } from '../audit/audit.module';
+import { DocumentsModule } from '../documents/documents.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Product, ProductBarcode]), AuditModule],
+  imports: [TypeOrmModule.forFeature([Product, ProductBarcode]), AuditModule, DocumentsModule],
   controllers: [ProductsController],
   providers: [ProductsService],
   exports: [ProductsService],

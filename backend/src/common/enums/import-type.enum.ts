@@ -30,7 +30,8 @@ export const IMPORT_FIELDS: Record<
   },
   [ImportType.CLIENTES]: {
     requeridos: ['nombre'],
-    opcionales: ['identificacion', 'direccion', 'telefonos', 'ciudad'],
+    // I41: + email (correo electrónico del cliente, opcional)
+    opcionales: ['identificacion', 'direccion', 'telefonos', 'ciudad', 'email'],
   },
   [ImportType.COMERCIALES]: {
     requeridos: ['nombre'],

@@ -215,6 +215,50 @@ describe('Importaciones contables (e2e)', () => {
     ]);
   });
 
+  it('I41: la importación de clientes carga el correo electrónico (nuevo y existente)', async () => {
+    // Cliente previo sin correo: la maestra sí actualiza el email
+    await t.dataSource.query(
+      `INSERT INTO clients (id, nombre, identificacion) VALUES (gen_random_uuid(), 'Correo Previo S.A.S', '901.999.111-0')`,
+    );
+    const buffer = xlsxBuffer([
+      { Nombre: 'Correo Previo S.A.S', Nit: '901.999.111-0', Correo: 'previo@i41.com' },
+      { Nombre: 'Correo Nuevo Ltda', Nit: '902.888.222-1', Correo: 'nuevo@i41.com' },
+    ]);
+    const res = await t.http
+      .post('/api/v1/imports')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .field('tipo', 'CLIENTES')
+      .field('mapeo', JSON.stringify({ Nombre: 'nombre', Nit: 'identificacion', Correo: 'email' }))
+      .attach('file', buffer, { filename: 'clientes-correo.xlsx', contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    expect(res.status).toBe(201);
+    expect(res.body.resumen.validas).toBe(2);
+
+    await t.http
+      .post(`/api/v1/imports/${res.body.id}/approve`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    const correos = await t.dataSource.query(
+      `SELECT nombre, email FROM clients WHERE identificacion IN ('901.999.111-0','902.888.222-1') ORDER BY nombre`,
+    );
+    expect(correos).toEqual([
+      { nombre: 'Correo Nuevo Ltda', email: 'nuevo@i41.com' },
+      { nombre: 'Correo Previo S.A.S', email: 'previo@i41.com' },
+    ]);
+
+    // Correo mal formado en el archivo → la fila queda inválida en la carga
+    const malo = xlsxBuffer([{ Nombre: 'Correo Malo', Correo: 'sin-arroba' }]);
+    const resMalo = await t.http
+      .post('/api/v1/imports')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .field('tipo', 'CLIENTES')
+      .field('mapeo', JSON.stringify({ Nombre: 'nombre', Correo: 'email' }))
+      .attach('file', malo, { filename: 'clientes-malo.xlsx', contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    expect(resMalo.status).toBe(201);
+    expect(resMalo.body.resumen.validas).toBe(0);
+    expect(resMalo.body.resumen.invalidas).toHaveLength(1);
+    expect(JSON.stringify(resMalo.body.resumen)).toContain('Correo electrónico inválido');
+  });
+
   it('I18: cliente repetido suma dirección; cliente+dirección existentes se descarta; no sobrescribe datos', async () => {
     // Cliente previo con su dirección principal (como el alta manual)
     const [previo] = await t.dataSource.query(

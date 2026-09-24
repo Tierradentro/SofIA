@@ -95,6 +95,12 @@ export class ImportValidatorService {
           errores.push(`Precio inválido: '${datos['precio']}'`);
         }
       }
+      // I41: correo electrónico del cliente (opcional; si viene, válido)
+      if (tipo === ImportType.CLIENTES && datos['email']) {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(datos['email'])) {
+          errores.push(`Correo electrónico inválido: '${datos['email']}'`);
+        }
+      }
 
       // Longitud máxima por campo (QA Func. 1.1): nunca dejar llegar al
       // INSERT un texto que exceda el varchar de la columna → la fila se

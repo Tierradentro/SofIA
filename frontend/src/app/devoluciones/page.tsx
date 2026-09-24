@@ -441,27 +441,57 @@ export default function DevolucionesPage() {
           </section>
         )}
 
-        {esGenerador && caso.estado !== 'CANCELADA' && caso.estado !== 'CERRADA' && (
+        {/* I41: aceptar la mercancía devuelta que vuelve al inventario.
+            Solo el Generador (y el Administrador) la aprueba; queda
+            disponible mientras haya unidades pendientes, incluso si el
+            caso ya se cerró sin reingresar todo. */}
+        {esGenerador && caso.estado !== 'CANCELADA' && caso.cantidad - caso.cantidadReingresada > 0 && (
           <section className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="rounded-lg bg-white p-4 shadow text-sm">
-              <h2 className="mb-2 font-semibold">Reingreso al inventario</h2>
-              <p className="mb-2 text-slate-500">Pendiente por reingresar: {caso.cantidad - caso.cantidadReingresada}</p>
+            <div className="rounded-lg border-2 border-menta-300 bg-menta-50 p-4 text-sm">
+              <h2 className="mb-1 font-semibold">Aceptar mercancía al inventario</h2>
+              <p className="mb-2 text-xs text-slate-500">
+                La aceptación la aprueba el Generador; las unidades aceptadas vuelven
+                a la existencia del producto (movimiento Reingreso por devolución).
+              </p>
+              <p className="mb-2 text-slate-500">Pendiente por aceptar: <span className="font-semibold text-slate-700">{caso.cantidad - caso.cantidadReingresada}</span></p>
               <div className="flex gap-2">
                 <input value={cantidadReingreso} onChange={(e) => setCantidadReingreso(e.target.value)} placeholder="Cantidad" type="number" min={1} className="w-24 rounded border px-2 py-1" />
                 <input value={notasReingreso} onChange={(e) => setNotasReingreso(e.target.value)} placeholder="Notas…" className="flex-1 rounded border px-2 py-1" />
                 <button
                   onClick={() =>
-                    accion('/reingresar', 'Mercancía reingresada al inventario', {
+                    accion('/reingresar', 'Mercancía aceptada: volvió al inventario', {
                       cantidad: cantidadReingreso ? parseInt(cantidadReingreso, 10) : undefined,
                       notas: notasReingreso || undefined,
                     })
                   }
-                  className="rounded bg-sofia-600 px-3 py-1 text-white"
+                  className="rounded bg-menta-600 px-3 py-1 font-medium text-white hover:bg-menta-500"
                 >
-                  Reingresar
+                  Aceptar al inventario
                 </button>
               </div>
             </div>
+            {caso.estado !== 'CERRADA' && (
+            <div className="rounded-lg bg-white p-4 shadow text-sm">
+              <h2 className="mb-2 font-semibold">Cancelar caso</h2>
+              <div className="flex gap-2">
+                <input value={motivoCancelar} onChange={(e) => setMotivoCancelar(e.target.value)} placeholder="Motivo…" className="flex-1 rounded border px-2 py-1" />
+                <button onClick={() => accion('/cancelar', 'Caso cancelado', { motivo: motivoCancelar || undefined })} className="rounded bg-red-600 px-3 py-1 text-white">
+                  Cancelar
+                </button>
+              </div>
+            </div>
+            )}
+          </section>
+        )}
+        {/* Mercancía ya aceptada en su totalidad */}
+        {caso.estado !== 'CANCELADA' && caso.cantidadReingresada > 0 && caso.cantidad - caso.cantidadReingresada === 0 && (
+          <p className="mb-4 rounded-lg bg-menta-50 px-3 py-2 text-sm text-menta-700">
+            Mercancía aceptada en su totalidad: {caso.cantidadReingresada} und volvieron al inventario.
+          </p>
+        )}
+        {/* Cancelación (Generador) cuando no hay tarjeta de aceptación al lado */}
+        {esGenerador && caso.estado !== 'CANCELADA' && caso.estado !== 'CERRADA' && caso.cantidad - caso.cantidadReingresada <= 0 && (
+          <section className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="rounded-lg bg-white p-4 shadow text-sm">
               <h2 className="mb-2 font-semibold">Cancelar caso</h2>
               <div className="flex gap-2">
@@ -603,7 +633,15 @@ export default function DevolucionesPage() {
                   <td>{c.motivoCodigo}</td>
                   <td>{c.cantidad}</td>
                   <td className="text-slate-500">{c.factura ?? '—'}</td>
-                  <td>{ESTADOS[c.estado]}</td>
+                  <td>
+                    {ESTADOS[c.estado]}
+                    {/* I41: marca los casos con mercancía pendiente de aceptar al inventario */}
+                    {c.estado !== 'CANCELADA' && c.cantidad - c.cantidadReingresada > 0 && (
+                      <span className="ml-2 rounded-full bg-menta-100 px-2 py-0.5 text-xs font-medium text-menta-700">
+                        Pendiente aceptar {c.cantidad - c.cantidadReingresada} und
+                      </span>
+                    )}
+                  </td>
                   <td><button onClick={() => cargarDetalle(c.id)} className="text-sofia-700 hover:underline">Abrir</button></td>
                 </tr>
               ))}

@@ -22,9 +22,11 @@ interface Cliente {
   direccion?: string;
   telefonos?: string;
   ciudad?: string;
+  /** I41: correo electrónico (opcional; no se exige en la orden de pedido). */
+  email?: string;
 }
 
-const VACIO = { nombre: '', identificacion: '', direccion: '', telefonos: '', ciudad: '' };
+const VACIO = { nombre: '', identificacion: '', direccion: '', telefonos: '', ciudad: '', email: '' };
 
 /** QA Func. 4.1: dirección de despacho del cliente (máx. 10, una principal). */
 interface Direccion {
@@ -70,9 +72,11 @@ export default function ClientesPage() {
     e.preventDefault();
     setError('');
     setMensaje('');
+    // I41: el correo vacío viaja como undefined (campo opcional)
+    const carga = { ...form, email: form.email.trim() || undefined };
     const { status, body } = editando
-      ? await api(`/clients/${editando}`, { method: 'PATCH', body: JSON.stringify(form) })
-      : await api('/clients', { method: 'POST', body: JSON.stringify(form) });
+      ? await api(`/clients/${editando}`, { method: 'PATCH', body: JSON.stringify(carga) })
+      : await api('/clients', { method: 'POST', body: JSON.stringify(carga) });
     if (status === 200 || status === 201) {
       setMensaje(editando ? 'Cliente actualizado' : 'Cliente creado');
       setForm(VACIO);
@@ -179,6 +183,8 @@ export default function ClientesPage() {
                 onChange={(e) => setForm({ ...form, direccion: e.target.value })} />
               <input placeholder="Teléfonos" className={CLASE_INPUT} value={form.telefonos}
                 onChange={(e) => setForm({ ...form, telefonos: e.target.value })} />
+              <input placeholder="Correo electrónico" type="email" className={CLASE_INPUT} value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })} />
               <input placeholder="Ciudad" className={CLASE_INPUT} value={form.ciudad}
                 onChange={(e) => setForm({ ...form, ciudad: e.target.value })} />
               <div className="flex gap-2">
@@ -271,6 +277,7 @@ export default function ClientesPage() {
               <th className={CLASES_TABLA.celdaCabecera}>Identificación</th>
               <th className={CLASES_TABLA.celdaCabecera}>Ciudad</th>
               <th className={CLASES_TABLA.celdaCabecera}>Teléfonos</th>
+              <th className={CLASES_TABLA.celdaCabecera}>Correo</th>
               {puedeEditar && <th className={CLASES_TABLA.celdaCabecera}>Acciones</th>}
             </tr>
           </thead>
@@ -281,6 +288,7 @@ export default function ClientesPage() {
                 <td className={CLASES_TABLA.celda}>{c.identificacion}</td>
                 <td className={CLASES_TABLA.celda}>{c.ciudad}</td>
                 <td className={CLASES_TABLA.celda}>{c.telefonos}</td>
+                <td className={CLASES_TABLA.celda}>{c.email || '—'}</td>
                 {puedeEditar && (
                   <td className={CLASES_TABLA.celda}>
                     <div className="flex gap-2">
@@ -293,6 +301,7 @@ export default function ClientesPage() {
                             direccion: c.direccion || '',
                             telefonos: c.telefonos || '',
                             ciudad: c.ciudad || '',
+                            email: c.email || '',
                           });
                         }}
                         className="rounded-md bg-sofia-100 px-3 py-1 text-xs font-medium text-sofia-700 hover:bg-sofia-200"

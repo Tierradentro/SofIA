@@ -541,6 +541,8 @@ export class ImportsService {
         );
         const direccion = limpio.direccion?.trim();
         const ciudad = limpio.ciudad?.trim() || null;
+        // I41: el correo llega ya validado por el importador; se normaliza
+        const email = limpio.email?.trim().toLowerCase() || null;
 
         let cliente = limpio.identificacion
           ? await repoClientes.findOne({
@@ -549,7 +551,7 @@ export class ImportsService {
           : await repoClientes.findOne({ where: { nombre: limpio.nombre } });
 
         if (!cliente) {
-          cliente = await repoClientes.save(repoClientes.create(limpio));
+          cliente = await repoClientes.save(repoClientes.create({ ...limpio, email }));
           nuevos++;
           if (direccion) {
             await repoDirs.save(
@@ -563,6 +565,14 @@ export class ImportsService {
             (await dirsConocidas(cliente.id)).add(claveDireccion(direccion, ciudad));
           }
           continue;
+        }
+
+        // I41: la maestra sí actualiza el correo del cliente existente
+        // (el resto de datos no se sobrescriben: la fila solo aporta
+        // direcciones y correo).
+        if (email && cliente.email !== email) {
+          cliente.email = email;
+          await repoClientes.save(cliente);
         }
 
         // Cliente existente: la fila solo puede aportar una dirección nueva.

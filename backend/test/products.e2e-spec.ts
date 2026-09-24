@@ -6,6 +6,8 @@ import {
   ADMIN,
   ADMIN_NUEVA_CLAVE,
 } from './helpers/test-app';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 /**
  * I3 — HU-009 Crear producto, HU-011/012 Código de barras, HU-013 Consulta.
@@ -351,5 +353,72 @@ describe('Productos (e2e)', () => {
         `UPDATE products SET cantidad_bloqueada = 5 WHERE cantidad = 0`,
       ),
     ).rejects.toThrow();
+  });
+
+  it('I41: foto del producto — la cargan los tres roles; solo Generador/Admin la eliminan', async () => {
+    const PNG = readFileSync(join(__dirname, 'fixtures', 'factura-ocr.png'));
+    const prod = await crearProducto(ireId, 'FOTO-001', 'Producto con foto I41');
+
+    // Archivo no imagen → 400
+    const pdf = await t.http
+      .post(`/api/v1/products/${prod.id}/foto`)
+      .set('Authorization', `Bearer ${operadorToken}`)
+      .attach('file', Buffer.from('%PDF-1.4 fake'), { filename: 'x.pdf', contentType: 'application/pdf' });
+    expect(pdf.status).toBe(400);
+
+    // El Operador puede cargar la foto
+    const subida = await t.http
+      .post(`/api/v1/products/${prod.id}/foto`)
+      .set('Authorization', `Bearer ${operadorToken}`)
+      .attach('file', PNG, { filename: 'foto.png', contentType: 'image/png' });
+    expect(subida.status).toBe(201);
+    expect(subida.body.fotoDocumentId).toBeTruthy();
+
+    // La consulta marca tieneFoto y la imagen se puede ver (todos los roles)
+    const lookup = await t.http
+      .get('/api/v1/products/lookup/FOTO-001')
+      .set('Authorization', `Bearer ${operadorToken}`);
+    expect(lookup.status).toBe(200);
+    expect(lookup.body.tieneFoto).toBe(true);
+    const img = await t.http
+      .get(`/api/v1/products/${prod.id}/foto`)
+      .set('Authorization', `Bearer ${operadorToken}`)
+      .buffer(true)
+      .parse((res, cb) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (c: Buffer) => chunks.push(c));
+        res.on('end', () => cb(null, Buffer.concat(chunks)));
+      });
+    expect(img.status).toBe(200);
+    expect(img.headers['content-type']).toContain('image/png');
+    expect((img.body as Buffer).length).toBeGreaterThan(100);
+
+    // Reemplazo por Generador (carga nueva foto sobre la anterior)
+    const reemplazo = await t.http
+      .post(`/api/v1/products/${prod.id}/foto`)
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .attach('file', PNG, { filename: 'foto2.png', contentType: 'image/png' });
+    expect(reemplazo.status).toBe(201);
+    expect(reemplazo.body.fotoDocumentId).not.toBe(subida.body.fotoDocumentId);
+
+    // El Operador NO puede eliminarla (solo Generador/Administrador)
+    const delOp = await t.http
+      .delete(`/api/v1/products/${prod.id}/foto`)
+      .set('Authorization', `Bearer ${operadorToken}`);
+    expect(delOp.status).toBe(403);
+
+    // Generador elimina; la consulta vuelve a no tener foto (404)
+    const del = await t.http
+      .delete(`/api/v1/products/${prod.id}/foto`)
+      .set('Authorization', `Bearer ${generadorToken}`);
+    expect(del.status).toBe(200);
+    const sinFoto = await t.http
+      .get(`/api/v1/products/${prod.id}/foto`)
+      .set('Authorization', `Bearer ${operadorToken}`);
+    expect(sinFoto.status).toBe(404);
+    const lookup2 = await t.http
+      .get('/api/v1/products/lookup/FOTO-001')
+      .set('Authorization', `Bearer ${operadorToken}`);
+    expect(lookup2.body.tieneFoto).toBe(false);
   });
 });

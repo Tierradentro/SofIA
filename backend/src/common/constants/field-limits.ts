@@ -36,6 +36,7 @@ export const CLIENT_FIELD_LIMITS: Record<string, number> = {
   direccion: 250,
   telefonos: 120,
   ciudad: 120,
+  email: 160, // I41
 };
 
 /** Comercial: columnas varchar de `comerciales` (misma estructura que Cliente). */

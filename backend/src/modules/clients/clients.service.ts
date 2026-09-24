@@ -27,7 +27,10 @@ export class ClientsService {
   ) {}
 
   async create(dto: CreateClientDto, user: { id: string; username: string }) {
-    const client = await this.clients.save(this.clients.create(dto));
+    // I41: correo vacío se guarda como null (campo opcional)
+    const client = await this.clients.save(
+      this.clients.create({ ...dto, email: dto.email?.trim() || null }),
+    );
     // QA Func. 4.1: la dirección del formulario queda como dirección principal
     if (dto.direccion?.trim()) {
       await this.addresses.save(
@@ -140,6 +143,8 @@ export class ClientsService {
     if (!client) throw new NotFoundException('Cliente no encontrado');
     const anterior = { ...client };
     Object.assign(client, dto);
+    // I41: correo vacío se guarda como null (campo opcional)
+    if (dto.email !== undefined) client.email = dto.email?.trim() || null;
     const saved = await this.clients.save(client);
     await this.audit.log({
       usuarioId: user.id,
