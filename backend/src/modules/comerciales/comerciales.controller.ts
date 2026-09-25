@@ -32,6 +32,7 @@ export class ComercialesController {
   }
 
   @Get()
+  @Roles(Role.OPERADOR, Role.GENERADOR, Role.ADMINISTRADOR, Role.COMERCIAL)
   findAll(@Query('q') q?: string) {
     return this.comerciales.findAll(q);
   }
@@ -44,6 +45,7 @@ export class ComercialesController {
   }
 
   @Get(':id')
+  @Roles(Role.OPERADOR, Role.GENERADOR, Role.ADMINISTRADOR, Role.COMERCIAL)
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.comerciales.findOne(id);
   }

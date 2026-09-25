@@ -34,6 +34,7 @@ export class ClientsController {
   }
 
   @Get()
+  @Roles(Role.OPERADOR, Role.GENERADOR, Role.ADMINISTRADOR, Role.COMERCIAL)
   findAll(@Query('q') q?: string) {
     return this.clients.findAll(q);
   }
@@ -46,12 +47,14 @@ export class ClientsController {
   }
 
   @Get(':id')
+  @Roles(Role.OPERADOR, Role.GENERADOR, Role.ADMINISTRADOR, Role.COMERCIAL)
   findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.clients.findOne(id, user);
   }
 
   /** QA Func. 4.1: direcciones de despacho del cliente (consulta: todos los roles). */
   @Get(':id/direcciones')
+  @Roles(Role.OPERADOR, Role.GENERADOR, Role.ADMINISTRADOR, Role.COMERCIAL)
   listAddresses(@Param('id', ParseUUIDPipe) id: string) {
     return this.clients.listAddresses(id);
   }

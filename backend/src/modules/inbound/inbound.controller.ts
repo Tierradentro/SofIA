@@ -44,6 +44,7 @@ export class InboundController {
   }
 
   @Get()
+  @Roles(Role.OPERADOR, Role.GENERADOR, Role.ADMINISTRADOR)
   findAll(
     @Query('empresaId') empresaId?: string,
     @Query('estado') estado?: InboundStatus,
@@ -55,6 +56,7 @@ export class InboundController {
   }
 
   @Get(':id')
+  @Roles(Role.OPERADOR, Role.GENERADOR, Role.ADMINISTRADOR)
   getDetalle(@Param('id', ParseUUIDPipe) id: string) {
     return this.inbound.getDetalle(id);
   }

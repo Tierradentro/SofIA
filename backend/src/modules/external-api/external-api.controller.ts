@@ -209,7 +209,10 @@ export class ExternalApiController {
     return {
       numero: d.numero,
       estado: d.estado,
-      cliente: d.cliente,
+      // I-seguridad: remapeado a solo el campo de negocio necesario; antes
+      // exponía la entidad Client completa (id interno + PII: identificación,
+      // dirección, teléfonos) a cualquier consumidor con API key.
+      cliente: d.cliente ? { nombre: d.cliente.nombre } : null,
       pedidos: d.pedidos.map((p: any) => ({
         numero: p.numero,
         numeroFactura: p.numeroFactura,
@@ -232,7 +235,10 @@ export class ExternalApiController {
         guia: d.guia,
         fechaSalida: d.fechaSalida,
       },
-      despachoOrigenId: d.despachoOrigenId,
+      // I-seguridad: se retira despachoOrigenId (UUID interno de otro
+      // despacho) — no aporta al caso de uso del agente externo y exponía
+      // un identificador interno de base de datos.
+      esCompletoDeParcial: Boolean(d.despachoOrigenId),
     };
   }
 

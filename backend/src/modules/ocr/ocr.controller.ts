@@ -33,6 +33,7 @@ export class OcrController {
   constructor(private readonly ocr: OcrService) {}
 
   @Get('engine')
+  @Roles(Role.ADMINISTRADOR)
   getEngine() {
     return this.ocr.getActiveEngine().then((engine) => ({ engine }));
   }
@@ -68,6 +69,7 @@ export class OcrController {
   }
 
   @Get('documents')
+  @Roles(Role.GENERADOR, Role.ADMINISTRADOR)
   findAll(@Query('estado') estado?: OcrDocumentStatus) {
     if (estado && !Object.values(OcrDocumentStatus).includes(estado)) {
       throw new BadRequestException('estado inválido');
@@ -76,6 +78,7 @@ export class OcrController {
   }
 
   @Get('documents/:id')
+  @Roles(Role.GENERADOR, Role.ADMINISTRADOR)
   getDetalle(@Param('id', ParseUUIDPipe) id: string) {
     return this.ocr.getDetalle(id);
   }

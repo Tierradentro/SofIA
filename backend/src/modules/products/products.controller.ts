@@ -47,6 +47,7 @@ export class ProductsController {
 
   /** Listado por empresa (dashboard de existencias). I26: conStock=true limita a productos con existencias (creación/edición de pedidos). */
   @Get()
+  @Roles(Role.OPERADOR, Role.GENERADOR, Role.ADMINISTRADOR, Role.COMERCIAL)
   findByEmpresa(
     @Query('empresaId') empresaId: string,
     @Query('conStock') conStock?: string,
@@ -56,17 +57,20 @@ export class ProductsController {
 
   /** HU-013: consulta por código de barras, código, OE o referencia cruzada. */
   @Get('lookup/:codigo')
+  @Roles(Role.OPERADOR, Role.GENERADOR, Role.ADMINISTRADOR, Role.COMERCIAL)
   lookup(@Param('codigo') codigo: string, @Query('empresaId') empresaId?: string) {
     return this.products.lookup(codigo, empresaId);
   }
 
   /** Búsqueda por descripción (pg_trgm — criterio predominante). */
   @Get('search')
+  @Roles(Role.OPERADOR, Role.GENERADOR, Role.ADMINISTRADOR, Role.COMERCIAL)
   search(@Query('q') q: string, @Query('empresaId') empresaId?: string) {
     return this.products.search(q || '', empresaId);
   }
 
   @Get(':id')
+  @Roles(Role.OPERADOR, Role.GENERADOR, Role.ADMINISTRADOR, Role.COMERCIAL)
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
     const product = await this.products.findById(id);
     return this.products.detalle(product);
@@ -123,8 +127,9 @@ export class ProductsController {
     return this.products.subirFoto(id, file, user);
   }
 
-  /** I41: imagen de la foto (todos los roles autenticados la visualizan). */
+  /** I41: imagen de la foto (los roles operativos la visualizan; el rol API no). */
   @Get(':id/foto')
+  @Roles(Role.OPERADOR, Role.GENERADOR, Role.ADMINISTRADOR, Role.COMERCIAL)
   async verFoto(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
     const { doc, absolutePath } = await this.products.obtenerFoto(id);
     if (!doc || !absolutePath) throw new NotFoundException('El producto no tiene foto');

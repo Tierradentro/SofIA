@@ -31,6 +31,7 @@ export class ImportsController {
 
   /** Catálogo de campos destino por tipo (para el mapeo declarativo en UI). */
   @Get('fields')
+  @Roles(Role.ADMINISTRADOR)
   fields() {
     return IMPORT_FIELDS;
   }
@@ -47,12 +48,14 @@ export class ImportsController {
   }
 
   @Get()
+  @Roles(Role.ADMINISTRADOR)
   findAll(@Query('tipo') tipo?: ImportType) {
     return this.imports.findAll(tipo);
   }
 
   /** HU-016: resumen de validación con diferencias. */
   @Get(':id/resumen')
+  @Roles(Role.ADMINISTRADOR)
   resumen(@Param('id', ParseUUIDPipe) id: string) {
     return this.imports.getResumen(id);
   }

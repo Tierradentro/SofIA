@@ -272,6 +272,42 @@ describe('API externa (e2e)', () => {
     expect(interno.status).toBe(200);
   });
 
+  it('I-seguridad: el rol API queda confinado a external-api (403 en los 19 GET internos antes abiertos)', async () => {
+    const id = '00000000-0000-4000-8000-000000000000';
+    const rutasInternas = [
+      '/api/v1/clients',
+      '/api/v1/clients?q=x',
+      `/api/v1/clients/${id}`,
+      `/api/v1/clients/${id}/direcciones`,
+      '/api/v1/comerciales',
+      `/api/v1/comerciales/${id}`,
+      '/api/v1/companies',
+      `/api/v1/companies/${id}`,
+      '/api/v1/products?empresaId=x',
+      '/api/v1/products/lookup/X',
+      '/api/v1/products/search?q=x',
+      `/api/v1/products/${id}`,
+      `/api/v1/products/${id}/foto`,
+      '/api/v1/imports/fields',
+      '/api/v1/imports',
+      `/api/v1/imports/${id}/resumen`,
+      '/api/v1/inbound',
+      `/api/v1/inbound/${id}`,
+      '/api/v1/ocr/engine',
+      '/api/v1/ocr/documents',
+      `/api/v1/ocr/documents/${id}`,
+    ];
+    for (const ruta of rutasInternas) {
+      const res = await t.http.get(ruta).set('X-API-Key', apiKey);
+      expect({ ruta, status: res.status }).toEqual({ ruta, status: 403 });
+    }
+    // La superficie externa sigue operando normalmente con la misma key
+    const externo = await t.http
+      .get(`/api/v1/api/products?empresaId=${ireId}`)
+      .set('X-API-Key', apiKey);
+    expect(externo.status).toBe(200);
+  });
+
   it('HU-060: crear pedido validando empresa, cliente, productos y cantidades', async () => {
     // Cliente inexistente → 4xx
     const clienteMalo = await t.http

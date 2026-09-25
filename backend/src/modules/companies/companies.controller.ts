@@ -33,11 +33,13 @@ export class CompaniesController {
   }
 
   @Get()
+  @Roles(Role.OPERADOR, Role.GENERADOR, Role.ADMINISTRADOR, Role.COMERCIAL)
   findAll() {
     return this.companies.findAll();
   }
 
   @Get(':id')
+  @Roles(Role.OPERADOR, Role.GENERADOR, Role.ADMINISTRADOR, Role.COMERCIAL)
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.companies.findOne(id);
   }
