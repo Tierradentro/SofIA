@@ -44,6 +44,9 @@ interface Caso {
   boxId: string | null;
   pedido?: { numero: string; numeroFactura: string | null; estado: string } | null;
   despacho?: { numero: string; estado: string } | null;
+  /** I42: empresa a la que corresponde la devolución (la del producto). */
+  empresa?: { id: string; nombre: string } | null;
+  empresaNombre?: string | null;
   soportes?: Soporte[];
   createdAt: string;
   cerradaAt: string | null;
@@ -121,6 +124,10 @@ export default function DevolucionesPage() {
   const [motivoCancelar, setMotivoCancelar] = useState('');
   const [cantidadReingreso, setCantidadReingreso] = useState('');
   const [notasReingreso, setNotasReingreso] = useState('');
+  // I42: bahías de devoluciones configuradas en la bodega y la elegida
+  // para el ingreso de la mercancía aceptada.
+  const [bahias, setBahias] = useState<{ id: string; etiqueta: string }[]>([]);
+  const [bahiaId, setBahiaId] = useState('');
 
   const [mensaje, setMensaje] = useState('');
   const [error, setError] = useState('');
@@ -152,6 +159,23 @@ export default function DevolucionesPage() {
         setMotivos(body);
         setMotivoCodigo(body[0].codigo);
       }
+    });
+    // I42: catálogo de bahías de devoluciones (del mapa de la bodega)
+    api<any>('/warehouses/map').then(({ status, body }) => {
+      if (status !== 200) return;
+      const lista: { id: string; etiqueta: string }[] = [];
+      for (const piso of body.pisos ?? []) {
+        for (const a of piso.areas ?? []) {
+          if (a.tipo === 'BAHIA_DEVOLUCIONES' && a.activo !== false) {
+            lista.push({
+              id: a.id,
+              etiqueta: `${a.alias || 'Bahía de devoluciones'} · Piso ${piso.numero}`,
+            });
+          }
+        }
+      }
+      setBahias(lista);
+      if (lista.length) setBahiaId(lista[0].id);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -312,6 +336,7 @@ export default function DevolucionesPage() {
           <h2 className="mb-2 font-semibold">Información del caso</h2>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <p><b>Producto:</b> {caso.codigo} — {caso.descripcion}{caso.marca ? ` (${caso.marca})` : ''}</p>
+            <p><b>Empresa:</b> {caso.empresa?.nombre ?? caso.empresaNombre ?? '—'}</p>
             <p><b>Cantidad:</b> {caso.cantidad} · <b>Reingresada:</b> {caso.cantidadReingresada}</p>
             <p><b>Factura:</b> {caso.factura ? `${caso.factura}${caso.facturaManual ? ' (manual)' : ''}` : '—'}</p>
             <p><b>Comercial:</b> {caso.comercial?.nombre ?? '—'}</p>
@@ -451,16 +476,27 @@ export default function DevolucionesPage() {
               <h2 className="mb-1 font-semibold">Aceptar mercancía al inventario</h2>
               <p className="mb-2 text-xs text-slate-500">
                 La aceptación la aprueba el Generador; las unidades aceptadas vuelven
-                a la existencia del producto (movimiento Reingreso por devolución).
+                a la existencia del producto (movimiento Reingreso por devolución) y
+                quedan ubicadas en la bahía de devoluciones seleccionada.
               </p>
               <p className="mb-2 text-slate-500">Pendiente por aceptar: <span className="font-semibold text-slate-700">{caso.cantidad - caso.cantidadReingresada}</span></p>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <input value={cantidadReingreso} onChange={(e) => setCantidadReingreso(e.target.value)} placeholder="Cantidad" type="number" min={1} className="w-24 rounded border px-2 py-1" />
+                <select
+                  value={bahiaId}
+                  onChange={(e) => setBahiaId(e.target.value)}
+                  className="rounded border px-2 py-1"
+                  title="Bahía de devoluciones donde ingresa la mercancía"
+                >
+                  {bahias.length === 0 && <option value="">Sin bahías de devoluciones configuradas</option>}
+                  {bahias.map((b) => <option key={b.id} value={b.id}>{b.etiqueta}</option>)}
+                </select>
                 <input value={notasReingreso} onChange={(e) => setNotasReingreso(e.target.value)} placeholder="Notas…" className="flex-1 rounded border px-2 py-1" />
                 <button
                   onClick={() =>
                     accion('/reingresar', 'Mercancía aceptada: volvió al inventario', {
                       cantidad: cantidadReingreso ? parseInt(cantidadReingreso, 10) : undefined,
+                      areaId: bahiaId || undefined,
                       notas: notasReingreso || undefined,
                     })
                   }
@@ -618,6 +654,7 @@ export default function DevolucionesPage() {
               <tr className="border-b text-left text-slate-500">
                 <th className="py-1">Producto</th>
                 <th>Cliente</th>
+                <th>Empresa</th>
                 <th>Motivo</th>
                 <th>Cant.</th>
                 <th>Factura</th>
@@ -630,6 +667,7 @@ export default function DevolucionesPage() {
                 <tr key={c.id} className="border-b last:border-0">
                   <td className="py-2 font-medium">{c.codigo}</td>
                   <td>{c.clienteNombre}</td>
+                  <td>{c.empresaNombre ?? '—'}</td>
                   <td>{c.motivoCodigo}</td>
                   <td>{c.cantidad}</td>
                   <td className="text-slate-500">{c.factura ?? '—'}</td>

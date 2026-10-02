@@ -70,7 +70,7 @@ describe('Warehouses (e2e)', () => {
       for (const z of zonasConEstantes) expect(z.estantes).toHaveLength(5);
     }
     const piso1 = res.body.pisos.find((p: any) => p.numero === 1);
-    expect(piso1.areas.length).toBe(4);
+    expect(piso1.areas.length).toBe(5); // I42: + Bahía de Devoluciones
     expect(res.body.pisos.find((p: any) => p.numero === 2).areas).toHaveLength(0);
   });
 

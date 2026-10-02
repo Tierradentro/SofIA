@@ -23,6 +23,8 @@ export enum AreaTipo {
   PATIO_MANIOBRAS = 'PATIO_MANIOBRAS',
   BAHIA_EMPAQUE = 'BAHIA_EMPAQUE',
   BAHIA_TEMPORAL = 'BAHIA_TEMPORAL',
+  /** I42: destino de la mercancía aceptada al inventario desde devoluciones. */
+  BAHIA_DEVOLUCIONES = 'BAHIA_DEVOLUCIONES',
 }
 
 @Entity('warehouse_areas')

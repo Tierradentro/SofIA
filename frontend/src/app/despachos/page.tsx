@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { CheckCircle2, Clock, Package, Printer } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 import { AppShell } from '@/components/app-shell';
 import { CLASE_BOTON_PRIMARIO, CLASE_BOTON_SECUNDARIO, EncabezadoPagina, Insignia } from '@/components/ui';
@@ -109,6 +109,16 @@ const ESTADOS: Record<Despacho['estado'], string> = {
  * Operador: packing (cajas, escaneo, cierre, etiqueta QR, finalizar empaque).
  */
 export default function DespachosPage() {
+  // Next.js 14: useSearchParams() exige un boundary de Suspense para el
+  // prerendering estático; sin él `next build` falla.
+  return (
+    <Suspense>
+      <DespachosContenido />
+    </Suspense>
+  );
+}
+
+function DespachosContenido() {
   const router = useRouter();
   const [sesion, setSesion] = useState<Sesion | null>(null);
   const [lista, setLista] = useState<Despacho[]>([]);
@@ -168,6 +178,8 @@ export default function DespachosPage() {
   const esGenerador = rol === 'GENERADOR' || rol === 'ADMINISTRADOR';
   const esOperador = rol === 'OPERADOR' || rol === 'ADMINISTRADOR';
 
+  const searchParams = useSearchParams();
+
   useEffect(() => {
     const s = obtenerSesion();
     if (!s) return router.replace('/login');
@@ -175,6 +187,10 @@ export default function DespachosPage() {
     setSesion(s);
     cargarLista();
     cargarAprobados();
+    // I42: el dashboard enlaza /despachos?abrir=<id> para abrir el detalle
+    // del despacho seleccionado (antes solo se abría la vista).
+    const abrirId = searchParams.get('abrir');
+    if (abrirId) cargarDetalle(abrirId);
     api<Carrier[]>('/carriers/activas').then(({ status, body }) => {
       if (status === 200) setCarriers(body);
     });

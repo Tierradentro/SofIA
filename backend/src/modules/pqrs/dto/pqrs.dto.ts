@@ -167,6 +167,13 @@ export class ReingresoDto {
   @Min(1)
   cantidad?: number;
 
+  /**
+   * I42: bahía de devoluciones (área de bodega tipo BAHIA_DEVOLUCIONES)
+   * donde queda físicamente la mercancía aceptada al inventario.
+   */
+  @IsUUID()
+  areaId: string;
+
   @IsOptional()
   @IsString()
   notas?: string;

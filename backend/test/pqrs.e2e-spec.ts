@@ -30,6 +30,7 @@ describe('Devoluciones PQRS (e2e)', () => {
   let icvId: string;
   let clienteId: string;
   let comercialId: string;
+  let bahiaDevId: string;
 
   async function crearProducto(codigo: string, cantidad: number, empresaId: string, barcode?: string) {
     const res = await t.http
@@ -267,6 +268,19 @@ describe('Devoluciones PQRS (e2e)', () => {
     expect(res.body.motivo.concepto).toBe('GARANTIA');
     expect(res.body.pedido.numero).toBe(pedido.numero);
     (global as any).__caso1 = res.body;
+
+    // I42: bahía de devoluciones para el ingreso físico de la mercancía aceptada
+    const piso = await t.dataSource.query(`SELECT id FROM warehouse_floors ORDER BY numero LIMIT 1`);
+    await t.dataSource.query(
+      `INSERT INTO warehouse_areas (id, floor_id, tipo, alias, pos_x, pos_y, ancho_m, alto_m, permite_productos, activo)
+       VALUES (gen_random_uuid(), $1, 'BAHIA_DEVOLUCIONES', 'Bahía de Devoluciones', 40, 6, 8, 4, true, true)
+       ON CONFLICT DO NOTHING`,
+      [piso[0].id],
+    );
+    const bahia = await t.dataSource.query(
+      `SELECT id FROM warehouse_areas WHERE tipo='BAHIA_DEVOLUCIONES' LIMIT 1`,
+    );
+    bahiaDevId = bahia[0].id;
   });
 
   it('HU-045 + CU-007: sin coincidencia — factura manual u observación obligatoria', async () => {
@@ -494,14 +508,30 @@ describe('Devoluciones PQRS (e2e)', () => {
     const opReingresa = await t.http
       .post(`/api/v1/pqrs/${caso2.id}/reingresar`)
       .set('Authorization', `Bearer ${operadorToken}`)
-      .send({});
+      .send({ areaId: bahiaDevId });
     expect(opReingresa.status).toBe(403);
+
+    // I42: sin bahía de devoluciones → 400; con otra área → 400
+    const sinBahia = await t.http
+      .post(`/api/v1/pqrs/${caso2.id}/reingresar`)
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ cantidad: 1 });
+    expect(sinBahia.status).toBe(400);
+    const otraArea = await t.dataSource.query(
+      `SELECT id FROM warehouse_areas WHERE tipo='BAHIA_TEMPORAL' LIMIT 1`,
+    );
+    const areaEquivocada = await t.http
+      .post(`/api/v1/pqrs/${caso2.id}/reingresar`)
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ cantidad: 1, areaId: otraArea[0].id });
+    expect(areaEquivocada.status).toBe(400);
+    expect(areaEquivocada.body.message).toContain('bahía de devoluciones');
 
     // Excedente → 400
     const excedente = await t.http
       .post(`/api/v1/pqrs/${caso2.id}/reingresar`)
       .set('Authorization', `Bearer ${generadorToken}`)
-      .send({ cantidad: 3 });
+      .send({ cantidad: 3, areaId: bahiaDevId });
     expect(excedente.status).toBe(400);
     expect(excedente.body.message).toContain('Excede');
 
@@ -509,21 +539,30 @@ describe('Devoluciones PQRS (e2e)', () => {
     const r1 = await t.http
       .post(`/api/v1/pqrs/${caso2.id}/reingresar`)
       .set('Authorization', `Bearer ${generadorToken}`)
-      .send({ cantidad: 1, notas: 'Una unidad en buen estado vuelve a estantería' });
+      .send({ cantidad: 1, areaId: bahiaDevId, notas: 'Una unidad en buen estado vuelve a la bahía de devoluciones' });
     expect(r1.status).toBe(201);
     expect(r1.body.cantidadReingresada).toBe(1);
     const r2 = await t.http
       .post(`/api/v1/pqrs/${caso2.id}/reingresar`)
       .set('Authorization', `Bearer ${generadorToken}`)
-      .send({});
+      .send({ areaId: bahiaDevId });
     expect(r2.status).toBe(201);
     expect(r2.body.cantidadReingresada).toBe(2);
+
+    // I42: las 2 unidades quedaron ubicadas en la bahía de devoluciones
+    const enBahia = await t.dataSource.query(
+      `SELECT cantidad FROM warehouse_product_locations
+       WHERE product_id = (SELECT id FROM products WHERE codigo='PQRS-002') AND area_id = $1`,
+      [bahiaDevId],
+    );
+    expect(enBahia).toHaveLength(1);
+    expect(enBahia[0].cantidad).toBe(2);
 
     // Nada más por reingresar → 400
     const r3 = await t.http
       .post(`/api/v1/pqrs/${caso2.id}/reingresar`)
       .set('Authorization', `Bearer ${generadorToken}`)
-      .send({});
+      .send({ areaId: bahiaDevId });
     expect(r3.status).toBe(400);
 
     const despues = await stock('PQRS-002', icvId);
@@ -554,15 +593,17 @@ describe('Devoluciones PQRS (e2e)', () => {
     const op = await t.http
       .post(`/api/v1/pqrs/${caso1.id}/reingresar`)
       .set('Authorization', `Bearer ${operadorToken}`)
-      .send({});
+      .send({ areaId: bahiaDevId });
     expect(op.status).toBe(403);
 
     const r = await t.http
       .post(`/api/v1/pqrs/${caso1.id}/reingresar`)
       .set('Authorization', `Bearer ${generadorToken}`)
-      .send({ notas: 'Pieza verificada en buen estado tras el cierre del caso' });
+      .send({ areaId: bahiaDevId, notas: 'Pieza verificada en buen estado tras el cierre del caso' });
     expect(r.status).toBe(201);
     expect(r.body.cantidadReingresada).toBe(2);
+    // I42: la empresa del caso es la del producto (IRE) y el detalle la expone
+    expect(r.body.empresa?.nombre).toBe('IRE');
 
     const despues = await stock('PQRS-001', ireId);
     expect(despues.cantidad).toBe(antes.cantidad + 2);
@@ -571,8 +612,15 @@ describe('Devoluciones PQRS (e2e)', () => {
     const otra = await t.http
       .post(`/api/v1/pqrs/${caso1.id}/reingresar`)
       .set('Authorization', `Bearer ${generadorToken}`)
-      .send({});
+      .send({ areaId: bahiaDevId });
     expect(otra.status).toBe(400);
+
+    // I42: la lista expone la empresa de cada caso
+    const lista = await t.http
+      .get('/api/v1/pqrs')
+      .set('Authorization', `Bearer ${generadorToken}`);
+    const fila = lista.body.find((c: any) => c.id === caso1.id);
+    expect(fila.empresaNombre).toBe('IRE');
   });
 
   it('Cancelación por Generador en cualquier parte del flujo', async () => {

@@ -47,7 +47,7 @@ interface MapaPasillo {
 }
 interface MapaArea {
   id: string;
-  tipo: 'ENTRADA' | 'PATIO_MANIOBRAS' | 'BAHIA_EMPAQUE' | 'BAHIA_TEMPORAL';
+  tipo: 'ENTRADA' | 'PATIO_MANIOBRAS' | 'BAHIA_EMPAQUE' | 'BAHIA_TEMPORAL' | 'BAHIA_DEVOLUCIONES';
   alias: string;
   posX: number;
   posY: number;
@@ -103,6 +103,7 @@ const ETIQUETA_AREA: Record<string, string> = {
   PATIO_MANIOBRAS: 'Patio de maniobras',
   BAHIA_EMPAQUE: 'Bahía de empaque',
   BAHIA_TEMPORAL: 'Bahía temporal',
+  BAHIA_DEVOLUCIONES: 'Bahía de devoluciones',
 };
 
 /** Escala de ocupación → color del cajón (paleta menta/sofia/slate). */

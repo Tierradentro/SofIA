@@ -520,7 +520,7 @@ export default function DashboardPage() {
             {enPestanaDespacho.map((d) => (
               <button
                 key={d.id}
-                onClick={() => router.push('/despachos')}
+                onClick={() => router.push(`/despachos?abrir=${d.id}`)}
                 className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 text-left transition-shadow hover:shadow-md"
               >
                 <div className="mb-6 flex items-start justify-between">
@@ -582,7 +582,7 @@ export default function DashboardPage() {
                 <tr
                   key={d.id}
                   className={`${CLASES_TABLA.fila} cursor-pointer`}
-                  onClick={() => router.push('/despachos')}
+                  onClick={() => router.push(`/despachos?abrir=${d.id}`)}
                 >
                   <td className={CLASES_TABLA.celda}>{formatearFecha(d.fechaSalida ?? d.createdAt)}</td>
                   <td className={`${CLASES_TABLA.celda} font-medium text-sofia-700`}>{d.numero}</td>

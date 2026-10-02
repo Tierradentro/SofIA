@@ -328,7 +328,9 @@ export class WarehousesService {
               altoM: areaDto.altoM ?? (areaDto.tipo === AreaTipo.ENTRADA ? 0 : 4),
               permiteProductos:
                 areaDto.permiteProductos ??
-                (areaDto.tipo === AreaTipo.BAHIA_TEMPORAL || areaDto.tipo === AreaTipo.BAHIA_EMPAQUE),
+                (areaDto.tipo === AreaTipo.BAHIA_TEMPORAL ||
+                  areaDto.tipo === AreaTipo.BAHIA_EMPAQUE ||
+                  areaDto.tipo === AreaTipo.BAHIA_DEVOLUCIONES),
               activo: true,
             }),
           );

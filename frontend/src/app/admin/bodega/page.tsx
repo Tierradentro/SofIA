@@ -59,7 +59,7 @@ interface MapaPasillo {
 }
 interface MapaArea {
   id: string;
-  tipo: 'ENTRADA' | 'PATIO_MANIOBRAS' | 'BAHIA_EMPAQUE' | 'BAHIA_TEMPORAL';
+  tipo: 'ENTRADA' | 'PATIO_MANIOBRAS' | 'BAHIA_EMPAQUE' | 'BAHIA_TEMPORAL' | 'BAHIA_DEVOLUCIONES';
   alias: string;
   color?: string | null;
   posX: number;
@@ -124,13 +124,14 @@ const FORM_INICIAL: EstructuraForm = {
   ],
 };
 
-const TIPOS_AREA: Array<MapaArea['tipo']> = ['ENTRADA', 'PATIO_MANIOBRAS', 'BAHIA_EMPAQUE', 'BAHIA_TEMPORAL'];
+const TIPOS_AREA: Array<MapaArea['tipo']> = ['ENTRADA', 'PATIO_MANIOBRAS', 'BAHIA_EMPAQUE', 'BAHIA_TEMPORAL', 'BAHIA_DEVOLUCIONES'];
 
 const ETIQUETA_AREA: Record<MapaArea['tipo'], string> = {
   ENTRADA: 'Entrada',
   PATIO_MANIOBRAS: 'Patio de maniobras',
   BAHIA_EMPAQUE: 'Bahía de empaque',
   BAHIA_TEMPORAL: 'Bahía temporal',
+  BAHIA_DEVOLUCIONES: 'Bahía de devoluciones',
 };
 
 const MAX_PISOS = 5;
@@ -145,6 +146,7 @@ const COLORES = {
   patio: { relleno: '#f1f5f9', borde: '#94a3b8', texto: '#475569' },
   empaque: { relleno: '#a5f3da', borde: '#17b795', texto: '#0a2547' },
   temporal: { relleno: '#d0faec', borde: '#17b795', texto: '#0a2547' },
+  devoluciones: { relleno: '#fde68a', borde: '#d97706', texto: '#7c2d12' },
   entrada: { relleno: '#3fd9b8', borde: '#0d9379', texto: '#0b7561' },
 };
 
@@ -158,6 +160,8 @@ function coloresArea(tipo: MapaArea['tipo']) {
       return COLORES.empaque;
     case 'BAHIA_TEMPORAL':
       return COLORES.temporal;
+    case 'BAHIA_DEVOLUCIONES':
+      return COLORES.devoluciones;
   }
 }
 

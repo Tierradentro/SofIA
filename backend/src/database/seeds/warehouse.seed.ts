@@ -51,6 +51,8 @@ export async function runWarehouseSeed(dataSource: DataSource): Promise<void> {
         { tipo: AreaTipo.PATIO_MANIOBRAS, alias: 'Patio de Maniobras', posX: 2, posY: 1, anchoM: 36, altoM: 4, permiteProductos: false },
         { tipo: AreaTipo.BAHIA_EMPAQUE, alias: 'Bahía de Empaque', posX: 2, posY: 6, anchoM: 8, altoM: 4, permiteProductos: true },
         { tipo: AreaTipo.BAHIA_TEMPORAL, alias: 'Bahía Temporal', posX: 30, posY: 6, anchoM: 8, altoM: 4, permiteProductos: true },
+        // I42: destino físico de la mercancía aceptada desde devoluciones
+        { tipo: AreaTipo.BAHIA_DEVOLUCIONES, alias: 'Bahía de Devoluciones', posX: 30, posY: 11, anchoM: 8, altoM: 4, permiteProductos: true },
       ];
       for (const a of areas) {
         await areaRepo.save(areaRepo.create({ ...a, floorId: piso.id, activo: true } as WarehouseArea));

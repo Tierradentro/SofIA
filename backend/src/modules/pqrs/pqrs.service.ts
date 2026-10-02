@@ -11,6 +11,8 @@ import { PqrsSupport, PqrsSupportType } from './entities/pqrs-support.entity';
 import { PqrsReason } from './entities/pqrs-reason.entity';
 import { Product } from '../products/entities/product.entity';
 import { ProductBarcode } from '../products/entities/product-barcode.entity';
+import { WarehouseArea, AreaTipo } from '../warehouses/entities/warehouse-area.entity';
+import { WarehouseProductLocation } from '../warehouses/entities/warehouse-product-location.entity';
 import { Order } from '../orders/entities/order.entity';
 import { InboundMatcher } from '../inbound/inbound-matcher';
 import { MovementsService } from '../movements/movements.service';
@@ -458,6 +460,18 @@ export class PqrsService {
     }
     const cantidad = dto.cantidad ?? caso.cantidad - caso.cantidadReingresada;
     validarReingreso(caso.cantidad, caso.cantidadReingresada, cantidad);
+    // I42: la mercancía aceptada se ingresa físicamente a una bahía de
+    // devoluciones (área activa, con productos y de ese tipo).
+    const area = await this.dataSource.getRepository(WarehouseArea).findOne({
+      where: { id: dto.areaId },
+    });
+    if (!area || !area.activo) throw new NotFoundException('Bahía de devoluciones no encontrada');
+    if (!area.permiteProductos) {
+      throw new BadRequestException('Esta área no almacena productos');
+    }
+    if (area.tipo !== AreaTipo.BAHIA_DEVOLUCIONES) {
+      throw new BadRequestException('La mercancía devuelta solo se acepta en una bahía de devoluciones');
+    }
     await this.dataSource.transaction(async (em) => {
       await this.movements.apply(
         {
@@ -470,6 +484,40 @@ export class PqrsService {
         },
         em,
       );
+      // I42: ubicación física en la bahía de devoluciones. Si el producto ya
+      // tiene mercancía devuelta en esa bahía, se acumula; la ubicación
+      // oficial se recalcula como en cualquier asignación (mayor cantidad).
+      const repoLoc = em.getRepository(WarehouseProductLocation);
+      const existente = await repoLoc.findOne({
+        where: { productId: caso.productId, areaId: area.id },
+      });
+      if (existente) {
+        await repoLoc.update(existente.id, { cantidad: existente.cantidad + cantidad });
+      } else {
+        await repoLoc.save(
+          repoLoc.create({
+            productId: caso.productId,
+            rackId: null,
+            nivel: null,
+            areaId: area.id,
+            zoneId: null,
+            transito: false,
+            cantidad,
+            esOficial: false,
+          } as Partial<WarehouseProductLocation>),
+        );
+      }
+      const todas = await repoLoc.find({ where: { productId: caso.productId } });
+      let max = -1;
+      let oficialId: string | null = null;
+      for (const t of todas) {
+        if (t.cantidad > max) {
+          max = t.cantidad;
+          oficialId = t.id;
+        }
+      }
+      await repoLoc.update({ productId: caso.productId }, { esOficial: false });
+      if (oficialId) await repoLoc.update(oficialId, { esOficial: true });
       await em.query(
         `UPDATE pqrs_cases SET cantidad_reingresada = cantidad_reingresada + $2 WHERE id = $1`,
         [caso.id, cantidad],
@@ -481,7 +529,13 @@ export class PqrsService {
           accion: 'PQRS_REINGRESO',
           tabla: TABLA,
           registroId: id,
-          valorNuevo: { codigo: caso.codigo, cantidad, notas: dto.notas },
+          valorNuevo: {
+            codigo: caso.codigo,
+            cantidad,
+            notas: dto.notas,
+            bahiaId: area.id,
+            bahia: area.alias ?? area.tipo,
+          },
         },
         em,
       );
@@ -504,7 +558,16 @@ export class PqrsService {
     const casos = await qb.getMany();
     const clientes = await this.dataSource.getRepository('clients').find();
     const mapa = new Map(clientes.map((c: any) => [c.id, c.nombre]));
-    return casos.map((c) => ({ ...c, clienteNombre: mapa.get(c.clienteId) ?? null }));
+    // I42: empresa de cada caso (la del producto devuelto)
+    const productos = await this.dataSource.query(
+      `SELECT p.id, e.nombre AS empresa FROM products p JOIN companies e ON e.id = p.empresa_id`,
+    );
+    const empresas = new Map(productos.map((p: any) => [p.id, p.empresa]));
+    return casos.map((c) => ({
+      ...c,
+      clienteNombre: mapa.get(c.clienteId) ?? null,
+      empresaNombre: empresas.get(c.productId) ?? null,
+    }));
   }
 
   async get(id: string, user?: Usuario) {
@@ -562,6 +625,15 @@ export class PqrsService {
       : null;
     const publico = (u: User | null) =>
       u ? { id: u.id, username: u.username, nombre: u.nombre, rol: u.rol } : null;
+    // I42: la empresa de la devolución es la del producto del caso.
+    let empresa: { id: string; nombre: string } | null = null;
+    if (caso.productId) {
+      const filas = await this.dataSource.query(
+        `SELECT e.id, e.nombre FROM products p JOIN companies e ON e.id = p.empresa_id WHERE p.id = $1`,
+        [caso.productId],
+      );
+      empresa = filas[0] ?? null;
+    }
     return {
       ...caso,
       cliente,
@@ -570,6 +642,7 @@ export class PqrsService {
       soportes: soportesDetalle,
       pedido,
       despacho,
+      empresa,
       trazabilidad: { creadoPor: publico(creadoPor), atendidoPor: publico(atendidoPor) },
     };
   }
