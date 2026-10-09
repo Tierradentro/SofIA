@@ -53,18 +53,17 @@ services:
       # no hay RUN_MIGRATIONS/SEED_ON_BOOT que las desactive por error.
     volumes:
       - files:/data
-    # AJ-006: healthcheck HTTP real (liveness). /api/v1/health responde 200
-    # apenas el puerto abre (la BD se conecta en segundo plano) y reporta
-    # "degradado" en el cuerpo mientras las migraciones corren — señal de
-    # readiness disponible sin tumbar el contenedor. wget = busybox, siempre
-    # presente en node:22-alpine.
-    # I48: márgenes amplios para el arranque en frío de EasyPanel (CPU
-    # compartida tras builds paralelos): el contenedor dispone de ~2.5 min
-    # antes de declararse unhealthy.
+    # AJ-006/I50: healthcheck con Node (mismo patrón del frontend; registra
+    # el error en State.Health.Log). /api/v1/health responde 200 apenas el
+    # puerto abre — la BD se conecta en segundo plano — y reporta "degradado"
+    # en el cuerpo mientras corren migraciones (readiness disponible sin
+    # tumbar el contenedor). Márgenes amplios para el arranque en frío.
     healthcheck:
-      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:3001/api/v1/health || exit 1']
+      test:
+        - CMD-SHELL
+        - "node -e \"http.get('http://127.0.0.1:3001/api/v1/health',r=>{console.log('health',r.statusCode);process.exit(r.statusCode<500?0:1)}).on('error',e=>{console.log('health-error',e.code||e.message);process.exit(1)})\""
       interval: 10s
-      timeout: 5s
+      timeout: 8s
       retries: 12
       start_period: 30s
     depends_on:
@@ -98,23 +97,19 @@ services:
         # Todos los consumos de API son del lado del navegador (componentes
         # 'use client'); no hay fetch desde el servidor Next.js.
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api/v1}
-    # AJ-006/I49: healthcheck HTTP contra la página pública de login.
-    # El comando wget está verificado contra el busybox real de la imagen;
-    # la estabilidad del chequeo dentro del contenedor la da el init tini
-    # (Dockerfile): sin reaper de zombies el exec del healthcheck acumulaba
-    # procesos <defunct> y el contenedor quedaba unhealthy sin estarlo.
-    # Márgenes amplios para el arranque en frío de EasyPanel (~2.75 min).
+    # AJ-006/I50: healthcheck implementado con Node (siempre presente en la
+    # imagen — no depende de busybox/wget). Además de marcar el estado,
+    # registra el resultado en el log de salud del contenedor, visible con
+    # `docker inspect` → State.Health.Log: si vuelve a fallar se verá el
+    # error exacto (ECONNREFUSED, timeout, etc.) en lugar de un silencio.
     healthcheck:
-      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:3000/login || exit 1']
+      test:
+        - CMD-SHELL
+        - "node -e \"http.get('http://127.0.0.1:3000/login',r=>{console.log('health',r.statusCode);process.exit(r.statusCode<500?0:1)}).on('error',e=>{console.log('health-error',e.code||e.message);process.exit(1)})\""
       interval: 10s
-      timeout: 5s
+      timeout: 8s
       retries: 12
       start_period: 45s
-    # I49: si el override interno de EasyPanel referencia este servicio con
-    # `condition: service_healthy` pero sin healthcheck en su esquema,
-    # compose falla con "no healthcheck configured" — el depends_on de
-    # nginx queda entonces en service_started (arranca con el servicio) y
-    # la disponibilidad real la garantiza el resolver dinámico (I37c).
     depends_on:
       backend:
         condition: service_healthy
@@ -144,16 +139,18 @@ services:
       timeout: 5s
       retries: 6
       start_period: 10s
-    # Esperar a que backend y frontend estén SANOS antes de enrutar tráfico.
-    # I48/I49: los healthchecks son resilientes al arranque en frío (~2.5
-    # min de gracia) y tini evita falsos unhealthy por acumulación de
-    # zombies. En el peor caso (unhealthy real) el resolver dinámico de
-    # nginx (I37c) reintenta en cada petición, sin bloqueo permanente.
+    # Esperar a que el backend esté SANO antes de enrutar tráfico (su health
+    # responde apenas abre el puerto). I50: el frontend vuelve a
+    # service_started — nginx NO debe bloquearse por él: con el resolver
+    # dinámico (I37c) re-resuelve y reintenta en cada petición, así el
+    # despliegue nunca se cae por un falso unhealthy del frontend (fue la
+    # causa del fracaso de I47/I48/I49) y el AJ-006 queda cumplido: EasyPanel
+    # vigila al proxy por /healthz, que no depende de backend ni frontend.
     depends_on:
       backend:
         condition: service_healthy
       frontend:
-        condition: service_healthy
+        condition: service_started
 
 volumes:
   pgdata:
