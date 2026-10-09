@@ -148,6 +148,31 @@ export class CreateAreaDto {
   permiteProductos?: boolean;
 }
 
+/**
+ * I45: edición en caliente de un área ya creada (tipo, alias, color y si
+ * guarda productos) desde «Estructura», sin reconfigurar la bodega.
+ * La geometría (posición/tamaño) se sigue ajustando con MoveCajonDto.
+ */
+export class UpdateAreaDto {
+  @IsOptional()
+  @IsEnum(AreaTipo)
+  tipo?: AreaTipo;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  alias?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  color?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  permiteProductos?: boolean;
+}
+
 export class UpdateAliasDto {
   @IsOptional()
   @IsString()

@@ -439,4 +439,92 @@ describe('Warehouses (e2e)', () => {
     expect(noExiste.status).toBe(404);
   });
 
+  it('I45: PATCH/DELETE /areas/:id ajustan un área en caliente con protecciones', async () => {
+    const mapa0 = await t.http
+      .get('/api/v1/warehouses/map')
+      .set('Authorization', `Bearer ${tokenAdmin}`);
+    const piso1 = mapa0.body.pisos[0];
+
+    // Área de trabajo para la prueba.
+    const creada = await t.http
+      .post(`/api/v1/warehouses/floors/${piso1.id}/areas`)
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({ tipo: 'BAHIA_TEMPORAL' });
+    expect(creada.status).toBe(201);
+    const areaId = creada.body.id as string;
+
+    // Renombrar en caliente → 200 y queda en el mapa.
+    const renombrada = await t.http
+      .patch(`/api/v1/warehouses/areas/${areaId}`)
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({ alias: 'Zona I45' });
+    expect(renombrada.status).toBe(200);
+    expect(renombrada.body.alias).toBe('Zona I45');
+
+    // Con productos almacenados no se puede cambiar el tipo ni quitar el área.
+    const ubicada = await t.http
+      .post('/api/v1/warehouses/locations')
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({ productId: productoId, areaId, cantidad: 4 });
+    expect(ubicada.status).toBe(201);
+    const cambioBloqueado = await t.http
+      .patch(`/api/v1/warehouses/areas/${areaId}`)
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({ tipo: 'ENTRADA' });
+    expect(cambioBloqueado.status).toBe(400);
+    const quitarBloqueado = await t.http
+      .delete(`/api/v1/warehouses/areas/${areaId}`)
+      .set('Authorization', `Bearer ${tokenAdmin}`);
+    expect(quitarBloqueado.status).toBe(400);
+
+    // El generador no puede quitar áreas.
+    const sinPermiso = await t.http
+      .delete(`/api/v1/warehouses/areas/${areaId}`)
+      .set('Authorization', `Bearer ${tokenGenerador}`);
+    expect(sinPermiso.status).toBe(403);
+
+    // Sin existencias, el tipo sí se puede cambiar y el área se puede quitar.
+    const retirada = await t.http
+      .delete(`/api/v1/warehouses/locations/${ubicada.body.id}`)
+      .set('Authorization', `Bearer ${tokenAdmin}`);
+    expect(retirada.status).toBe(200);
+    const cambiaTipo = await t.http
+      .patch(`/api/v1/warehouses/areas/${areaId}`)
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({ tipo: 'BAHIA_DEVOLUCIONES' });
+    expect(cambiaTipo.status).toBe(200);
+    expect(cambiaTipo.body.tipo).toBe('BAHIA_DEVOLUCIONES');
+    const eliminada = await t.http
+      .delete(`/api/v1/warehouses/areas/${areaId}`)
+      .set('Authorization', `Bearer ${tokenAdmin}`);
+    expect(eliminada.status).toBe(200);
+    const mapa1 = await t.http
+      .get('/api/v1/warehouses/map')
+      .set('Authorization', `Bearer ${tokenAdmin}`);
+    expect(
+      mapa1.body.pisos[0].areas.some((a: { id: string }) => a.id === areaId),
+    ).toBe(false);
+
+    // Siempre debe quedar al menos una bahía de empaque: la fija no se puede
+    // cambiar de tipo ni quitar (es la única activa en esta bodega).
+    const empaque = mapa1.body.pisos[0].areas.find(
+      (a: { tipo: string; activo: boolean }) => a.tipo === 'BAHIA_EMPAQUE' && a.activo,
+    );
+    const sinEmpaqueTipo = await t.http
+      .patch(`/api/v1/warehouses/areas/${empaque.id}`)
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({ tipo: 'BAHIA_TEMPORAL' });
+    expect(sinEmpaqueTipo.status).toBe(400);
+    const sinEmpaqueDelete = await t.http
+      .delete(`/api/v1/warehouses/areas/${empaque.id}`)
+      .set('Authorization', `Bearer ${tokenAdmin}`);
+    expect(sinEmpaqueDelete.status).toBe(400);
+
+    // Área inexistente → 404.
+    const noExiste = await t.http
+      .delete('/api/v1/warehouses/areas/00000000-0000-0000-0000-000000000000')
+      .set('Authorization', `Bearer ${tokenAdmin}`);
+    expect(noExiste.status).toBe(404);
+  });
+
 });

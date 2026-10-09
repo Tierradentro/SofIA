@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { WarehousesService } from './warehouses.service';
 import { ConfigureWarehouseDto } from './dto/configure-warehouse.dto';
-import { AssignLocationDto, CreateAreaDto, MoveCajonDto, UpdateRackDto } from './dto/warehouse-ops.dto';
+import { AssignLocationDto, CreateAreaDto, MoveCajonDto, UpdateAreaDto, UpdateRackDto } from './dto/warehouse-ops.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/enums/role.enum';
 import {
@@ -115,6 +115,33 @@ export class WarehousesController {
     @CurrentUser() admin: AuthenticatedUser,
   ) {
     return this.warehouses.actualizarEstante(id, dto, admin);
+  }
+
+  /**
+   * I45: edición en caliente de un área (tipo, alias, color, si guarda
+   * productos) sin reconfigurar la bodega. Bloquea cambios de tipo o de
+   * almacenamiento si el área tiene mercancía, y protege la última bahía de
+   * empaque. Administrador.
+   */
+  @Patch('areas/:id')
+  @Roles(Role.ADMINISTRADOR)
+  actualizarArea(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateAreaDto,
+    @CurrentUser() admin: AuthenticatedUser,
+  ) {
+    return this.warehouses.actualizarArea(id, dto, admin);
+  }
+
+  /**
+   * I45: eliminación en caliente de un área («Quitar» en Estructura) sin
+   * reconfigurar la bodega. Bloqueada si el área tiene mercancía o es la
+   * última bahía de empaque activa. Administrador.
+   */
+  @Delete('areas/:id')
+  @Roles(Role.ADMINISTRADOR)
+  eliminarArea(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() admin: AuthenticatedUser) {
+    return this.warehouses.eliminarArea(id, admin);
   }
 
   /** Detalle de un área: productos almacenados (bahías/patio). */

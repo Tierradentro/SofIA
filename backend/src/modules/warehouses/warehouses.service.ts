@@ -16,7 +16,7 @@ import { Product } from '../products/entities/product.entity';
 import { ProductBarcode } from '../products/entities/product-barcode.entity';
 import { AuditService } from '../audit/audit.service';
 import { ConfigureWarehouseDto } from './dto/configure-warehouse.dto';
-import { AssignLocationDto, CreateAreaDto, MoveCajonDto } from './dto/warehouse-ops.dto';
+import { AssignLocationDto, CreateAreaDto, MoveCajonDto, UpdateAreaDto } from './dto/warehouse-ops.dto';
 
 const TABLA = 'warehouses';
 
@@ -478,25 +478,49 @@ export class WarehousesService {
       throw new BadRequestException('El piso está inactivo');
     }
 
-    // Posición por defecto: a la derecha de las áreas ya existentes del piso,
-    // en la franja superior (mismo criterio del asistente de configuración).
-    // Si no cabe dentro del ancho de la bodega, se «salta de línea»: vuelve
-    // al borde izquierdo, debajo de la franja ocupada.
+    // Posición por defecto: primer espacio libre dentro del perímetro que no
+    // se solape con las áreas ni con los pasillos del piso (barrido de arriba
+    // hacia abajo y de izquierda a derecha). Así el área nueva siempre es
+    // visible en la vista previa y en «Organizar cajones»; si la bodega está
+    // llena, cae en (2,1) y el administrador la ubica en «Organizar cajones».
     let posX = dto.posX;
     let posY = dto.posY;
     if (posX == null || posY == null) {
+      const anchoArea = dto.anchoM ?? 8;
+      const altoArea = dto.altoM ?? (dto.tipo === AreaTipo.ENTRADA ? 0 : 4);
       const existentes = await this.dataSource.getRepository(WarehouseArea).find({
         where: { floorId, activo: true },
       });
-      const anchoArea = dto.anchoM ?? 8;
-      const maxX = existentes.reduce((acc, a) => Math.max(acc, a.posX + a.anchoM), 0);
+      const pasillos = await this.dataSource.getRepository(WarehouseAisle).find({
+        where: { floorId },
+      });
+      const obstaculos = [
+        ...existentes.map((a) => ({
+          x: a.posX,
+          y: a.posY,
+          w: a.anchoM,
+          h: Math.max(a.altoM, 0.5),
+        })),
+        ...pasillos.map((p) => ({ x: p.posX, y: p.posY, w: p.anchoM, h: p.altoM })),
+      ];
+      const solapa = (x: number, y: number) =>
+        obstaculos.some(
+          (o) => x < o.x + o.w && x + anchoArea > o.x && y < o.y + o.h && y + altoArea > o.y,
+        );
       const anchoBodega = piso.warehouse.anchoM;
-      let px = existentes.length ? maxX + 1 : 2;
+      const altoBodega = piso.warehouse.altoM;
+      let px = 2;
       let py = 1;
-      if (px + anchoArea > anchoBodega) {
-        const maxY = existentes.reduce((acc, a) => Math.max(acc, a.posY + a.altoM), 0);
-        px = 2;
-        py = maxY + 1;
+      let encontrado = false;
+      for (let y = 1; y + Math.max(altoArea, 0.5) <= altoBodega - 1 && !encontrado; y += 1) {
+        for (let x = 2; x + anchoArea <= anchoBodega - 1; x += 1) {
+          if (!solapa(x, y)) {
+            px = x;
+            py = y;
+            encontrado = true;
+            break;
+          }
+        }
       }
       posX = posX ?? px;
       posY = posY ?? py;
@@ -530,6 +554,106 @@ export class WarehousesService {
       valorNuevo: { floorId, tipo: area.tipo, alias: area.alias, posX: area.posX, posY: area.posY, anchoM: area.anchoM, altoM: area.altoM },
     });
     return area;
+  }
+
+  /**
+   * I45: edición en caliente de un área (tipo, alias, color, permiteProductos)
+   * sin reconfigurar la bodega. No permite cambiar el tipo ni dejar de
+   * almacenar productos si el área tiene mercancía, y no permite quitarle el
+   * tipo a la última bahía de empaque (el alistamiento la usa como destino).
+   */
+  async actualizarArea(id: string, dto: UpdateAreaDto, user: { id: string; username: string }) {
+    const repo = this.dataSource.getRepository(WarehouseArea);
+    const area = await repo.findOne({ where: { id } });
+    if (!area) throw new NotFoundException('Área no encontrada');
+    if (!area.activo) throw new BadRequestException('El área está inactiva');
+
+    const cambiaTipo = dto.tipo != null && dto.tipo !== area.tipo;
+    const quitaProductos = dto.permiteProductos === false && area.permiteProductos;
+    if (cambiaTipo || quitaProductos) {
+      const [{ total }] = await this.dataSource.query(
+        `SELECT COALESCE(SUM(cantidad), 0) AS total
+           FROM warehouse_product_locations WHERE area_id = $1`,
+        [id],
+      );
+      if (Number(total) > 0) {
+        throw new BadRequestException(
+          'El área tiene productos almacenados: reubique la mercancía antes de cambiar su tipo o dejar de almacenar productos.',
+        );
+      }
+    }
+    if (cambiaTipo && area.tipo === AreaTipo.BAHIA_EMPAQUE) {
+      const otras = await repo.count({
+        where: { tipo: AreaTipo.BAHIA_EMPAQUE, activo: true },
+      });
+      if (otras <= 1) {
+        throw new BadRequestException(
+          'Debe existir al menos una bahía de empaque: el alistamiento la usa como ubicación destino.',
+        );
+      }
+    }
+
+    const anterior = { tipo: area.tipo, alias: area.alias, color: area.color, permiteProductos: area.permiteProductos };
+    if (dto.tipo != null) area.tipo = dto.tipo;
+    if (dto.alias != null) area.alias = dto.alias;
+    if (dto.color !== undefined) area.color = dto.color || null;
+    if (dto.permiteProductos != null) area.permiteProductos = dto.permiteProductos;
+    await repo.save(area);
+    await this.audit.log({
+      usuarioId: user.id,
+      usuarioUsername: user.username,
+      accion: 'ACTUALIZAR_AREA',
+      tabla: 'warehouse_areas',
+      registroId: id,
+      valorAnterior: anterior,
+      valorNuevo: { tipo: area.tipo, alias: area.alias, color: area.color, permiteProductos: area.permiteProductos },
+    });
+    return area;
+  }
+
+  /**
+   * I45: eliminación en caliente de un área («Quitar» en Estructura), sin
+   * reconfigurar la bodega. No permite eliminar un área con mercancía ni la
+   * última bahía de empaque activa.
+   */
+  async eliminarArea(id: string, user: { id: string; username: string }) {
+    const repo = this.dataSource.getRepository(WarehouseArea);
+    const area = await repo.findOne({ where: { id } });
+    if (!area) throw new NotFoundException('Área no encontrada');
+
+    const [{ total }] = await this.dataSource.query(
+      `SELECT COALESCE(SUM(cantidad), 0) AS total
+         FROM warehouse_product_locations WHERE area_id = $1`,
+      [id],
+    );
+    if (Number(total) > 0) {
+      throw new BadRequestException(
+        'El área tiene productos almacenados: reubique la mercancía antes de quitarla.',
+      );
+    }
+    if (area.tipo === AreaTipo.BAHIA_EMPAQUE) {
+      const otras = await repo.count({
+        where: { tipo: AreaTipo.BAHIA_EMPAQUE, activo: true },
+      });
+      if (otras <= 1) {
+        throw new BadRequestException(
+          'No se puede quitar la última bahía de empaque: el alistamiento la usa como ubicación destino.',
+        );
+      }
+    }
+
+    // Limpieza de ubicaciones vacías (cantidad 0) que apunten al área.
+    await this.dataSource.query(`DELETE FROM warehouse_product_locations WHERE area_id = $1 AND cantidad = 0`, [id]);
+    await repo.delete(id);
+    await this.audit.log({
+      usuarioId: user.id,
+      usuarioUsername: user.username,
+      accion: 'ELIMINAR_AREA',
+      tabla: 'warehouse_areas',
+      registroId: id,
+      valorAnterior: { floorId: area.floorId, tipo: area.tipo, alias: area.alias },
+    });
+    return { ok: true };
   }
 
   /**
