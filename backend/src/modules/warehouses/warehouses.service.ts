@@ -737,6 +737,26 @@ export class WarehousesService {
     }
     await this.validarZonaFondo(dto.zonaId);
 
+    // I46: si el producto ya tiene un registro en ese mismo destino, la
+    // cantidad se suma al registro existente (no quedan dos por separado).
+    const existente = await this.buscarMismoDestino(dto.productId, dto);
+    if (existente) {
+      const cantidadAnterior = existente.cantidad;
+      existente.cantidad += dto.cantidad;
+      await this.locations.save(existente);
+      await this.recalcularOficial(dto.productId);
+      await this.audit.log({
+        usuarioId: user.id,
+        usuarioUsername: user.username,
+        accion: 'SUMAR_UBICACION',
+        tabla: 'warehouse_product_locations',
+        registroId: existente.id,
+        valorAnterior: { cantidad: cantidadAnterior },
+        valorNuevo: { cantidad: existente.cantidad, sumado: dto.cantidad },
+      });
+      return { ...existente, fusionada: true } as WarehouseProductLocation;
+    }
+
     const saved = await this.dataSource.transaction(async (m) => {
       const loc = m.getRepository(WarehouseProductLocation).create({
         productId: dto.productId,
@@ -869,6 +889,33 @@ export class WarehousesService {
     }
     await this.validarZonaFondo(dto.zonaId);
 
+    // I46: si el producto ya tiene otro registro en el destino elegido, las
+    // cantidades se suman en un solo registro y la ubicación movida se retira
+    // (por ejemplo, de la bahía de devoluciones a un estante que ya tenía
+    // unidades del mismo producto).
+    const enDestino = await this.buscarMismoDestino(loc.productId, dto, loc.id);
+    if (enDestino) {
+      const cantidadAnteriorDestino = enDestino.cantidad;
+      enDestino.cantidad += dto.cantidad;
+      await this.locations.save(enDestino);
+      await this.locations.delete(loc.id);
+      await this.recalcularOficial(loc.productId);
+      await this.audit.log({
+        usuarioId: user.id,
+        usuarioUsername: user.username,
+        accion: 'REUBICAR_UBICACION',
+        tabla: 'warehouse_product_locations',
+        registroId: enDestino.id,
+        valorAnterior: { movida: { id: loc.id, ...anterior }, destinoCantidad: cantidadAnteriorDestino },
+        valorNuevo: {
+          rackId: enDestino.rackId, nivel: enDestino.nivel, areaId: enDestino.areaId,
+          zonaId: enDestino.zoneId, transito: enDestino.transito, cantidad: enDestino.cantidad,
+          fusionadaCon: loc.id,
+        },
+      });
+      return { ...enDestino, fusionada: true } as WarehouseProductLocation;
+    }
+
     loc.rackId = dto.rackId ?? null;
     loc.nivel = dto.nivel ?? null;
     loc.areaId = dto.areaId ?? null;
@@ -887,6 +934,29 @@ export class WarehousesService {
       valorNuevo: { rackId: loc.rackId, nivel: loc.nivel, areaId: loc.areaId, zonaId: loc.zoneId, transito: loc.transito, cantidad: loc.cantidad },
     });
     return loc;
+  }
+
+  /**
+   * I46: busca otro registro del mismo producto en el mismo destino exacto
+   * (estante+nivel, área, fondo de pasillo o tránsito). Se usa para sumar
+   * cantidades en un solo registro en lugar de dejar dos por separado.
+   */
+  private async buscarMismoDestino(
+    productId: string,
+    destino: { rackId?: string; nivel?: number; areaId?: string; zonaId?: string; transito?: boolean },
+    excluirId?: string,
+  ): Promise<WarehouseProductLocation | null> {
+    const todas = await this.locations.find({ where: { productId } });
+    return (
+      todas.find((t) => {
+        if (excluirId && t.id === excluirId) return false;
+        if (destino.transito === true) return t.transito === true;
+        if (destino.rackId) return t.rackId === destino.rackId && t.nivel === destino.nivel;
+        if (destino.areaId) return t.areaId === destino.areaId;
+        if (destino.zonaId) return t.zoneId === destino.zonaId;
+        return false;
+      }) ?? null
+    );
   }
 
   /** Marca la ubicación oficial = la de mayor cantidad del producto. */

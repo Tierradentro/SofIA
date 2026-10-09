@@ -12,6 +12,9 @@ import { CLASE_BOTON_PRIMARIO, CLASE_INPUT, Insignia } from '@/components/ui';
  * incluye Operador) y `puedeModificar` (modificar o dar de baja ubicaciones
  * existentes, solo Generador/Administrador). El mapa 2D queda solo de
  * visualización.
+ * I46: al asignar o mover a un destino donde el producto ya tiene un
+ * registro, el backend suma las cantidades en un solo registro (la respuesta
+ * trae `fusionada: true`) y aquí se informa con el mensaje correspondiente.
  */
 
 interface OpcionEstante {
@@ -195,7 +198,11 @@ export function PanelUbicaciones({
     });
     setGuardando(false);
     if (status === 201) {
-      setMensaje(`${codigo} asignado.`);
+      setMensaje(
+        body?.fusionada
+          ? `${codigo} sumado al registro que ya existía en ese destino (un solo registro con el total).`
+          : `${codigo} asignado.`,
+      );
       setCantidad(1);
       cargar();
       alCambiar?.();
@@ -252,7 +259,11 @@ export function PanelUbicaciones({
     });
     setGuardandoEd(false);
     if (status === 200) {
-      setMensaje('Ubicación modificada.');
+      setMensaje(
+        body?.fusionada
+          ? 'Ubicación modificada: las cantidades se sumaron al registro que ya existía en el destino (queda un solo registro con el total).'
+          : 'Ubicación modificada.',
+      );
       setEditandoId(null);
       cargar();
       alCambiar?.();

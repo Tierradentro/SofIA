@@ -527,4 +527,103 @@ describe('Warehouses (e2e)', () => {
     expect(noExiste.status).toBe(404);
   });
 
+  it('I46: asignar o mover a un destino ocupado suma las cantidades en un solo registro', async () => {
+    // Producto nuevo para no interferir con las demás pruebas de la suite.
+    const prod = await t.http
+      .post('/api/v1/products')
+      .set('Authorization', `Bearer ${tokenGenerador}`)
+      .send({
+        empresaId,
+        codigo: 'SUMA-001',
+        descripcion: 'Producto para suma de ubicaciones',
+        unidadMedida: 'UND',
+        precio: 1000,
+      });
+    expect(prod.status).toBe(201);
+    const prodId = prod.body.id as string;
+
+    const mapa = await t.http
+      .get('/api/v1/warehouses/map')
+      .set('Authorization', `Bearer ${tokenAdmin}`);
+    const estantes = mapa.body.pisos[0].pasillos[0].zonas.find(
+      (z: any) => z.estantes.length > 1,
+    ).estantes;
+    const rackA = estantes[0].id as string;
+    const rackB = estantes[1].id as string;
+    const consultar = () =>
+      t.http
+        .get(`/api/v1/warehouses/products/${prodId}/locations`)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
+
+    // Dos registros separados del mismo producto en estantes distintos.
+    const a = await t.http
+      .post('/api/v1/warehouses/locations')
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({ productId: prodId, rackId: rackA, nivel: 1, cantidad: 3 });
+    expect(a.status).toBe(201);
+    const b = await t.http
+      .post('/api/v1/warehouses/locations')
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({ productId: prodId, rackId: rackB, nivel: 2, cantidad: 4 });
+    expect(b.status).toBe(201);
+
+    // Mover el segundo registro al destino del primero → se suman (3 + 4 = 7)
+    // y queda un solo registro.
+    const movida = await t.http
+      .patch(`/api/v1/warehouses/locations/${b.body.id}`)
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({ productId: prodId, rackId: rackA, nivel: 1, cantidad: 4 });
+    expect(movida.status).toBe(200);
+    expect(movida.body.fusionada).toBe(true);
+    expect(movida.body.cantidad).toBe(7);
+    let locs = await consultar();
+    expect(locs.body).toHaveLength(1);
+    expect(locs.body[0].cantidad).toBe(7);
+
+    // Asignar de nuevo al mismo estante+nivel → también suma, sin registro nuevo.
+    const otra = await t.http
+      .post('/api/v1/warehouses/locations')
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({ productId: prodId, rackId: rackA, nivel: 1, cantidad: 2 });
+    expect(otra.status).toBe(201);
+    expect(otra.body.fusionada).toBe(true);
+    locs = await consultar();
+    expect(locs.body).toHaveLength(1);
+    expect(locs.body[0].cantidad).toBe(9);
+
+    // De la bahía de devoluciones al estante que ya tiene el producto.
+    const area = mapa.body.pisos[0].areas.find(
+      (x: { tipo: string; activo: boolean }) => x.tipo === 'BAHIA_DEVOLUCIONES' && x.activo,
+    );
+    const enArea = await t.http
+      .post('/api/v1/warehouses/locations')
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({ productId: prodId, areaId: area.id, cantidad: 5 });
+    expect(enArea.status).toBe(201);
+    const delArea = await t.http
+      .patch(`/api/v1/warehouses/locations/${enArea.body.id}`)
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({ productId: prodId, rackId: rackA, nivel: 1, cantidad: 5 });
+    expect(delArea.status).toBe(200);
+    expect(delArea.body.fusionada).toBe(true);
+    locs = await consultar();
+    expect(locs.body).toHaveLength(1);
+    expect(locs.body[0].cantidad).toBe(14);
+
+    // Tránsito: dos asignaciones al tránsito también se suman.
+    await t.http
+      .post('/api/v1/warehouses/locations')
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({ productId: prodId, transito: true, cantidad: 1 });
+    const t2 = await t.http
+      .post('/api/v1/warehouses/locations')
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({ productId: prodId, transito: true, cantidad: 2 });
+    expect(t2.body.fusionada).toBe(true);
+    locs = await consultar();
+    expect(locs.body).toHaveLength(2);
+    const transito = locs.body.find((l: { transito: boolean }) => l.transito);
+    expect(transito.cantidad).toBe(3);
+  });
+
 });
