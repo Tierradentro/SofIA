@@ -590,4 +590,31 @@ describe('Pedidos y alistamiento (e2e)', () => {
       .send({});
     expect(cancelCom.status).toBe(403);
   });
+
+  it('I43: el listado admite limite=100/500 y limite=0 (todos)', async () => {
+    const todos = await t.http
+      .get(`/api/v1/orders?empresaId=${ireId}&limite=0`)
+      .set('Authorization', `Bearer ${operadorToken}`);
+    expect(todos.status).toBe(200);
+    expect(todos.body.length).toBeGreaterThan(2);
+
+    const limitado = await t.http
+      .get(`/api/v1/orders?empresaId=${ireId}&limite=2`)
+      .set('Authorization', `Bearer ${operadorToken}`);
+    expect(limitado.status).toBe(200);
+    expect(limitado.body).toHaveLength(2);
+
+    // Un tope mayor que el total devuelve todo, como «todos»
+    const quinientos = await t.http
+      .get(`/api/v1/orders?empresaId=${ireId}&limite=500`)
+      .set('Authorization', `Bearer ${operadorToken}`);
+    expect(quinientos.body.length).toBe(todos.body.length);
+
+    // Sin el parámetro conserva el tope histórico (200) sin romper nada
+    const sinParam = await t.http
+      .get(`/api/v1/orders?empresaId=${ireId}`)
+      .set('Authorization', `Bearer ${operadorToken}`);
+    expect(sinParam.status).toBe(200);
+    expect(sinParam.body.length).toBe(todos.body.length);
+  });
 });

@@ -76,7 +76,8 @@ export class AuditService {
   /** Consulta de logs con filtros (HU-065, solo Administrador). */
   async query(q: AuditQuery) {
     const page = Math.max(1, q.page || 1);
-    const limit = Math.min(200, Math.max(1, q.limit || 50));
+    // I43: limit=0 («Todos») quita el tope; el resto se acota a 5000
+    const limit = q.limit === 0 ? 0 : Math.min(5000, Math.max(1, q.limit || 50));
     const where: any = {};
     if (q.usuarioId) where.usuarioId = q.usuarioId;
     if (q.tabla) where.tabla = q.tabla;
@@ -89,8 +90,7 @@ export class AuditService {
     const [data, total] = await this.repo.findAndCount({
       where,
       order: { fechaHora: 'DESC' },
-      skip: (page - 1) * limit,
-      take: limit,
+      ...(limit === 0 ? {} : { skip: (page - 1) * limit, take: limit }),
     });
     return { data, total, page, limit };
   }

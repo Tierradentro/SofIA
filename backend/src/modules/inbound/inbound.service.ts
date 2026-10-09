@@ -439,14 +439,15 @@ export class InboundService {
 
   // ---------------------------------------------------------------
 
-  async findAll(empresaId?: string, estado?: InboundStatus) {
+  async findAll(empresaId?: string, estado?: InboundStatus, limite?: number) {
     const where: any = {};
     if (empresaId) where.empresaId = empresaId;
     if (estado) where.estado = estado;
     const receipts = await this.receipts.find({
       where,
       order: { createdAt: 'DESC' },
-      take: 200,
+      // I43: limite=0 (o «todos») quita el tope; sin parámetro se conserva 200
+      ...(limite === 0 ? {} : { take: limite ?? 200 }),
     });
     return receipts;
   }

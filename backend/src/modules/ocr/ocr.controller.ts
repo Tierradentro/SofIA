@@ -23,6 +23,7 @@ import {
   AuthenticatedUser,
 } from '../../common/decorators/current-user.decorator';
 import { UploadedFilePayload } from '../documents/documents.service';
+import { parseLimiteLista } from '../../common/utils/limite-lista';
 
 /**
  * HU-018/020/021, CU-009: procesamiento OCR configurable.
@@ -70,11 +71,12 @@ export class OcrController {
 
   @Get('documents')
   @Roles(Role.GENERADOR, Role.ADMINISTRADOR)
-  findAll(@Query('estado') estado?: OcrDocumentStatus) {
+  findAll(@Query('estado') estado?: OcrDocumentStatus, @Query('limite') limite?: string) {
     if (estado && !Object.values(OcrDocumentStatus).includes(estado)) {
       throw new BadRequestException('estado inválido');
     }
-    return this.ocr.findAll(estado);
+    // I43: las listas pueden pedir 100, 500 o todos (limite=0) los registros
+    return this.ocr.findAll(estado, parseLimiteLista(limite));
   }
 
   @Get('documents/:id')

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 import { AppShell } from '@/components/app-shell';
-import { EncabezadoPagina } from '@/components/ui';
+import { EncabezadoPagina, LimiteLista, SelectorLimiteLista } from '@/components/ui';
 
 interface Empresa {
   id: string;
@@ -110,6 +110,8 @@ export default function OcrPage() {
   const [doc, setDoc] = useState<OcrDoc | null>(null);
   const [datos, setDatos] = useState<DatosExtraidos | null>(null);
   const [historial, setHistorial] = useState<OcrDoc[]>([]);
+  // I43: cuántos documentos pide el historial al backend (100, 500 o todos)
+  const [limite, setLimite] = useState<LimiteLista>(100);
   const [mensaje, setMensaje] = useState('');
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
@@ -130,8 +132,9 @@ export default function OcrPage() {
     cargarHistorial();
   }, [router]);
 
-  async function cargarHistorial() {
-    const { status, body } = await api<OcrDoc[]>('/ocr/documents');
+  async function cargarHistorial(limiteElegido: LimiteLista = limite) {
+    // I43: el límite lo aplica el backend (100, 500 o todos con limite=0)
+    const { status, body } = await api<OcrDoc[]>(`/ocr/documents?limite=${limiteElegido}`);
     if (status === 200) setHistorial(body);
   }
 
@@ -529,6 +532,17 @@ export default function OcrPage() {
               )}
             </tbody>
           </table>
+          {/* I43: cuántos documentos lista el backend */}
+          <div className="mt-2 flex justify-end">
+            <SelectorLimiteLista
+              limite={limite}
+              onChange={(l) => {
+                setLimite(l);
+                cargarHistorial(l);
+              }}
+              total={historial.length}
+            />
+          </div>
           </div>
         </section>
       </div>

@@ -208,4 +208,28 @@ describe('Movimientos de inventario (e2e)', () => {
       .set('Authorization', `Bearer ${comercialToken}`);
     expect(res.status).toBe(403);
   });
+
+  it('I43: la consulta por empresa admite limite=100/500 y limite=0 (todos)', async () => {
+    const adminToken = await loginAndSetPassword(t.http, 'Admin', 'AdminSofia2026');
+    const empresaId = (
+      await t.dataSource.query(`SELECT id FROM companies ORDER BY created_at LIMIT 1`)
+    )[0].id;
+
+    const todos = await t.http
+      .get(`/api/v1/movements?empresaId=${empresaId}&limite=0`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(todos.status).toBe(200);
+    expect(todos.body.length).toBeGreaterThan(1);
+
+    const limitado = await t.http
+      .get(`/api/v1/movements?empresaId=${empresaId}&limite=1`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(limitado.status).toBe(200);
+    expect(limitado.body).toHaveLength(1);
+
+    const quinientos = await t.http
+      .get(`/api/v1/movements?empresaId=${empresaId}&limite=500`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(quinientos.body.length).toBe(todos.body.length);
+  });
 });

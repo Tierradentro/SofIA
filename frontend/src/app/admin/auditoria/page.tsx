@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, obtenerSesion, mensajeError, Sesion } from '@/lib/api';
 import { AppShell } from '@/components/app-shell';
-import { EncabezadoPagina } from '@/components/ui';
+import { EncabezadoPagina, LimiteLista, SelectorLimiteLista } from '@/components/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 
@@ -26,6 +26,8 @@ export default function AuditoriaPage() {
   const [sesion, setSesion] = useState<Sesion | null>(null);
   const [logs, setLogs] = useState<Log[]>([]);
   const [total, setTotal] = useState(0);
+  // I43: cuántos registros pide la lista al backend (100, 500 o todos)
+  const [limite, setLimite] = useState<LimiteLista>(100);
   const [filtros, setFiltros] = useState({ tabla: '', accion: '', fechaDesde: '', fechaHasta: '' });
   const [motivoPurga, setMotivoPurga] = useState('');
   const [mensaje, setMensaje] = useState('');
@@ -56,9 +58,11 @@ export default function AuditoriaPage() {
       .catch(() => setError('No se pudo descargar el respaldo'));
   }
 
-  async function cargar() {
+  async function cargar(limiteElegido: LimiteLista = limite) {
     const params = new URLSearchParams();
     Object.entries(filtros).forEach(([k, v]) => v && params.set(k, v));
+    // I43: el límite lo aplica el backend (100, 500 o todos con limit=0)
+    params.set('limit', String(limiteElegido));
     const { status, body } = await api<{ data: Log[]; total: number }>(`/audit?${params}`);
     if (status === 200) {
       setLogs(body.data);
@@ -153,12 +157,22 @@ export default function AuditoriaPage() {
             onChange={(e) => setFiltros({ ...filtros, fechaHasta: e.target.value })}
           />
         </label>
-        <button onClick={cargar} className="rounded bg-sofia-600 px-4 py-1.5 text-white">
+        <button onClick={() => cargar()} className="rounded bg-sofia-600 px-4 py-1.5 text-white">
           Filtrar
         </button>
       </div>
 
-      <p className="mb-2 text-sm text-slate-600">{total} registros</p>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <p className="text-sm text-slate-600">{total} registros</p>
+        <SelectorLimiteLista
+          limite={limite}
+          onChange={(l) => {
+            setLimite(l);
+            cargar(l);
+          }}
+          total={total}
+        />
+      </div>
       <div className="overflow-x-auto">
       <table className="w-full rounded-lg bg-white text-sm shadow">
         <thead>

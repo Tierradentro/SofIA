@@ -2,6 +2,7 @@ import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import { MovementsService } from './movements.service';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/enums/role.enum';
+import { parseLimiteLista } from '../../common/utils/limite-lista';
 
 /**
  * Consulta de movimientos de inventario (trazabilidad M18).
@@ -24,7 +25,8 @@ export class MovementsController {
   }
 
   @Get()
-  byEmpresa(@Query('empresaId') empresaId: string) {
-    return this.movements.byEmpresa(empresaId);
+  byEmpresa(@Query('empresaId') empresaId: string, @Query('limite') limite?: string) {
+    // I43: las listas pueden pedir 100, 500 o todos (limite=0) los registros
+    return this.movements.byEmpresa(empresaId, parseLimiteLista(limite));
   }
 }

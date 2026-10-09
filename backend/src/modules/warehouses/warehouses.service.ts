@@ -417,7 +417,9 @@ export class WarehousesService {
     return this.getMapa();
   }
 
-  /** Áreas fijas del piso 1: entrada (línea), patio y bahía de empaque (I36: la bahía temporal ya no es fija). */
+  /** Áreas fijas del piso 1: entrada (línea), patio y bahía de empaque (I36: la bahía temporal ya no es fija).
+   *  I43: la bahía de devoluciones (I42) también es fija — el módulo de
+   *  devoluciones la necesita siempre para aceptar mercancía al inventario. */
   private async crearAreasFijas(m: EntityManager, floorId: string, anchoM: number, altoM: number) {
     const repo = m.getRepository(WarehouseArea);
     const areas: Array<Partial<WarehouseArea>> = [
@@ -425,6 +427,7 @@ export class WarehousesService {
       { tipo: AreaTipo.ENTRADA, alias: 'Entrada', posX: anchoM / 2 - 3, posY: 0, anchoM: 6, altoM: 0, permiteProductos: false },
       { tipo: AreaTipo.PATIO_MANIOBRAS, alias: 'Patio de Maniobras', posX: 2, posY: 1, anchoM: anchoM - 4, altoM: 4, permiteProductos: false },
       { tipo: AreaTipo.BAHIA_EMPAQUE, alias: 'Bahía de Empaque', posX: 2, posY: 6, anchoM: 8, altoM: 4, permiteProductos: true },
+      { tipo: AreaTipo.BAHIA_DEVOLUCIONES, alias: 'Bahía de Devoluciones', posX: anchoM - 10, posY: 11, anchoM: 8, altoM: 4, permiteProductos: true },
     ];
     for (const a of areas) {
       await repo.save(repo.create({ ...a, floorId, activo: true } as WarehouseArea));

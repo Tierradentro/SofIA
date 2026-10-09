@@ -99,11 +99,12 @@ export class MovementsService {
   }
 
   /** Consulta por empresa (auditoría operativa y dashboard). */
-  async byEmpresa(empresaId: string, limit = 200) {
+  async byEmpresa(empresaId: string, limit?: number) {
     const movimientos = await this.dataSource.getRepository(InventoryMovement).find({
       where: { empresaId },
       order: { fecha: 'DESC' },
-      take: Math.min(1000, limit),
+      // I43: limite=0 (o «todos») quita el tope; sin parámetro se conserva 200
+      ...(limit === 0 ? {} : { take: Math.min(1000, limit ?? 200) }),
     });
     return this.conUsuarios(movimientos);
   }

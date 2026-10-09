@@ -6,10 +6,13 @@ import { Search } from 'lucide-react';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 import { AppShell } from '@/components/app-shell';
 import {
+  aplicarLimiteLista,
   CLASE_BOTON_PRIMARIO,
   CLASE_INPUT,
   CLASES_TABLA,
   EncabezadoPagina,
+  LimiteLista,
+  SelectorLimiteLista,
   Tarjeta,
 } from '@/components/ui';
 
@@ -51,6 +54,8 @@ export default function ComercialesPage() {
   const [editando, setEditando] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [mensaje, setMensaje] = useState('');
+  // I43: cuántos registros muestra la lista (100, 500 o todos)
+  const [limite, setLimite] = useState<LimiteLista>(100);
   // I35: modal de actividad del comercial
   const [resumen, setResumen] = useState<ResumenComercial | null>(null);
   const [resumenCargando, setResumenCargando] = useState(false);
@@ -166,7 +171,7 @@ export default function ComercialesPage() {
             </tr>
           </thead>
           <tbody>
-            {comerciales.map((c) => (
+            {aplicarLimiteLista(comerciales, limite).map((c) => (
               <tr key={c.id} className={CLASES_TABLA.fila}>
                 <td className={`${CLASES_TABLA.celda} font-medium`}>{c.nombre}</td>
                 <td className={CLASES_TABLA.celda}>{c.identificacion}</td>
@@ -210,9 +215,9 @@ export default function ComercialesPage() {
           </tbody>
         </table>
         </div>
-        <p className="border-t border-slate-100 px-4 py-2.5 text-xs text-slate-500">
-          Mostrando {comerciales.length} resultado{comerciales.length === 1 ? '' : 's'}
-        </p>
+        <div className="flex justify-end border-t border-slate-100 px-4 py-2.5">
+          <SelectorLimiteLista limite={limite} onChange={setLimite} total={comerciales.length} />
+        </div>
       </Tarjeta>
 
       {/* I35: modal de actividad del comercial */}

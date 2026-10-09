@@ -28,6 +28,7 @@ import {
   AuthenticatedUser,
 } from '../../common/decorators/current-user.decorator';
 import { UploadedFilePayload } from '../documents/documents.service';
+import { parseLimiteLista } from '../../common/utils/limite-lista';
 
 /**
  * M08 (EP-07): pedidos y alistamiento.
@@ -66,12 +67,14 @@ export class OrdersController {
     @Query('empresaId') empresaId?: string,
     @Query('estado') estado?: OrderStatus,
     @Query('clienteId') clienteId?: string,
+    @Query('limite') limite?: string,
   ) {
     if (estado && !Object.values(OrderStatus).includes(estado)) {
       throw new BadRequestException('estado inválido');
     }
     const comercialId = user.rol === Role.COMERCIAL ? (user as any).comercialId : undefined;
-    return this.orders.findAll(empresaId, estado, clienteId, comercialId);
+    // I43: las listas pueden pedir 100, 500 o todos (limite=0) los registros
+    return this.orders.findAll(empresaId, estado, clienteId, comercialId, parseLimiteLista(limite));
   }
 
   /** HU-029: pedido con productos y cantidades a alistar. */

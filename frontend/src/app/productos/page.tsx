@@ -6,11 +6,14 @@ import { CheckCircle2, Filter, Plus, Search } from 'lucide-react';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 import { AppShell } from '@/components/app-shell';
 import {
+  aplicarLimiteLista,
   CLASE_BOTON_PRIMARIO,
   CLASE_INPUT,
   CLASES_TABLA,
   EncabezadoPagina,
   Insignia,
+  LimiteLista,
+  SelectorLimiteLista,
   Tarjeta,
 } from '@/components/ui';
 import { ConsultaProducto } from './consulta';
@@ -108,6 +111,8 @@ export default function ProductosPage() {
   const [barcode, setBarcode] = useState('');
   const [mensaje, setMensaje] = useState('');
   const [error, setError] = useState('');
+  // I43: cuántos registros muestra la lista (100, 500 o todos)
+  const [limite, setLimite] = useState<LimiteLista>(100);
 
   const esGenerador = sesion?.usuario.rol === 'GENERADOR';
   const esAdmin = sesion?.usuario.rol === 'ADMINISTRADOR';
@@ -692,7 +697,7 @@ export default function ProductosPage() {
               </tr>
             </thead>
             <tbody>
-              {productosFiltrados.map((p) => (
+              {aplicarLimiteLista(productosFiltrados, limite).map((p) => (
                 <tr key={p.id} className={CLASES_TABLA.fila}>
                   <td className={`${CLASES_TABLA.celda} font-medium`}>
                     {p.codigo}
@@ -763,9 +768,9 @@ export default function ProductosPage() {
           </table>
         </div>
         {productosFiltrados.length > 0 && (
-          <p className="border-t border-slate-100 px-4 py-2.5 text-xs text-slate-400">
-            Mostrando {productosFiltrados.length} de {productos.length} resultado{productos.length === 1 ? '' : 's'}
-          </p>
+          <div className="flex justify-end border-t border-slate-100 px-4 py-2.5">
+            <SelectorLimiteLista limite={limite} onChange={setLimite} total={productosFiltrados.length} />
+          </div>
         )}
       </Tarjeta>
     </AppShell>

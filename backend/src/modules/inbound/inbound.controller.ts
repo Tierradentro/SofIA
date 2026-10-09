@@ -18,6 +18,7 @@ import {
   CreateInboundDto,
   UpdateInboundDto,
 } from './dto/inbound.dto';
+import { parseLimiteLista } from '../../common/utils/limite-lista';
 import { InboundStatus } from './entities/inbound-receipt.entity';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/enums/role.enum';
@@ -48,11 +49,13 @@ export class InboundController {
   findAll(
     @Query('empresaId') empresaId?: string,
     @Query('estado') estado?: InboundStatus,
+    @Query('limite') limite?: string,
   ) {
     if (estado && !Object.values(InboundStatus).includes(estado)) {
       throw new BadRequestException('estado inválido');
     }
-    return this.inbound.findAll(empresaId, estado);
+    // I43: las listas pueden pedir 100, 500 o todos (limite=0) los registros
+    return this.inbound.findAll(empresaId, estado, parseLimiteLista(limite));
   }
 
   @Get(':id')

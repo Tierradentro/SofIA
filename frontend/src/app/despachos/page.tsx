@@ -5,7 +5,7 @@ import { CheckCircle2, Clock, Package, Printer } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 import { AppShell } from '@/components/app-shell';
-import { CLASE_BOTON_PRIMARIO, CLASE_BOTON_SECUNDARIO, EncabezadoPagina, Insignia } from '@/components/ui';
+import { aplicarLimiteLista, CLASE_BOTON_PRIMARIO, CLASE_BOTON_SECUNDARIO, EncabezadoPagina, Insignia, LimiteLista, SelectorLimiteLista } from '@/components/ui';
 
 interface PedidoAprobado {
   id: string;
@@ -122,6 +122,8 @@ function DespachosContenido() {
   const router = useRouter();
   const [sesion, setSesion] = useState<Sesion | null>(null);
   const [lista, setLista] = useState<Despacho[]>([]);
+  // I43: cuántos registros muestra la lista (100, 500 o todos)
+  const [limite, setLimite] = useState<LimiteLista>(100);
   const [filtroEstado, setFiltroEstado] = useState('');
   // HU-054: filtros por empresa, fecha, documento, caja y guía
   // (QA Func. 4.3: label aclarado para que no se lea como atributo del despacho;
@@ -931,7 +933,7 @@ function DespachosContenido() {
               </tr>
             </thead>
             <tbody>
-              {lista.map((d) => (
+              {aplicarLimiteLista(lista, limite).map((d) => (
                 <tr key={d.id} className="border-b last:border-0">
                   <td className="py-2 font-medium">{d.numero}</td>
                   <td className="text-slate-700">{d.clienteNombre ?? '—'}</td>
@@ -954,6 +956,10 @@ function DespachosContenido() {
               ))}
             </tbody>
           </table>
+          {/* I43: cuántos despachos muestra la lista */}
+          <div className="mt-2 flex justify-end">
+            <SelectorLimiteLista limite={limite} onChange={setLimite} total={lista.length} />
+          </div>
           </div>
         )}
       </section>

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, obtenerSesion, mensajeError, Sesion } from '@/lib/api';
 import { AppShell } from '@/components/app-shell';
-import { EncabezadoPagina } from '@/components/ui';
+import { aplicarLimiteLista, EncabezadoPagina, LimiteLista, SelectorLimiteLista } from '@/components/ui';
 
 interface Usuario {
   id: string;
@@ -22,6 +22,8 @@ export default function UsuariosPage() {
   const router = useRouter();
   const [sesion, setSesion] = useState<Sesion | null>(null);
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+  // I43: cuántos registros muestra la lista (100, 500 o todos)
+  const [limite, setLimite] = useState<LimiteLista>(100);
   const [form, setForm] = useState({
     nombre: '',
     username: '',
@@ -153,7 +155,7 @@ export default function UsuariosPage() {
           </tr>
         </thead>
         <tbody>
-          {usuarios.map((u) => (
+          {aplicarLimiteLista(usuarios, limite).map((u) => (
             <tr key={u.id} className="border-b last:border-0">
               <td className="p-3">{u.nombre}</td>
               <td className="p-3">{u.username}</td>
@@ -186,6 +188,10 @@ export default function UsuariosPage() {
           ))}
         </tbody>
       </table>
+      {/* I43: cuántos usuarios muestra la lista */}
+      <div className="mt-2 flex justify-end">
+        <SelectorLimiteLista limite={limite} onChange={setLimite} total={usuarios.length} />
+      </div>
       </div>
         </AppShell>
   );

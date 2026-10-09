@@ -762,7 +762,13 @@ export class OrdersService {
 
   // ---------------------------------------------------------------
 
-  async findAll(empresaId?: string, estado?: OrderStatus, clienteId?: string, comercialId?: string) {
+  async findAll(
+    empresaId?: string,
+    estado?: OrderStatus,
+    clienteId?: string,
+    comercialId?: string,
+    limite?: number,
+  ) {
     const where: any = {};
     if (empresaId) where.empresaId = empresaId;
     if (estado) where.estado = estado;
@@ -772,7 +778,8 @@ export class OrdersService {
     const pedidos = await this.orders.find({
       where,
       order: { createdAt: 'DESC' },
-      take: 200,
+      // I43: limite=0 (o «todos») quita el tope; sin parámetro se conserva 200
+      ...(limite === 0 ? {} : { take: limite ?? 200 }),
     });
     // I21: la tabla de pedidos necesita el nombre del cliente — el listado
     // no cargaba la relación y la columna salía siempre vacía ("—").

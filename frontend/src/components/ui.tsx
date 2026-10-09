@@ -163,3 +163,46 @@ export const CLASE_BOTON_SECUNDARIO =
 /** Campo de texto estándar. */
 export const CLASE_INPUT =
   'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-sofia-500 focus:outline-none focus:ring-1 focus:ring-sofia-500';
+
+/**
+ * I43: cuántos registros muestra una lista (100, 500 o todos = 0).
+ * Las vistas con listas lo ofrecen como selector junto a la tabla.
+ */
+export type LimiteLista = 100 | 500 | 0;
+
+/** Recorta la lista según el límite elegido (0 = todos). */
+export function aplicarLimiteLista<T>(lista: T[], limite: LimiteLista): T[] {
+  return limite === 0 ? lista : lista.slice(0, limite);
+}
+
+/** Selector «100 / 500 / Todos» con el conteo visible de la lista. */
+export function SelectorLimiteLista({
+  limite,
+  onChange,
+  total,
+}: {
+  limite: LimiteLista;
+  onChange: (l: LimiteLista) => void;
+  total: number;
+}) {
+  const mostrados = limite === 0 ? total : Math.min(limite, total);
+  return (
+    <div className="flex items-center gap-2 text-sm text-slate-500">
+      <span>
+        Mostrando <b className="text-slate-700">{mostrados.toLocaleString('es-CO')}</b> de{' '}
+        <b className="text-slate-700">{total.toLocaleString('es-CO')}</b>
+      </span>
+      <select
+        aria-label="Registros a listar"
+        title="Registros a listar"
+        value={limite}
+        onChange={(e) => onChange(Number(e.target.value) as LimiteLista)}
+        className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-700 focus:border-sofia-500 focus:outline-none focus:ring-1 focus:ring-sofia-500"
+      >
+        <option value={100}>100</option>
+        <option value={500}>500</option>
+        <option value={0}>Todos</option>
+      </select>
+    </div>
+  );
+}

@@ -271,13 +271,14 @@ export class OcrService {
     return { eliminado: true };
   }
 
-  async findAll(estado?: OcrDocumentStatus) {
+  async findAll(estado?: OcrDocumentStatus, limite?: number) {
     const where = estado ? { estado } : {};
     const docs = await this.ocrDocs.find({
       where,
       relations: { document: true },
       order: { createdAt: 'DESC' },
-      take: 100,
+      // I43: limite=0 (o «todos») quita el tope; sin parámetro se conserva 100
+      ...(limite === 0 ? {} : { take: limite ?? 100 }),
     });
     return docs.map((d) => this.toResponse(d, false));
   }

@@ -31,7 +31,7 @@ export class QueryAuditDto {
   @IsOptional()
   @Type(() => Number)
   @IsInt()
-  @Min(1)
-  @Max(200)
+  @Min(0)
+  @Max(5000)
   limit?: number = 50;
 }

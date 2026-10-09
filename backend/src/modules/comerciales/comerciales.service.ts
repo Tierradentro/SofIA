@@ -38,7 +38,8 @@ export class ComercialesService {
           ]
         : { activo: true },
       order: { nombre: 'ASC' },
-      take: 100,
+      // I43: sin tope — la vista de comerciales ofrece listar todos los
+      // registros (el recorte de 100 se hace en el cliente).
     });
   }
 

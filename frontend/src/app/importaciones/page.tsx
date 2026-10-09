@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import * as XLSX from 'xlsx';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 import { AppShell } from '@/components/app-shell';
-import { EncabezadoPagina } from '@/components/ui';
+import { EncabezadoPagina, LimiteLista, SelectorLimiteLista } from '@/components/ui';
 
 interface Empresa {
   id: string;
@@ -88,6 +88,8 @@ export default function ImportacionesPage() {
 
   const [job, setJob] = useState<ImportJob | null>(null);
   const [historial, setHistorial] = useState<ImportJob[]>([]);
+  // I43: cuántos registros pide el historial al backend (100, 500 o todos)
+  const [limite, setLimite] = useState<LimiteLista>(100);
   const [motivoRechazo, setMotivoRechazo] = useState('');
   const [mensaje, setMensaje] = useState('');
   const [error, setError] = useState('');
@@ -123,8 +125,9 @@ export default function ImportacionesPage() {
     cargarHistorial();
   }, [router]);
 
-  async function cargarHistorial() {
-    const { status, body } = await api<ImportJob[]>('/imports');
+  async function cargarHistorial(limiteElegido: LimiteLista = limite) {
+    // I43: el límite lo aplica el backend (100, 500 o todos con limite=0)
+    const { status, body } = await api<ImportJob[]>(`/imports?limite=${limiteElegido}`);
     if (status === 200) setHistorial(body);
   }
 
@@ -573,6 +576,18 @@ export default function ImportacionesPage() {
               )}
             </tbody>
           </table>
+          {/* I43: cuántas importaciones lista el backend */}
+          <div className="mt-2 flex justify-end">
+            <SelectorLimiteLista
+              limite={limite}
+              onChange={(l) => {
+                setLimite(l);
+                // El historial se recarga con el nuevo tope
+                cargarHistorial(l);
+              }}
+              total={historial.length}
+            />
+          </div>
           </div>
         </section>
       </div>

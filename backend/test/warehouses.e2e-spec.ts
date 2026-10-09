@@ -327,4 +327,63 @@ describe('Warehouses (e2e)', () => {
     expect(csv.status).toBe(200);
     expect(csv.text).toContain('P1-A1-FONDO');
   });
+
+  it('I43: un área adicional guardada en «Estructura» aparece y se organiza en «Organizar cajones»', async () => {
+    // Flujo del reporte: agregar un área (p. ej. Bahía de devoluciones) en la
+    // vista de estructura, guardar y moverla en el organizador de cajones.
+    const mapa = await t.http.get('/api/v1/warehouses/map').set('Authorization', `Bearer ${tokenAdmin}`);
+    const pasillos = mapa.body.pisos[0].pasillos.map((p: any, i: number) => ({
+      numero: i + 1,
+      zonas: p.zonas.map((z: any) => ({
+        lado: z.lado,
+        estantes: z.estantes.map((e: any, k: number) => ({ numero: k + 1, niveles: e.niveles })),
+      })),
+    }));
+    const cfg = await t.http
+      .post('/api/v1/warehouses/configure')
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({
+        nombre: 'Bodega Principal',
+        forma: 'RECTANGULO',
+        anchoM: 40,
+        altoM: 30,
+        pisos: [{
+          numero: 1,
+          tieneAreasFijas: true,
+          areas: [
+            { tipo: 'BAHIA_DEVOLUCIONES', alias: 'Bahía de Devoluciones B', permiteProductos: true },
+            { tipo: 'BAHIA_TEMPORAL', alias: 'Bahía Temporal Norte', permiteProductos: true },
+          ],
+          pasillos,
+        }],
+      });
+    expect(cfg.status).toBe(201);
+
+    // El mapa (fuente de «Organizar cajones») incluye las dos áreas nuevas,
+    // además de las fijas — I43: la bahía de devoluciones queda fija para que
+    // el módulo de devoluciones siempre tenga dónde aceptar mercancía.
+    const mapa2 = await t.http.get('/api/v1/warehouses/map').set('Authorization', `Bearer ${tokenAdmin}`);
+    const areas = mapa2.body.pisos[0].areas;
+    const devoluciones = areas.filter((a: any) => a.tipo === 'BAHIA_DEVOLUCIONES');
+    expect(devoluciones.length).toBeGreaterThanOrEqual(2); // fija + adicional
+    const adicional = areas.find((a: any) => a.alias === 'Bahía de Devoluciones B');
+    expect(adicional).toBeTruthy();
+    expect(adicional.permiteProductos).toBe(true);
+
+    // El «Guardar cambios» del organizador persiste posición, tamaño y alias.
+    const movido = await t.http
+      .patch(`/api/v1/warehouses/area/${adicional.id}/posicion`)
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({ posX: 20, posY: 20, anchoM: 10, altoM: 5, alias: 'Bahía Devoluciones Norte' });
+    expect(movido.status).toBe(200);
+
+    const mapa3 = await t.http.get('/api/v1/warehouses/map').set('Authorization', `Bearer ${tokenAdmin}`);
+    const reflejada = mapa3.body.pisos[0].areas.find((a: any) => a.id === adicional.id);
+    expect(reflejada.posX).toBe(20);
+    expect(reflejada.posY).toBe(20);
+    expect(reflejada.anchoM).toBe(10);
+    expect(reflejada.altoM).toBe(5);
+    expect(reflejada.alias).toBe('Bahía Devoluciones Norte');
+  });
+
 });

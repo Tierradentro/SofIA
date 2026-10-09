@@ -170,15 +170,19 @@ function coloresArea(tipo: MapaArea['tipo']) {
 function areasFijasPiso1(anchoM: number): Array<Omit<MapaArea, 'id' | 'permiteProductos'>> {
   // I36: las únicas áreas fijas son entrada, patio de maniobras y bahía de
   // empaque; la bahía temporal pasa a ser un área adicional (crear/eliminar).
+  // I43: la bahía de devoluciones (I42) también nace en la semilla; al
+  // reconfigurar con «Guardar cambios» se conserva como fija para que el
+  // módulo de devoluciones siempre tenga dónde aceptar la mercancía.
   return [
     { tipo: 'ENTRADA', alias: 'Entrada', posX: anchoM / 2 - 3, posY: 0, anchoM: 6, altoM: 0 },
     { tipo: 'PATIO_MANIOBRAS', alias: 'Patio de Maniobras', posX: 2, posY: 1, anchoM: anchoM - 4, altoM: 4 },
     { tipo: 'BAHIA_EMPAQUE', alias: 'Bahía de Empaque', posX: 2, posY: 6, anchoM: 8, altoM: 4 },
+    { tipo: 'BAHIA_DEVOLUCIONES', alias: 'Bahía de Devoluciones', posX: anchoM - 10, posY: 11, anchoM: 8, altoM: 4 },
   ];
 }
 
 /** I36: tipos de las áreas fijas del piso 1 (no se repiten como adicionales). */
-const TIPOS_AREA_FIJA: Array<MapaArea['tipo']> = ['ENTRADA', 'PATIO_MANIOBRAS', 'BAHIA_EMPAQUE'];
+const TIPOS_AREA_FIJA: Array<MapaArea['tipo']> = ['ENTRADA', 'PATIO_MANIOBRAS', 'BAHIA_EMPAQUE', 'BAHIA_DEVOLUCIONES'];
 
 /**
  * Posición por defecto de los pasillos de un piso (rejilla horizontal).
@@ -216,7 +220,9 @@ function previsualizarPiso(form: EstructuraForm, pisoIndice: number, mapa?: Mapa
   const piso = form.pisos[pisoIndice];
   const cajones: CajonBodega[] = [];
   const pisoMapa = mapa?.pisos[pisoIndice];
-  if (pisoMapa) {
+  if (pisoMapa && !piso.areas.length) {
+    // Sin cambios pendientes en las áreas: se reflejan las posiciones reales
+    // guardadas en «Organizar cajones».
     for (const a of pisoMapa.areas) {
       const colores = coloresArea(a.tipo);
       cajones.push({
@@ -233,7 +239,7 @@ function previsualizarPiso(form: EstructuraForm, pisoIndice: number, mapa?: Mapa
       });
     }
   } else {
-    const fijas = pisoIndice === 0 ? areasFijasPiso1(form.anchoM) : [];
+    const fijas = pisoIndice === 0 && pisoMapa?.tieneAreasFijas !== false ? areasFijasPiso1(form.anchoM) : [];
     fijas.forEach((a) => {
       cajones.push({
         clave: `area:${a.tipo}`,
@@ -247,6 +253,9 @@ function previsualizarPiso(form: EstructuraForm, pisoIndice: number, mapa?: Mapa
       });
     });
     // Áreas adicionales del asistente (posición inicial: franja inferior).
+    // I43: esta rama también aplica cuando la bodega ya está configurada y el
+    // usuario agregó un área en «Estructura» sin guardar — antes la vista
+    // previa solo mostraba las áreas del mapa y el área nueva "desaparecía".
     piso.areas.forEach((a, idx) => {
       cajones.push({
         clave: `area-extra:${idx}`,

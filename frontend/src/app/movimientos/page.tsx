@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, obtenerSesion, Sesion } from '@/lib/api';
 import { AppShell } from '@/components/app-shell';
-import { EncabezadoPagina } from '@/components/ui';
+import { EncabezadoPagina, LimiteLista, SelectorLimiteLista } from '@/components/ui';
 
 interface Empresa { id: string; nombre: string; siglas: string }
 interface Producto { id: string; codigo: string; descripcion: string }
@@ -47,6 +47,8 @@ export default function MovimientosPage() {
   const [productos, setProductos] = useState<Producto[]>([]);
   const [productId, setProductId] = useState('');
   const [movimientos, setMovimientos] = useState<Movimiento[]>([]);
+  // I43: cuántos movimientos pide la lista al backend (100, 500 o todos)
+  const [limite, setLimite] = useState<LimiteLista>(100);
   const [cargando, setCargando] = useState(false);
   const [reconciliacion, setReconciliacion] = useState<any>(null);
 
@@ -71,12 +73,13 @@ export default function MovimientosPage() {
       if (status === 200) setProductos(body);
     });
     setCargando(true);
-    api<Movimiento[]>(`/movements?empresaId=${empresaId}`).then(({ status, body }) => {
+    // I43: el límite lo aplica el backend (100, 500 o todos con limite=0)
+    api<Movimiento[]>(`/movements?empresaId=${empresaId}&limite=${limite}`).then(({ status, body }) => {
       if (status === 200) setMovimientos(body);
       setCargando(false);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [empresaId]);
+  }, [empresaId, limite]);
 
   useEffect(() => {
     if (!productId) {
@@ -178,6 +181,12 @@ export default function MovimientosPage() {
               )}
             </tbody>
           </table>
+          {/* I43: cuántos movimientos lista el backend (vista por empresa) */}
+          {!productId && (
+            <div className="flex justify-end border-t border-slate-100 px-3 py-2">
+              <SelectorLimiteLista limite={limite} onChange={setLimite} total={movimientos.length} />
+            </div>
+          )}
         </div>
       )}
         </AppShell>

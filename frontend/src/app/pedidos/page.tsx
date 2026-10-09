@@ -7,7 +7,7 @@ import { tiempoRelativo } from '@/lib/tiempo';
 import { useAvisoEstadosPedidos } from '@/lib/sonido';
 import { AppShell } from '@/components/app-shell';
 import { SelectorEmpresa } from '@/components/selector-empresa';
-import { COLORES_PESTANA, EncabezadoPagina } from '@/components/ui';
+import { COLORES_PESTANA, EncabezadoPagina, LimiteLista, SelectorLimiteLista } from '@/components/ui';
 import {
   ConteoItems,
   docCampo,
@@ -93,6 +93,8 @@ function PedidosContenido() {
   // I39: nombre del vendedor en la cabecera del documento del pedido
   const [comerciales, setComerciales] = useState<{ id: string; nombre: string }[]>([]);
   const [lista, setLista] = useState<Pedido[]>([]);
+  // I43: cuántos registros pide la lista al backend (100, 500 o todos)
+  const [limite, setLimite] = useState<LimiteLista>(100);
   // QA Func. 3.1: pestañas principales (ciclo activo) + "Otros estados" secundario
   const [pestana, setPestana] = useState<'ABIERTO' | 'ALISTADO' | 'APROBADO' | 'DESPACHADO' | 'OTROS'>('ABIERTO');
   const [filtroEstado, setFiltroEstado] = useState('');
@@ -161,7 +163,7 @@ function PedidosContenido() {
       return () => clearInterval(sondeo);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [empresaId, pestana, filtroEstado]);
+  }, [empresaId, pestana, filtroEstado, limite]);
 
   // I21: aviso sonoro al cambiar el estado de un pedido (excepto CANCELADO)
   useAvisoEstadosPedidos(avisoPedidos);
@@ -171,7 +173,8 @@ function PedidosContenido() {
     if (pestana !== 'OTROS') estado = pestana;
     else if (filtroEstado) estado = filtroEstado;
     const q = estado ? `&estado=${estado}` : '';
-    const { status, body } = await api<Pedido[]>(`/orders?empresaId=${empresaId}${q}`);
+    // I43: el límite lo aplica el backend (100, 500 o todos con limite=0)
+    const { status, body } = await api<Pedido[]>(`/orders?empresaId=${empresaId}${q}&limite=${limite}`);
     if (status === 200) setLista(body);
   }
 
@@ -440,6 +443,10 @@ function PedidosContenido() {
               )}
             </tbody>
           </table>
+          </div>
+          {/* I43: cuántos pedidos lista el backend */}
+          <div className="mt-2 flex justify-end">
+            <SelectorLimiteLista limite={limite} onChange={setLimite} total={lista.length} />
           </div>
         </section>
 

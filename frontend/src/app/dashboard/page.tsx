@@ -357,6 +357,10 @@ export default function DashboardPage() {
   const enPestanaDespacho = despachos
     .filter((d) => d.estado === pestanaDespacho)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  // I43: cada cola muestra máximo 16 tarjetas; el excedente se consulta con «Más»
+  const MAX_TARJETAS_COLA = 16;
+  const tarjetasPedidos = enPestana.slice(0, MAX_TARJETAS_COLA);
+  const tarjetasDespachos = enPestanaDespacho.slice(0, MAX_TARJETAS_COLA);
   const trazabilidad = [...despachos]
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, 6);
@@ -452,9 +456,10 @@ export default function DashboardPage() {
             );
           })}
         </div>
-        {enPestana.length ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {enPestana.map((p) => (
+        {tarjetasPedidos.length ? (
+          <>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {tarjetasPedidos.map((p) => (
               <button
                 key={p.id}
                 onClick={() => router.push(`/pedidos?abrir=${p.id}`)}
@@ -479,8 +484,20 @@ export default function DashboardPage() {
                   <Clock size={13} /> {haceMinutos(p.createdAt)}
                 </p>
               </button>
-            ))}
-          </div>
+              ))}
+            </div>
+            {/* I43: con más de 16 pedidos en la pestaña, enlace a la vista completa */}
+            {enPestana.length > MAX_TARJETAS_COLA && (
+              <div className="mt-4 text-center">
+                <button
+                  onClick={() => router.push('/pedidos')}
+                  className="text-sm font-medium text-sofia-700 hover:text-sofia-600"
+                >
+                  Más ({enPestana.length - MAX_TARJETAS_COLA} pedidos adicionales) →
+                </button>
+              </div>
+            )}
+          </>
         ) : (
           <p className="py-8 text-center text-sm text-slate-400">
             No hay pedidos en estado «{PESTANAS.find((t) => t.valor === pestana)?.etiqueta}».
@@ -515,9 +532,10 @@ export default function DashboardPage() {
             );
           })}
         </div>
-        {enPestanaDespacho.length ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {enPestanaDespacho.map((d) => (
+        {tarjetasDespachos.length ? (
+          <>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {tarjetasDespachos.map((d) => (
               <button
                 key={d.id}
                 onClick={() => router.push(`/despachos?abrir=${d.id}`)}
@@ -541,8 +559,20 @@ export default function DashboardPage() {
                   <Clock size={13} /> {haceMinutos(d.createdAt)}
                 </p>
               </button>
-            ))}
-          </div>
+              ))}
+            </div>
+            {/* I43: con más de 16 despachos en la pestaña, enlace a la vista completa */}
+            {enPestanaDespacho.length > MAX_TARJETAS_COLA && (
+              <div className="mt-4 text-center">
+                <button
+                  onClick={() => router.push('/despachos')}
+                  className="text-sm font-medium text-sofia-700 hover:text-sofia-600"
+                >
+                  Más ({enPestanaDespacho.length - MAX_TARJETAS_COLA} despachos adicionales) →
+                </button>
+              </div>
+            )}
+          </>
         ) : (
           <p className="py-8 text-center text-sm text-slate-400">
             No hay despachos en estado «{PESTANAS_DESPACHO.find((t) => t.valor === pestanaDespacho)?.etiqueta}».

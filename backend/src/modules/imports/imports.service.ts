@@ -143,9 +143,14 @@ export class ImportsService {
     return this.toResponse(job);
   }
 
-  async findAll(tipo?: ImportType) {
+  async findAll(tipo?: ImportType, limite?: number) {
     const where = tipo ? { tipo } : {};
-    const jobs = await this.jobs.find({ where, order: { createdAt: 'DESC' }, take: 100 });
+    // I43: limite=0 (o «todos») quita el tope; sin parámetro se conserva 100
+    const jobs = await this.jobs.find({
+      where,
+      order: { createdAt: 'DESC' },
+      ...(limite === 0 ? {} : { take: limite ?? 100 }),
+    });
     return jobs.map((j) => this.toResponse(j, false));
   }
 

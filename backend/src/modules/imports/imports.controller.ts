@@ -20,6 +20,7 @@ import {
   AuthenticatedUser,
 } from '../../common/decorators/current-user.decorator';
 import { UploadedFilePayload } from '../documents/documents.service';
+import { parseLimiteLista } from '../../common/utils/limite-lista';
 
 /**
  * M18 / EP-04: importación desde la maestra contable.
@@ -49,8 +50,9 @@ export class ImportsController {
 
   @Get()
   @Roles(Role.ADMINISTRADOR)
-  findAll(@Query('tipo') tipo?: ImportType) {
-    return this.imports.findAll(tipo);
+  findAll(@Query('tipo') tipo?: ImportType, @Query('limite') limite?: string) {
+    // I43: las listas pueden pedir 100, 500 o todos (limite=0) los registros
+    return this.imports.findAll(tipo, parseLimiteLista(limite));
   }
 
   /** HU-016: resumen de validación con diferencias. */

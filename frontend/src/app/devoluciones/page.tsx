@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 import { AppShell } from '@/components/app-shell';
-import { CLASE_BOTON_PRIMARIO, CLASE_BOTON_SECUNDARIO, EncabezadoPagina } from '@/components/ui';
+import { aplicarLimiteLista, CLASE_BOTON_PRIMARIO, CLASE_BOTON_SECUNDARIO, EncabezadoPagina, LimiteLista, SelectorLimiteLista } from '@/components/ui';
 
 interface Cliente { id: string; nombre: string }
 interface Comercial { id: string; nombre: string }
@@ -81,6 +81,8 @@ export default function DevolucionesPage() {
   const router = useRouter();
   const [sesion, setSesion] = useState<Sesion | null>(null);
   const [lista, setLista] = useState<Caso[]>([]);
+  // I43: cuántos registros muestra la lista (100, 500 o todos)
+  const [limite, setLimite] = useState<LimiteLista>(100);
   const [filtroEstado, setFiltroEstado] = useState('');
   const [caso, setCaso] = useState<Caso | null>(null);
 
@@ -128,6 +130,9 @@ export default function DevolucionesPage() {
   // para el ingreso de la mercancía aceptada.
   const [bahias, setBahias] = useState<{ id: string; etiqueta: string }[]>([]);
   const [bahiaId, setBahiaId] = useState('');
+  // I43: sin bahías de devoluciones configuradas, el reingreso no se puede
+  // hacer y el administrador debe crear una en «Bodega»; se muestra el aviso.
+  const [sinBahias, setSinBahias] = useState(false);
 
   const [mensaje, setMensaje] = useState('');
   const [error, setError] = useState('');
@@ -176,6 +181,7 @@ export default function DevolucionesPage() {
       }
       setBahias(lista);
       if (lista.length) setBahiaId(lista[0].id);
+      setSinBahias(lista.length === 0);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -505,6 +511,13 @@ export default function DevolucionesPage() {
                   Aceptar al inventario
                 </button>
               </div>
+              {sinBahias && (
+                <p className="mt-2 rounded bg-amber-50 px-2 py-1 text-xs text-amber-700">
+                  No hay bahías de devoluciones configuradas en la bodega. El administrador
+                  puede crear una en «Bodega → Estructura» (área adicional de tipo
+                  «Bahía de devoluciones») y organizarla en «Organizar cajones».
+                </p>
+              )}
             </div>
             {caso.estado !== 'CERRADA' && (
             <div className="rounded-lg bg-white p-4 shadow text-sm">
@@ -645,9 +658,7 @@ export default function DevolucionesPage() {
       </div>
 
       <section className="rounded-lg bg-white p-4 shadow">
-        {lista.length === 0 ? (
-          <p className="text-sm text-slate-500">No hay casos registrados.</p>
-        ) : (
+        {lista.length > 0 && (
           <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -663,7 +674,7 @@ export default function DevolucionesPage() {
               </tr>
             </thead>
             <tbody>
-              {lista.map((c) => (
+              {aplicarLimiteLista(lista, limite).map((c) => (
                 <tr key={c.id} className="border-b last:border-0">
                   <td className="py-2 font-medium">{c.codigo}</td>
                   <td>{c.clienteNombre}</td>
@@ -687,6 +698,13 @@ export default function DevolucionesPage() {
           </table>
           </div>
         )}
+        {lista.length === 0 && (
+          <p className="text-sm text-slate-500">No hay casos registrados.</p>
+        )}
+        {/* I43: cuántos casos muestra la lista */}
+        <div className="mt-2 flex justify-end">
+          <SelectorLimiteLista limite={limite} onChange={setLimite} total={lista.length} />
+        </div>
       </section>
         </AppShell>
   );

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 import { AppShell } from '@/components/app-shell';
 import { SelectorEmpresa } from '@/components/selector-empresa';
-import { EncabezadoPagina } from '@/components/ui';
+import { EncabezadoPagina, LimiteLista, SelectorLimiteLista } from '@/components/ui';
 
 interface Empresa {
   id: string;
@@ -70,6 +70,8 @@ export default function IngresosPage() {
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
   const [empresaId, setEmpresaId] = useState('');
   const [lista, setLista] = useState<Ingreso[]>([]);
+  // I43: cuántos registros pide la lista al backend (100, 500 o todos)
+  const [limite, setLimite] = useState<LimiteLista>(100);
   const [ingreso, setIngreso] = useState<Ingreso | null>(null);
 
   // Creación
@@ -112,10 +114,11 @@ export default function IngresosPage() {
   useEffect(() => {
     if (empresaId) cargarLista();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [empresaId]);
+  }, [empresaId, limite]);
 
   async function cargarLista() {
-    const { status, body } = await api<Ingreso[]>(`/inbound?empresaId=${empresaId}`);
+    // I43: el límite lo aplica el backend (100, 500 o todos con limite=0)
+    const { status, body } = await api<Ingreso[]>(`/inbound?empresaId=${empresaId}&limite=${limite}`);
     if (status === 200) setLista(body);
   }
 
@@ -406,6 +409,10 @@ export default function IngresosPage() {
               )}
             </tbody>
           </table>
+          {/* I43: cuántos ingresos lista el backend */}
+          <div className="mt-2 flex justify-end">
+            <SelectorLimiteLista limite={limite} onChange={setLimite} total={lista.length} />
+          </div>
           </div>
         </section>
 
