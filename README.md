@@ -15,12 +15,22 @@ sofia/
 
 ## Arranque con Docker (Spec §9)
 
+Requiere las variables de entorno `POSTGRES_PASSWORD`, `JWT_SECRET` y
+`OCR_ENCRYPTION_KEY` (véase `.env.easypanel.example`; en local basta un
+archivo `.env` en la raíz, que no se versiona).
+
 ```bash
+# Producción / EasyPanel (nginx no publica puertos; el dominio lo enruta EasyPanel)
 docker compose up --build
+
+# Desarrollo local: añade el override que publica nginx en localhost:8080
+docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
 ```
 
-- Aplicación: http://localhost:8080 (nginx → frontend/backend)
-- API: http://localhost:8080/api/v1 (health: `/api/v1/health`)
+- Aplicación (local): http://localhost:8080 (nginx → frontend/backend)
+- API (local): http://localhost:8080/api/v1 (health: `/api/v1/health`)
+- En producción el frontend llama a la API con la ruta relativa `/api/v1`
+  sobre el dominio HTTPS asignado por EasyPanel.
 - Usuario inicial: **Admin / Admin** (cambio de clave obligatorio en el primer login, M02/M14)
 - El backend corre migraciones y semillas al arrancar (empresas IRE/ICV,
   parámetros del sistema, catálogo de motivos PQRS G01–G40/N01–N18).

@@ -1,0 +1,13 @@
+# AJ-001: override SOLO para desarrollo local. El docker-compose.yml base ya
+# no publica puertos en el host (EasyPanel enruta el dominio directamente al
+# puerto interno 80 de nginx por la red Docker). Para probar la pila completa
+# en su equipo, combine ambos archivos:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
+#
+# EasyPanel usa únicamente docker-compose.yml: este archivo no afecta el
+# despliegue de producción.
+services:
+  nginx:
+    ports:
+      - '8080:80'

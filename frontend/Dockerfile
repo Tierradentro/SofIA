@@ -1,8 +1,10 @@
 FROM node:22-alpine AS build
 WORKDIR /app
 # NEXT_PUBLIC_* se inyecta en el bundle en tiempo de BUILD (no runtime):
-# debe ser la URL pública que verá el navegador (nginx → /api/v1)
-ARG NEXT_PUBLIC_API_URL=http://localhost:8080/api/v1
+# AJ-002: por defecto es la ruta RELATIVA /api/v1 — el navegador la resuelve
+# contra el dominio público HTTPS y nginx la enruta al backend por la red
+# interna. Todos los consumos de API del frontend son del lado del cliente.
+ARG NEXT_PUBLIC_API_URL=/api/v1
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 COPY package*.json ./
 RUN npm ci --no-audit --no-fund
