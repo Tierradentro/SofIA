@@ -28,6 +28,14 @@ import {
  *    distribución real guardada (posiciones, alias y colores).
  *  - Los cajones tipo área también admiten cambio de color.
  *  - Cada estante puede configurarse de forma individual (2 o más niveles).
+ * I44:
+ *  - La vista previa de «Estructura» siempre muestra el mapa real configurado;
+ *    las áreas nuevas (sin guardar) se dibujan encima.
+ *  - «Guardar cambios» propio de esta vista: crea las áreas nuevas y renombra
+ *    las existentes SIN reconfigurar la bodega (las ubicaciones se conservan);
+ *    es independiente del «Guardar cambios» de «Organizar cajones».
+ *  - La bahía de devoluciones deja de ser área fija: es opcional y puede
+ *    agregarse después de la configuración.
  */
 
 // ---------- Tipos del mapa (respuesta del backend) ----------
@@ -89,8 +97,12 @@ interface PasilloForm {
   nivelesDer: number[];
   conFondo: boolean;
 }
-/** I35: áreas adicionales configurables por piso (bahía, patio, entrada). */
+/** I35: áreas adicionales configurables por piso (bahía, patio, entrada).
+ *  I44: `id` distingue las áreas que ya existen en el mapa (cargadas al
+ *  prefill) de las nuevas aún no guardadas — solo estas últimas se crean con
+ *  el botón «Guardar cambios» de esta vista, sin reconfigurar la bodega. */
 interface AreaForm {
+  id?: string;
   tipo: MapaArea['tipo'];
   alias: string;
   permiteProductos: boolean;
@@ -170,19 +182,18 @@ function coloresArea(tipo: MapaArea['tipo']) {
 function areasFijasPiso1(anchoM: number): Array<Omit<MapaArea, 'id' | 'permiteProductos'>> {
   // I36: las únicas áreas fijas son entrada, patio de maniobras y bahía de
   // empaque; la bahía temporal pasa a ser un área adicional (crear/eliminar).
-  // I43: la bahía de devoluciones (I42) también nace en la semilla; al
-  // reconfigurar con «Guardar cambios» se conserva como fija para que el
-  // módulo de devoluciones siempre tenga dónde aceptar la mercancía.
+  // I44: la bahía de devoluciones también es opcional — puede agregarse
+  // después de la configuración con «Guardar cambios» de esta vista.
   return [
     { tipo: 'ENTRADA', alias: 'Entrada', posX: anchoM / 2 - 3, posY: 0, anchoM: 6, altoM: 0 },
     { tipo: 'PATIO_MANIOBRAS', alias: 'Patio de Maniobras', posX: 2, posY: 1, anchoM: anchoM - 4, altoM: 4 },
     { tipo: 'BAHIA_EMPAQUE', alias: 'Bahía de Empaque', posX: 2, posY: 6, anchoM: 8, altoM: 4 },
-    { tipo: 'BAHIA_DEVOLUCIONES', alias: 'Bahía de Devoluciones', posX: anchoM - 10, posY: 11, anchoM: 8, altoM: 4 },
   ];
 }
 
-/** I36: tipos de las áreas fijas del piso 1 (no se repiten como adicionales). */
-const TIPOS_AREA_FIJA: Array<MapaArea['tipo']> = ['ENTRADA', 'PATIO_MANIOBRAS', 'BAHIA_EMPAQUE', 'BAHIA_DEVOLUCIONES'];
+/** I36: tipos de las áreas fijas del piso 1 (no se repiten como adicionales).
+ *  I44: la bahía de devoluciones sale de la lista — vuelve a ser opcional. */
+const TIPOS_AREA_FIJA: Array<MapaArea['tipo']> = ['ENTRADA', 'PATIO_MANIOBRAS', 'BAHIA_EMPAQUE'];
 
 /**
  * Posición por defecto de los pasillos de un piso (rejilla horizontal).
@@ -213,22 +224,28 @@ function detallePasillo(p: PasilloForm): string {
 
 /**
  * Cajones de vista previa del asistente para un piso.
- * I35: si la bodega ya está configurada, la vista previa refleja las posiciones,
- * alias y colores reales guardados en «Organizar cajones».
+ * I44: si la bodega ya está configurada, la vista previa SIEMPRE parte del
+ * mapa real guardado (áreas y pasillos con sus posiciones, alias y colores);
+ * encima se dibujan solo las áreas NUEVAS del formulario (sin id, aún no
+ * guardadas). Antes la presencia de cualquier área en el formulario hacía
+ * que la vista previa cayera a la geometría por defecto y dejara de mostrar
+ * el mapa real.
  */
 function previsualizarPiso(form: EstructuraForm, pisoIndice: number, mapa?: MapaRespuesta | null): CajonBodega[] {
   const piso = form.pisos[pisoIndice];
   const cajones: CajonBodega[] = [];
   const pisoMapa = mapa?.pisos[pisoIndice];
-  if (pisoMapa && !piso.areas.length) {
-    // Sin cambios pendientes en las áreas: se reflejan las posiciones reales
-    // guardadas en «Organizar cajones».
+  if (pisoMapa) {
+    // Alias editados en el formulario para áreas existentes (por id).
+    const aliasEditados = new Map(
+      piso.areas.filter((a) => a.id).map((a) => [a.id as string, a.alias.trim()]),
+    );
     for (const a of pisoMapa.areas) {
       const colores = coloresArea(a.tipo);
       cajones.push({
         clave: `area:${a.id}`,
         tipo: 'area',
-        alias: a.alias,
+        alias: aliasEditados.get(a.id) || a.alias,
         posX: a.posX,
         posY: a.posY,
         anchoM: a.anchoM,
@@ -238,8 +255,24 @@ function previsualizarPiso(form: EstructuraForm, pisoIndice: number, mapa?: Mapa
         texto: colores.texto,
       });
     }
+    // Áreas nuevas (sin id): propuesta de posición en la franja inferior;
+    // al guardarlas con «Guardar cambios» se crean sin reconfigurar la bodega.
+    piso.areas
+      .filter((a) => !a.id)
+      .forEach((a, idx) => {
+        cajones.push({
+          clave: `area-nueva:${idx}`,
+          tipo: 'area',
+          alias: a.alias || ETIQUETA_AREA[a.tipo],
+          posX: 2 + idx * 9,
+          posY: 1,
+          anchoM: 8,
+          altoM: a.tipo === 'ENTRADA' ? 0 : 4,
+          ...coloresArea(a.tipo),
+        });
+      });
   } else {
-    const fijas = pisoIndice === 0 && pisoMapa?.tieneAreasFijas !== false ? areasFijasPiso1(form.anchoM) : [];
+    const fijas = pisoIndice === 0 ? areasFijasPiso1(form.anchoM) : [];
     fijas.forEach((a) => {
       cajones.push({
         clave: `area:${a.tipo}`,
@@ -253,9 +286,6 @@ function previsualizarPiso(form: EstructuraForm, pisoIndice: number, mapa?: Mapa
       });
     });
     // Áreas adicionales del asistente (posición inicial: franja inferior).
-    // I43: esta rama también aplica cuando la bodega ya está configurada y el
-    // usuario agregó un área en «Estructura» sin guardar — antes la vista
-    // previa solo mostraba las áreas del mapa y el área nueva "desaparecía".
     piso.areas.forEach((a, idx) => {
       cajones.push({
         clave: `area-extra:${idx}`,
@@ -336,7 +366,9 @@ function formDesdeMapa(mapa: MapaRespuesta): EstructuraForm {
       // Las áreas fijas del piso 1 (entrada, patio, bahía de empaque) no se
       // repiten como adicionales: se omite la primera ocurrencia de cada tipo
       // fijo. I36: la bahía temporal ya no es fija — aparece como adicional
-      // y se puede editar o eliminar.
+      // y se puede editar o eliminar. I44: la bahía de devoluciones tampoco
+      // es fija. Las áreas cargadas del mapa conservan su id para poder
+      // renombrarlas sin reconfigurar («Guardar cambios» de esta vista).
       const omitidos = new Set<string>();
       const areas: AreaForm[] = [];
       for (const a of piso.areas) {
@@ -344,7 +376,7 @@ function formDesdeMapa(mapa: MapaRespuesta): EstructuraForm {
           omitidos.add(a.tipo);
           continue;
         }
-        areas.push({ tipo: a.tipo, alias: a.alias ?? '', permiteProductos: a.permiteProductos });
+        areas.push({ id: a.id, tipo: a.tipo, alias: a.alias ?? '', permiteProductos: a.permiteProductos });
       }
       return {
         areas,
@@ -376,6 +408,50 @@ function validarForm(form: EstructuraForm): string | null {
     }
   }
   return null;
+}
+
+/**
+ * I44: detecta si el formulario tiene cambios ESTRUCTURALES respecto al mapa
+ * guardado (dimensiones, forma, pisos, pasillos, zonas, estantes/niveles, o
+ * quitar/cambiar el tipo de áreas existentes). Esos cambios solo se aplican
+ * con «Reconfigurar bodega» (empieza de cero). Si no los hay, «Guardar
+ * cambios» aplica lo demás sin perder las ubicaciones: crea las áreas nuevas
+ * y renombra las existentes.
+ */
+function hayCambiosEstructurales(form: EstructuraForm, mapa: MapaRespuesta): boolean {
+  const b = mapa.bodega;
+  if (form.nombre.trim() !== b.nombre || form.forma !== b.forma) return true;
+  if (form.anchoM !== b.anchoM || form.altoM !== b.altoM) return true;
+  if (form.pisos.length !== mapa.pisos.length) return true;
+  for (const [i, piso] of Array.from(form.pisos.entries())) {
+    const pisoMapa = mapa.pisos[i];
+    if (!pisoMapa) return true;
+    if (piso.pasillos.length !== pisoMapa.pasillos.length) return true;
+    for (const [j, p] of Array.from(piso.pasillos.entries())) {
+      const pasMapa = pisoMapa.pasillos[j];
+      if (!pasMapa) return true;
+      const izq = pasMapa.zonas.find((z) => z.lado === 'IZQUIERDA')?.estantes.map((e) => e.niveles) ?? [];
+      const der = pasMapa.zonas.find((z) => z.lado === 'DERECHA')?.estantes.map((e) => e.niveles) ?? [];
+      const conFondo = pasMapa.zonas.some((z) => z.lado === 'FONDO');
+      if (conFondo !== p.conFondo) return true;
+      if (izq.join(',') !== p.nivelesIzq.join(',')) return true;
+      if (der.join(',') !== p.nivelesDer.join(',')) return true;
+    }
+    // Áreas existentes (las fijas no aparecen en el formulario): quitarlas o
+    // cambiarles el tipo / «guarda productos» requiere reconfigurar. El alias
+    // sí se puede editar sin perder nada.
+    const fijasOmitidas = new Set<string>();
+    for (const a of pisoMapa.areas) {
+      if (pisoMapa.tieneAreasFijas && TIPOS_AREA_FIJA.includes(a.tipo) && !fijasOmitidas.has(a.tipo)) {
+        fijasOmitidas.add(a.tipo);
+        continue;
+      }
+      const enForm = piso.areas.find((fa) => fa.id === a.id);
+      if (!enForm) return true; // quitada
+      if (enForm.tipo !== a.tipo || enForm.permiteProductos !== a.permiteProductos) return true;
+    }
+  }
+  return false;
 }
 
 // ---------- Página ----------
@@ -565,6 +641,77 @@ export default function BodegaPage() {
 
   function quitarArea(indice: number, areaIndice: number) {
     actualizarPiso(indice, (piso) => ({ ...piso, areas: piso.areas.filter((_, k) => k !== areaIndice) }));
+  }
+
+  /**
+   * I44: «Guardar cambios» propio de la vista Estructura, independiente del
+   * de «Organizar cajones». Es NO destructivo: crea las áreas nuevas del
+   * formulario (POST floors/:floorId/areas) y renombra las existentes, sin
+   * tocar la estructura ni las ubicaciones de los productos. Si hay cambios
+   * estructurales (pisos/pasillos/estantes/dimensiones o áreas quitadas),
+   * pide usar «Reconfigurar bodega».
+   */
+  async function guardarCambiosEstructura() {
+    if (!mapa) return;
+    setError('');
+    setMensaje('');
+    const problema = validarForm(form);
+    if (problema) {
+      setError(problema);
+      return;
+    }
+    if (hayCambiosEstructurales(form, mapa)) {
+      setError(
+        'Hay cambios de estructura (dimensiones, pisos, pasillos, estantes/niveles o áreas existentes quitadas o con otro tipo). ' +
+          'Esos cambios solo se aplican con «Reconfigurar bodega», que empieza de cero y pierde las ubicaciones. ' +
+          'Con «Guardar cambios» puede añadir áreas nuevas o renombrar las existentes sin perder nada.',
+      );
+      return;
+    }
+    setGuardando(true);
+    for (const [i, piso] of Array.from(form.pisos.entries())) {
+      const pisoMapa = mapa.pisos[i];
+      for (const a of piso.areas) {
+        if (!a.id) {
+          // Área nueva: se crea en el piso ya configurado.
+          const { status, body } = await api(`/warehouses/floors/${pisoMapa.id}/areas`, {
+            method: 'POST',
+            body: JSON.stringify({
+              tipo: a.tipo,
+              alias: a.alias.trim() || undefined,
+              permiteProductos: a.permiteProductos,
+            }),
+          });
+          if (status !== 200 && status !== 201) {
+            setGuardando(false);
+            setError(mensajeError(body, 'No se pudo agregar un área'));
+            return;
+          }
+        } else {
+          // Área existente: solo el alias cambia sin reconfigurar.
+          const areaMapa = pisoMapa.areas.find((x) => x.id === a.id);
+          const aliasNuevo = a.alias.trim();
+          if (areaMapa && aliasNuevo && aliasNuevo !== (areaMapa.alias ?? '')) {
+            const { status, body } = await api(`/warehouses/area/${a.id}/posicion`, {
+              method: 'PATCH',
+              body: JSON.stringify({ posX: areaMapa.posX, posY: areaMapa.posY, alias: aliasNuevo }),
+            });
+            if (status !== 200) {
+              setGuardando(false);
+              setError(mensajeError(body, 'No se pudo renombrar un área'));
+              return;
+            }
+          }
+        }
+      }
+    }
+    setGuardando(false);
+    setEstructuraSucia(false);
+    setMensaje(
+      'Cambios guardados. Las ubicaciones de los productos se conservaron y las áreas nuevas ya aparecen en «Organizar cajones».',
+    );
+    const m = await cargarMapa();
+    if (m) setForm(formDesdeMapa(m));
   }
 
   async function guardarEstructura() {
@@ -1055,7 +1202,9 @@ export default function BodegaPage() {
                   )}
                   <p className="mb-2 text-xs text-slate-400">
                     La bahía de empaque es obligatoria (allí se ubica la mercancía alistada): si la
-                    elimina, se creará automáticamente al guardar. La bahía temporal es opcional.
+                    elimina, se creará automáticamente al guardar. La bahía temporal y la bahía de
+                    devoluciones son opcionales: puede añadirlas aquí, incluso después de configurada
+                    la bodega, con «Guardar cambios» (sin perder las ubicaciones).
                   </p>
                   {piso.areas.map((a, k) => (
                     <div
@@ -1120,26 +1269,43 @@ export default function BodegaPage() {
             </div>
 
             <div>
-              {/* I38: dos opciones claras — «Reconfigurar bodega» empieza de
-                  cero (pierde ubicaciones); para ajustes puntuales sin perder
-                  ubicaciones (p. ej. niveles de un estante) está la pestaña
-                  «Organizar cajones». */}
+              {/* I44: dos acciones independientes en esta vista —
+                  «Guardar cambios» aplica las áreas nuevas y los alias sin
+                  tocar la estructura ni las ubicaciones; «Reconfigurar
+                  bodega» empieza de cero (pierde ubicaciones). */}
               {estructuraSucia && !guardando && (
                 <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                  Hay cambios de estructura sin guardar. Al pulsar{' '}
-                  <strong>«Reconfigurar bodega»</strong> se empieza de cero y se pierden las
-                  ubicaciones asignadas a los productos. Si solo desea ajustar los niveles de los
-                  estantes <strong>sin perder las ubicaciones</strong>, use la pestaña{' '}
-                  <strong>«Organizar cajones»</strong> (toque un pasillo y edite sus niveles).
+                  Hay cambios sin guardar. Pulse <strong>«Guardar cambios»</strong> para añadir las áreas
+                  nuevas o renombrar las existentes <strong>sin perder las ubicaciones</strong>. Los cambios
+                  de estructura (dimensiones, pisos, pasillos, estantes o niveles) solo se aplican con{' '}
+                  <strong>«Reconfigurar bodega»</strong>, que empieza de cero; para ajustar niveles sin
+                  perder ubicaciones use la pestaña <strong>«Organizar cajones»</strong>.
                 </p>
               )}
-              <button
-                onClick={guardarEstructura}
-                disabled={guardando}
-                className={CLASE_BOTON_PRIMARIO}
-              >
-                {guardando ? 'Guardando…' : mapa ? 'Reconfigurar bodega (empezar de cero)' : 'Crear bodega'}
-              </button>
+              <div className="flex flex-wrap gap-3">
+                {mapa && (
+                  <button
+                    onClick={guardarCambiosEstructura}
+                    disabled={guardando}
+                    className={CLASE_BOTON_PRIMARIO}
+                    title="Añade las áreas nuevas y renombra las existentes sin reconfigurar la bodega"
+                  >
+                    {guardando ? 'Guardando…' : 'Guardar cambios'}
+                  </button>
+                )}
+                <button
+                  onClick={guardarEstructura}
+                  disabled={guardando}
+                  className={mapa ? CLASE_BOTON_SECUNDARIO : CLASE_BOTON_PRIMARIO}
+                  title={
+                    mapa
+                      ? 'Reemplaza toda la estructura y pierde las ubicaciones asignadas a productos'
+                      : undefined
+                  }
+                >
+                  {guardando ? 'Guardando…' : mapa ? 'Reconfigurar bodega (empezar de cero)' : 'Crear bodega'}
+                </button>
+              </div>
               {mapa && !estructuraSucia && (
                 <p className="mt-2 text-xs text-slate-400">
                   Para ajustes puntuales sin perder las ubicaciones (niveles de estantes, alias,
@@ -1175,7 +1341,7 @@ export default function BodegaPage() {
             />
             <p className="mt-3 text-xs text-slate-400">
               {mapa
-                ? 'La vista previa refleja la distribución guardada en «Organizar cajones».'
+                ? 'La vista previa muestra el mapa real configurado; las áreas nuevas que añada aparecen encima hasta guardarlas con «Guardar cambios».'
                 : 'Las posiciones son una propuesta inicial; en la pestaña «Organizar cajones» puede arrastrarlas dentro del perímetro.'}
             </p>
           </Tarjeta>

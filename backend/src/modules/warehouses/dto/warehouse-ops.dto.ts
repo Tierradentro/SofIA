@@ -1,5 +1,6 @@
 import {
   IsBoolean,
+  IsEnum,
   IsInt,
   IsNotEmpty,
   IsNumber,
@@ -10,6 +11,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { AreaTipo } from '../entities/warehouse-area.entity';
 
 /** Asociación manual de un producto a una ubicación (estante/nivel, bahía o tránsito). */
 export class AssignLocationDto {
@@ -99,6 +101,51 @@ export class UpdateRackDto {
   @IsString()
   @MaxLength(120)
   alias?: string;
+}
+
+/**
+ * I44: creación de un área en un piso YA configurado, sin reconfigurar la
+ * bodega (las ubicaciones se conservan). Vía para agregar áreas opcionales
+ * después de la configuración — p. ej. la bahía de devoluciones.
+ */
+export class CreateAreaDto {
+  @IsEnum(AreaTipo)
+  tipo: AreaTipo;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  alias?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  color?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  posX?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  posY?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  anchoM?: number;
+
+  // I35: altoM admite 0 porque las entradas se dibujan como línea (sin alto).
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  altoM?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  permiteProductos?: boolean;
 }
 
 export class UpdateAliasDto {

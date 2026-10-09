@@ -360,12 +360,12 @@ describe('Warehouses (e2e)', () => {
     expect(cfg.status).toBe(201);
 
     // El mapa (fuente de «Organizar cajones») incluye las dos áreas nuevas,
-    // además de las fijas — I43: la bahía de devoluciones queda fija para que
-    // el módulo de devoluciones siempre tenga dónde aceptar mercancía.
+    // además de las fijas — I44: la bahía de devoluciones ya NO es fija, así
+    // que solo está la adicional (las fijas son entrada, patio y empaque).
     const mapa2 = await t.http.get('/api/v1/warehouses/map').set('Authorization', `Bearer ${tokenAdmin}`);
     const areas = mapa2.body.pisos[0].areas;
     const devoluciones = areas.filter((a: any) => a.tipo === 'BAHIA_DEVOLUCIONES');
-    expect(devoluciones.length).toBeGreaterThanOrEqual(2); // fija + adicional
+    expect(devoluciones.length).toBe(1); // solo la adicional (ya no es fija)
     const adicional = areas.find((a: any) => a.alias === 'Bahía de Devoluciones B');
     expect(adicional).toBeTruthy();
     expect(adicional.permiteProductos).toBe(true);
@@ -384,6 +384,59 @@ describe('Warehouses (e2e)', () => {
     expect(reflejada.anchoM).toBe(10);
     expect(reflejada.altoM).toBe(5);
     expect(reflejada.alias).toBe('Bahía Devoluciones Norte');
+  });
+
+  it('I44: POST floors/:floorId/areas agrega un área sin reconfigurar (las ubicaciones se conservan)', async () => {
+    // Estado: la prueba anterior dejó 1 piso configurado. Se ubica un
+    // producto en un estante para verificar que la ubicación sobrevive.
+    const mapa = await t.http.get('/api/v1/warehouses/map').set('Authorization', `Bearer ${tokenAdmin}`);
+    const piso1 = mapa.body.pisos[0];
+    const rack = piso1.pasillos[0].zonas.find((z: any) => z.estantes.length > 0).estantes[0];
+    const asign = await t.http
+      .post('/api/v1/warehouses/locations')
+      .set('Authorization', `Bearer ${tokenGenerador}`)
+      .send({ productId: productoId, rackId: rack.id, nivel: 1, cantidad: 5 });
+    expect(asign.status).toBe(201);
+
+    // Restringido a ADMINISTRADOR.
+    const gen = await t.http
+      .post(`/api/v1/warehouses/floors/${piso1.id}/areas`)
+      .set('Authorization', `Bearer ${tokenGenerador}`)
+      .send({ tipo: 'BAHIA_DEVOLUCIONES', alias: 'Bahía Devoluciones I44' });
+    expect(gen.status).toBe(403);
+
+    // El admin agrega la bahía de devoluciones (opcional, post-configuración).
+    const creada = await t.http
+      .post(`/api/v1/warehouses/floors/${piso1.id}/areas`)
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({ tipo: 'BAHIA_DEVOLUCIONES', alias: 'Bahía Devoluciones I44' });
+    expect(creada.status).toBe(201);
+    expect(creada.body.tipo).toBe('BAHIA_DEVOLUCIONES');
+    expect(creada.body.alias).toBe('Bahía Devoluciones I44');
+    // Las bahías de devoluciones almacenan productos por defecto.
+    expect(creada.body.permiteProductos).toBe(true);
+    expect(creada.body.floorId).toBe(piso1.id);
+
+    // Aparece en el mapa (fuente de «Organizar cajones») sin reconfigurar.
+    const mapa2 = await t.http.get('/api/v1/warehouses/map').set('Authorization', `Bearer ${tokenAdmin}`);
+    const enMapa = mapa2.body.pisos[0].areas.find((a: any) => a.id === creada.body.id);
+    expect(enMapa).toBeTruthy();
+
+    // La ubicación del producto NO se perdió (no hubo reconfiguración).
+    const ubicaciones = await t.http
+      .get(`/api/v1/warehouses/products/${productoId}/locations`)
+      .set('Authorization', `Bearer ${tokenAdmin}`);
+    expect(ubicaciones.status).toBe(200);
+    const loc = ubicaciones.body.find((u: any) => u.rackId === rack.id);
+    expect(loc).toBeTruthy();
+    expect(loc.cantidad).toBe(5);
+
+    // Piso inexistente → 404.
+    const noExiste = await t.http
+      .post('/api/v1/warehouses/floors/00000000-0000-0000-0000-000000000000/areas')
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({ tipo: 'BAHIA_TEMPORAL' });
+    expect(noExiste.status).toBe(404);
   });
 
 });

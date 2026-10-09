@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { WarehousesService } from './warehouses.service';
 import { ConfigureWarehouseDto } from './dto/configure-warehouse.dto';
-import { AssignLocationDto, MoveCajonDto, UpdateRackDto } from './dto/warehouse-ops.dto';
+import { AssignLocationDto, CreateAreaDto, MoveCajonDto, UpdateRackDto } from './dto/warehouse-ops.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/enums/role.enum';
 import {
@@ -40,6 +40,22 @@ export class WarehousesController {
   @Roles(Role.ADMINISTRADOR)
   configure(@Body() dto: ConfigureWarehouseDto, @CurrentUser() admin: AuthenticatedUser) {
     return this.warehouses.configure(dto, admin);
+  }
+
+  /**
+   * I44: agregar un área a un piso ya configurado, SIN reconfigurar la
+   * bodega — las ubicaciones de los productos se conservan. Es la vía para
+   * sumar áreas opcionales después de la configuración (p. ej. la bahía de
+   * devoluciones). Administrador.
+   */
+  @Post('floors/:floorId/areas')
+  @Roles(Role.ADMINISTRADOR)
+  agregarArea(
+    @Param('floorId', ParseUUIDPipe) floorId: string,
+    @Body() dto: CreateAreaDto,
+    @CurrentUser() admin: AuthenticatedUser,
+  ) {
+    return this.warehouses.agregarArea(floorId, dto, admin);
   }
 
   /** Mover/redimensionar un cajón (pasillo o área) — Administrador. */

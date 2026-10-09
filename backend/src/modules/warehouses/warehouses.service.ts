@@ -16,7 +16,7 @@ import { Product } from '../products/entities/product.entity';
 import { ProductBarcode } from '../products/entities/product-barcode.entity';
 import { AuditService } from '../audit/audit.service';
 import { ConfigureWarehouseDto } from './dto/configure-warehouse.dto';
-import { AssignLocationDto, MoveCajonDto } from './dto/warehouse-ops.dto';
+import { AssignLocationDto, CreateAreaDto, MoveCajonDto } from './dto/warehouse-ops.dto';
 
 const TABLA = 'warehouses';
 
@@ -265,8 +265,8 @@ export class WarehousesService {
    * Configura la bodega (asistente). Reemplaza la estructura de la bodega
    * activa en una transacción (borra pisos/pasillos/zonas/estantes/áreas y
    * ubicaciones previas). Las áreas fijas del piso 1 se crean solas (I36:
-   * entrada, patio de maniobras y bahía de empaque — la bahía temporal es
-   * opcional). Si el diseño queda sin bahía de empaque, se crea una
+   * entrada, patio de maniobras y bahía de empaque — I44: la bahía temporal
+   * y la de devoluciones son opcionales y agregables después). Si el diseño queda sin bahía de empaque, se crea una
    * automáticamente: el alistamiento la usa como ubicación destino.
    */
   async configure(dto: ConfigureWarehouseDto, user: { id: string; username: string }) {
@@ -418,8 +418,8 @@ export class WarehousesService {
   }
 
   /** Áreas fijas del piso 1: entrada (línea), patio y bahía de empaque (I36: la bahía temporal ya no es fija).
-   *  I43: la bahía de devoluciones (I42) también es fija — el módulo de
-   *  devoluciones la necesita siempre para aceptar mercancía al inventario. */
+   *  I44: la bahía de devoluciones tampoco es fija — es opcional y puede
+   *  agregarse después de la configuración con POST floors/:floorId/areas. */
   private async crearAreasFijas(m: EntityManager, floorId: string, anchoM: number, altoM: number) {
     const repo = m.getRepository(WarehouseArea);
     const areas: Array<Partial<WarehouseArea>> = [
@@ -427,7 +427,6 @@ export class WarehousesService {
       { tipo: AreaTipo.ENTRADA, alias: 'Entrada', posX: anchoM / 2 - 3, posY: 0, anchoM: 6, altoM: 0, permiteProductos: false },
       { tipo: AreaTipo.PATIO_MANIOBRAS, alias: 'Patio de Maniobras', posX: 2, posY: 1, anchoM: anchoM - 4, altoM: 4, permiteProductos: false },
       { tipo: AreaTipo.BAHIA_EMPAQUE, alias: 'Bahía de Empaque', posX: 2, posY: 6, anchoM: 8, altoM: 4, permiteProductos: true },
-      { tipo: AreaTipo.BAHIA_DEVOLUCIONES, alias: 'Bahía de Devoluciones', posX: anchoM - 10, posY: 11, anchoM: 8, altoM: 4, permiteProductos: true },
     ];
     for (const a of areas) {
       await repo.save(repo.create({ ...a, floorId, activo: true } as WarehouseArea));
@@ -461,6 +460,76 @@ export class WarehousesService {
       valorNuevo: { posX: cajon.posX, posY: cajon.posY, anchoM: cajon.anchoM, altoM: cajon.altoM, alias: cajon.alias },
     });
     return cajon;
+  }
+
+  /**
+   * I44: agrega un área a un piso YA configurado, sin reconfigurar la bodega
+   * (las ubicaciones de los productos se conservan). Es la vía para sumar
+   * áreas opcionales después de la configuración — p. ej. la bahía de
+   * devoluciones, que ya no es un área fija del piso 1.
+   */
+  async agregarArea(floorId: string, dto: CreateAreaDto, user: { id: string; username: string }) {
+    const piso = await this.dataSource.getRepository(WarehouseFloor).findOne({
+      where: { id: floorId },
+      relations: ['warehouse'],
+    });
+    if (!piso) throw new NotFoundException('Piso no encontrado');
+    if (!piso.activo || !piso.warehouse?.activo) {
+      throw new BadRequestException('El piso está inactivo');
+    }
+
+    // Posición por defecto: a la derecha de las áreas ya existentes del piso,
+    // en la franja superior (mismo criterio del asistente de configuración).
+    // Si no cabe dentro del ancho de la bodega, se «salta de línea»: vuelve
+    // al borde izquierdo, debajo de la franja ocupada.
+    let posX = dto.posX;
+    let posY = dto.posY;
+    if (posX == null || posY == null) {
+      const existentes = await this.dataSource.getRepository(WarehouseArea).find({
+        where: { floorId, activo: true },
+      });
+      const anchoArea = dto.anchoM ?? 8;
+      const maxX = existentes.reduce((acc, a) => Math.max(acc, a.posX + a.anchoM), 0);
+      const anchoBodega = piso.warehouse.anchoM;
+      let px = existentes.length ? maxX + 1 : 2;
+      let py = 1;
+      if (px + anchoArea > anchoBodega) {
+        const maxY = existentes.reduce((acc, a) => Math.max(acc, a.posY + a.altoM), 0);
+        px = 2;
+        py = maxY + 1;
+      }
+      posX = posX ?? px;
+      posY = posY ?? py;
+    }
+
+    const repo = this.dataSource.getRepository(WarehouseArea);
+    const area = await repo.save(
+      repo.create({
+        floorId,
+        tipo: dto.tipo,
+        alias: dto.alias ?? undefined,
+        color: dto.color ?? null,
+        posX,
+        posY,
+        anchoM: dto.anchoM ?? 8,
+        altoM: dto.altoM ?? (dto.tipo === AreaTipo.ENTRADA ? 0 : 4),
+        permiteProductos:
+          dto.permiteProductos ??
+          (dto.tipo === AreaTipo.BAHIA_TEMPORAL ||
+            dto.tipo === AreaTipo.BAHIA_EMPAQUE ||
+            dto.tipo === AreaTipo.BAHIA_DEVOLUCIONES),
+        activo: true,
+      }),
+    );
+    await this.audit.log({
+      usuarioId: user.id,
+      usuarioUsername: user.username,
+      accion: 'CREAR_AREA',
+      tabla: 'warehouse_areas',
+      registroId: area.id,
+      valorNuevo: { floorId, tipo: area.tipo, alias: area.alias, posX: area.posX, posY: area.posY, anchoM: area.anchoM, altoM: area.altoM },
+    });
+    return area;
   }
 
   /**

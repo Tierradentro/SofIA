@@ -114,7 +114,7 @@ describe('I36 ajustes (e2e)', () => {
     await t.dataSource.destroy().catch(() => undefined);
   });
 
-  it('configure: las áreas fijas son exactamente 4 y acepta geometría fraccionaria', async () => {
+  it('configure: las áreas fijas son exactamente 3 y acepta geometría fraccionaria', async () => {
     const payload = {
       nombre: 'Bodega I36',
       forma: 'RECTANGULO',
@@ -156,8 +156,9 @@ describe('I36 ajustes (e2e)', () => {
     expect(mapa.status).toBe(200);
     const piso1 = mapa.body.pisos.find((p: any) => p.numero === 1);
     const tipos = piso1.areas.map((a: any) => a.tipo).sort();
-    // I43: la bahía de devoluciones es la cuarta área fija
-    expect(tipos).toEqual(['BAHIA_DEVOLUCIONES', 'BAHIA_EMPAQUE', 'ENTRADA', 'PATIO_MANIOBRAS']);
+    // I44: las áreas fijas vuelven a ser 3 — la bahía de devoluciones es
+    // opcional y se agrega después con POST floors/:floorId/areas
+    expect(tipos).toEqual(['BAHIA_EMPAQUE', 'ENTRADA', 'PATIO_MANIOBRAS']);
 
     // La geometría fraccionaria y los niveles por estante quedan guardados
     const pasillo = piso1.pasillos[0];
