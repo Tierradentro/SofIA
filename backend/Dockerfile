@@ -9,10 +9,13 @@ FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 # OCR local embebido (M13/HU-018): Tesseract + Poppler para PDF escaneado
-RUN apk add --no-cache tesseract-ocr tesseract-ocr-data-spa poppler-utils
+# I49: tini como init (mismo motivo que el frontend): reapa zombies del
+# healthcheck ejecutado por docker exec y reenvía señales a node.
+RUN apk add --no-cache tesseract-ocr tesseract-ocr-data-spa poppler-utils tini
 ENV OCR_TESS_LANGS=spa+eng
 COPY package*.json ./
 RUN npm ci --omit=dev --no-audit --no-fund
 COPY --from=build /app/dist ./dist
 EXPOSE 3001
+ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "dist/main"]

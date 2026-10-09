@@ -98,17 +98,23 @@ services:
         # Todos los consumos de API son del lado del navegador (componentes
         # 'use client'); no hay fetch desde el servidor Next.js.
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api/v1}
-    # AJ-006: healthcheck HTTP real contra la página pública de login.
-    # I48: el servidor standalone de Next tarda más en el primer arranque de
-    # EasyPanel (JIT de páginas, CPU compartida): start_period amplio para no
-    # declarar unhealthy un contenedor que aún está levantando — fue la causa
-    # del fallo de despliegue "container frontend-1 is unhealthy".
+    # AJ-006/I49: healthcheck HTTP contra la página pública de login.
+    # El comando wget está verificado contra el busybox real de la imagen;
+    # la estabilidad del chequeo dentro del contenedor la da el init tini
+    # (Dockerfile): sin reaper de zombies el exec del healthcheck acumulaba
+    # procesos <defunct> y el contenedor quedaba unhealthy sin estarlo.
+    # Márgenes amplios para el arranque en frío de EasyPanel (~2.75 min).
     healthcheck:
       test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:3000/login || exit 1']
       interval: 10s
       timeout: 5s
       retries: 12
       start_period: 45s
+    # I49: si el override interno de EasyPanel referencia este servicio con
+    # `condition: service_healthy` pero sin healthcheck en su esquema,
+    # compose falla con "no healthcheck configured" — el depends_on de
+    # nginx queda entonces en service_started (arranca con el servicio) y
+    # la disponibilidad real la garantiza el resolver dinámico (I37c).
     depends_on:
       backend:
         condition: service_healthy
@@ -139,10 +145,10 @@ services:
       retries: 6
       start_period: 10s
     # Esperar a que backend y frontend estén SANOS antes de enrutar tráfico.
-    # I48: service_started como respaldo — con los healthchecks resilientes
-    # (arranque en frío de hasta ~2.5 min) nginx nunca espera más allá del
-    # arranque real de los servicios, y en el peor caso upstream nginx ya
-    # re-resuelve DNS en cada petición (I37c) y reintenta solo.
+    # I48/I49: los healthchecks son resilientes al arranque en frío (~2.5
+    # min de gracia) y tini evita falsos unhealthy por acumulación de
+    # zombies. En el peor caso (unhealthy real) el resolver dinámico de
+    # nginx (I37c) reintenta en cada petición, sin bloqueo permanente.
     depends_on:
       backend:
         condition: service_healthy
