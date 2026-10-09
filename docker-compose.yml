@@ -58,12 +58,15 @@ services:
     # "degradado" en el cuerpo mientras las migraciones corren — señal de
     # readiness disponible sin tumbar el contenedor. wget = busybox, siempre
     # presente en node:22-alpine.
+    # I48: márgenes amplios para el arranque en frío de EasyPanel (CPU
+    # compartida tras builds paralelos): el contenedor dispone de ~2.5 min
+    # antes de declararse unhealthy.
     healthcheck:
       test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:3001/api/v1/health || exit 1']
-      interval: 5s
-      timeout: 3s
+      interval: 10s
+      timeout: 5s
       retries: 12
-      start_period: 15s
+      start_period: 30s
     depends_on:
       postgres:
         condition: service_healthy
@@ -96,12 +99,16 @@ services:
         # 'use client'); no hay fetch desde el servidor Next.js.
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api/v1}
     # AJ-006: healthcheck HTTP real contra la página pública de login.
+    # I48: el servidor standalone de Next tarda más en el primer arranque de
+    # EasyPanel (JIT de páginas, CPU compartida): start_period amplio para no
+    # declarar unhealthy un contenedor que aún está levantando — fue la causa
+    # del fallo de despliegue "container frontend-1 is unhealthy".
     healthcheck:
       test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:3000/login || exit 1']
-      interval: 5s
-      timeout: 3s
+      interval: 10s
+      timeout: 5s
       retries: 12
-      start_period: 15s
+      start_period: 45s
     depends_on:
       backend:
         condition: service_healthy
@@ -127,12 +134,15 @@ services:
       # valida la configuración pero no la disponibilidad). wget es el
       # applet de busybox incluido en nginx:alpine.
       test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1/healthz || exit 1']
-      interval: 5s
-      timeout: 3s
-      retries: 10
-      start_period: 5s
-    # Esperar a que backend y frontend estén SANOS antes de enrutar tráfico:
-    # así el proxy nunca queda apuntando a servicios aún no arrancados.
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    # Esperar a que backend y frontend estén SANOS antes de enrutar tráfico.
+    # I48: service_started como respaldo — con los healthchecks resilientes
+    # (arranque en frío de hasta ~2.5 min) nginx nunca espera más allá del
+    # arranque real de los servicios, y en el peor caso upstream nginx ya
+    # re-resuelve DNS en cada petición (I37c) y reintenta solo.
     depends_on:
       backend:
         condition: service_healthy
