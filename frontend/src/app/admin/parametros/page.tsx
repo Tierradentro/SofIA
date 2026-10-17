@@ -17,7 +17,7 @@ interface Param {
   descripcion?: string;
 }
 
-const PARAMS_EDITABLES: Record<string, { campos: { key: string; label: string; tipo: 'number' | 'select'; opciones?: string[] }[] }> = {
+const PARAMS_EDITABLES: Record<string, { campos: { key: string; label: string; tipo: 'number' | 'select' | 'text'; opciones?: string[] }[] }> = {
   'security.password_policy': {
     campos: [
       { key: 'min_length', label: 'Longitud mínima', tipo: 'number' },
@@ -34,6 +34,25 @@ const PARAMS_EDITABLES: Record<string, { campos: { key: string; label: string; t
   // I36: el horario de logística tiene editor dedicado (días + franja horaria).
   'logistica.horario_acceso': { campos: [] },
 };
+
+/** I51: editor de la configuración de exportación a World Office (por empresa). */
+const CAMPOS_WO = [
+  { key: 'empresaNombre', label: 'Nombre de la empresa en WO', tipo: 'text' as const },
+  { key: 'tipoDocumento', label: 'Tipo de documento (COT/PD)', tipo: 'text' as const },
+  { key: 'prefijo', label: 'Prefijo del documento', tipo: 'text' as const },
+  { key: 'bodegaDefault', label: 'Bodega en WO', tipo: 'text' as const },
+  { key: 'unidadMedida', label: 'Unidad de medida en WO', tipo: 'text' as const },
+  { key: 'formaPagoDefault', label: 'Forma de pago', tipo: 'text' as const },
+  { key: 'vendedorDefaultNit', label: 'NIT vendedor por defecto', tipo: 'text' as const },
+  { key: 'diasVencimiento', label: 'Días de vencimiento', tipo: 'number' as const },
+  { key: 'iva', label: 'IVA (decimal, ej. 0.19)', tipo: 'number' as const },
+  { key: 'consecutivoActual', label: 'Último consecutivo WO usado', tipo: 'number' as const },
+];
+
+function configParam(clave: string) {
+  if (clave.startsWith('wo.export.')) return { campos: CAMPOS_WO };
+  return PARAMS_EDITABLES[clave];
+}
 
 /** I36: clave del parámetro de horario de logística (control de acceso). */
 const CLAVE_HORARIO = 'logistica.horario_acceso';
@@ -147,7 +166,7 @@ export default function ParametrosPage() {
         )}
 
         {!cargando && !errorCarga && params.map((p) => {
-          const config = PARAMS_EDITABLES[p.clave];
+          const config = configParam(p.clave);
           const enEdicion = editando === p.clave;
           return (
             <Tarjeta key={p.clave} className="p-5">
@@ -262,9 +281,17 @@ export default function ParametrosPage() {
                       {c.tipo === 'number' ? (
                         <input
                           type="number"
+                          step="any"
                           className="rounded-lg border border-slate-300 px-2 py-1.5 focus:border-sofia-500 focus:outline-none focus:ring-1 focus:ring-sofia-500"
                           value={form[c.key] ?? ''}
                           onChange={(e) => setForm({ ...form, [c.key]: Number(e.target.value) })}
+                        />
+                      ) : c.tipo === 'text' ? (
+                        <input
+                          type="text"
+                          className="min-w-0 flex-1 rounded-lg border border-slate-300 px-2 py-1.5 focus:border-sofia-500 focus:outline-none focus:ring-1 focus:ring-sofia-500"
+                          value={form[c.key] ?? ''}
+                          onChange={(e) => setForm({ ...form, [c.key]: e.target.value })}
                         />
                       ) : (
                         <select

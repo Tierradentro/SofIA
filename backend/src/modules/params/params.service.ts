@@ -132,6 +132,28 @@ export class ParamsService {
           bad('zonaHoraria debe ser una zona IANA válida (p. ej. America/Bogota)');
         }
       }
+    } else if (clave.startsWith('wo.export.')) {
+      // I51: configuración de exportación a World Office por empresa.
+      const {
+        empresaNombre, tipoDocumento, prefijo, bodegaDefault, unidadMedida,
+        formaPagoDefault, vendedorDefaultNit, diasVencimiento, iva,
+        consecutivoActual,
+      } = valor as any;
+      const texto = (v: any) => v === undefined || typeof v === 'string';
+      if (![empresaNombre, tipoDocumento, prefijo, bodegaDefault, unidadMedida,
+        formaPagoDefault, vendedorDefaultNit].every(texto)) {
+        bad('los campos de texto deben ser cadenas (empresaNombre, tipoDocumento, prefijo, bodegaDefault, unidadMedida, formaPagoDefault, vendedorDefaultNit)');
+      }
+      if (tipoDocumento !== undefined && tipoDocumento.length > 10)
+        bad('tipoDocumento máximo 10 caracteres');
+      if (empresaNombre !== undefined && empresaNombre.length > 200)
+        bad('empresaNombre máximo 200 caracteres');
+      if (!Number.isInteger(diasVencimiento) || diasVencimiento < 0 || diasVencimiento > 3650)
+        bad('diasVencimiento debe ser entero entre 0 y 3650');
+      if (typeof iva !== 'number' || iva < 0 || iva > 1)
+        bad('iva debe ser un decimal entre 0 y 1 (ej. 0.19)');
+      if (!Number.isInteger(consecutivoActual) || consecutivoActual < 0)
+        bad('consecutivoActual debe ser entero ≥ 0');
     }
     // Otras claves: JSON libre (declarativas por diseño)
   }

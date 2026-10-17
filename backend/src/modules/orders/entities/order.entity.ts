@@ -106,4 +106,20 @@ export class Order {
 
   @Column({ name: 'cancelado_at', type: 'timestamptz', nullable: true })
   canceladoAt: Date | null;
+
+  /** I51: número de documento asignado en World Office al exportar (COT). */
+  @Column({ name: 'wo_documento_numero', type: 'integer', nullable: true })
+  woDocumentoNumero: number | null;
+
+  /** I51: el pedido ya fue incluido en una exportación a World Office. */
+  @Column({ name: 'exportado_wo', default: false })
+  exportadoWo: boolean;
+
+  /** I51: fecha de la última exportación a World Office. */
+  @Column({ name: 'exportado_wo_at', type: 'timestamptz', nullable: true })
+  exportadoWoAt: Date | null;
+
+  /** I51: lote (uuid) de la exportación a World Office. */
+  @Column({ name: 'lote_exportacion', type: 'uuid', nullable: true })
+  loteExportacion: string | null;
 }

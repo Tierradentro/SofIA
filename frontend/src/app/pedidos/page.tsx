@@ -61,6 +61,10 @@ interface Pedido {
   cliente: { id: string; nombre: string; identificacion: string; ciudad: string; direccion?: string | null; telefonos?: string | null } | null;
   alistadoAt?: string | null;
   aprobadoAt?: string | null;
+  // I51: trazabilidad de la exportación a World Office
+  exportadoWo?: boolean;
+  woDocumentoNumero?: number | null;
+  exportadoWoAt?: string | null;
   trazabilidad?: {
     creadoPor: UsuarioTraz | null;
     alistadoPor: UsuarioTraz | null;
@@ -124,9 +128,22 @@ function PedidosContenido() {
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
 
+  // I51: exportación a World Office — selección en la lista y preflight
+  const [seleccionWo, setSeleccionWo] = useState<Set<string>>(new Set());
+  const [preflightWo, setPreflightWo] = useState<{
+    orderIds: string[];
+    ok: boolean;
+    errores: { pedidoId: string | null; numero: string | null; mensaje: string }[];
+    advertencias: { pedidoId: string | null; numero: string | null; mensaje: string }[];
+    resumen: { pedidos: number; lineas: number; documentoDesde: number | null; documentoHasta: number | null };
+  } | null>(null);
+  const [exportandoWo, setExportandoWo] = useState(false);
+
   const rol = sesion?.usuario.rol;
   const esGenerador = rol === 'GENERADOR' || rol === 'ADMINISTRADOR';
   const esOperador = rol === 'OPERADOR' || rol === 'ADMINISTRADOR';
+  const esOperadorPuro = rol === 'OPERADOR';
+  // I51: la exportación a WO la hace quien alista (Operador) o el Generador/Admin
   const puedeCrear = esGenerador || esOperador || rol === 'COMERCIAL';
 
   const searchParams = useSearchParams();
@@ -207,6 +224,77 @@ function PedidosContenido() {
         if (status === 200) setProductosEdit(body);
       });
     }
+  }
+
+  // ---- I51: exportación a World Office ----
+
+  function alternarSeleccionWo(id: string) {
+    setSeleccionWo((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  /** Pre-validación en el backend; el resultado se muestra en el modal. */
+  async function validarWo(orderIds: string[]) {
+    if (!orderIds.length) return;
+    setError('');
+    setExportandoWo(true);
+    const { status, body } = await api<any>('/exports/world-office/preflight', {
+      method: 'POST',
+      body: JSON.stringify({ orderIds }),
+    });
+    setExportandoWo(false);
+    if (status === 200 || status === 201) setPreflightWo({ orderIds, ...body });
+    else setError(mensajeError(body, 'No se pudo validar la exportación a World Office'));
+  }
+
+  /** Descarga del CSV (blob autenticado) tras un preflight sin errores. */
+  async function descargarWo() {
+    if (!preflightWo) return;
+    setExportandoWo(true);
+    const s = obtenerSesion();
+    const res = await fetch(`${API_BASE}/exports/world-office/pedidos.csv`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${s?.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ orderIds: preflightWo.orderIds }),
+    });
+    setExportandoWo(false);
+    if (res.status !== 200 && res.status !== 201) {
+      // Los datos pudieron cambiar entre el preflight y la descarga
+      const body = await res.json().catch(() => null);
+      if (body?.errores) setPreflightWo({ orderIds: preflightWo.orderIds, ...body });
+      else {
+        setPreflightWo(null);
+        setError(mensajeError(body, 'No se pudo generar el archivo de World Office'));
+      }
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const m = (res.headers.get('Content-Disposition') ?? '').match(/filename="([^"]+)"/);
+    a.href = url;
+    a.download = m?.[1] ?? 'WO-Pedidos.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+    const { documentoDesde, documentoHasta } = preflightWo.resumen;
+    setMensaje(
+      documentoDesde !== null
+        ? `Archivo de World Office generado (documentos ${documentoDesde}${documentoHasta && documentoHasta !== documentoDesde ? `–${documentoHasta}` : ''}). ` +
+          'Cárguelo en WO: Asistente de Importación → Documentos con Movimiento de Inventario → plantilla "Encabezado Movimiento Inventario Documentos Ventas WO".'
+        : 'Archivo de World Office generado conservando los números de documento ya asignados. ' +
+          'Cárguelo en WO: Asistente de Importación → Documentos con Movimiento de Inventario → plantilla "Encabezado Movimiento Inventario Documentos Ventas WO".',
+    );
+    setPreflightWo(null);
+    setSeleccionWo(new Set());
+    cargarLista();
+    if (pedido && preflightWo.orderIds.includes(pedido.id)) abrir(pedido.id);
   }
 
   async function uploadOcr(tipo: string, file: File): Promise<string> {
@@ -396,6 +484,16 @@ function PedidosContenido() {
                 </select>
               )}
             </div>
+            {(esGenerador || esOperadorPuro) && (
+              <button
+                onClick={() => validarWo(Array.from(seleccionWo))}
+                disabled={seleccionWo.size === 0 || exportandoWo}
+                title="Genera el archivo de importación de World Office con los pedidos seleccionados (estado Alistado)"
+                className="rounded bg-emerald-700 px-3 py-1.5 text-sm text-white hover:bg-emerald-800 disabled:opacity-50"
+              >
+                {exportandoWo ? 'Validando…' : `Exportar a World Office${seleccionWo.size ? ` (${seleccionWo.size})` : ''}`}
+              </button>
+            )}
             {puedeCrear && (
               <button onClick={() => router.push('/pedidos/nuevo')} className="rounded bg-sofia-600 px-3 py-1.5 text-sm text-white hover:bg-sofia-700">
                 + Nuevo pedido
@@ -408,6 +506,18 @@ function PedidosContenido() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left">
+                {(esGenerador || esOperadorPuro) && (
+                  <th className="py-1 pr-2" title="Seleccionar para exportar a World Office">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 align-middle"
+                      checked={lista.length > 0 && lista.every((p) => seleccionWo.has(p.id))}
+                      onChange={(e) =>
+                        setSeleccionWo(e.target.checked ? new Set(lista.map((p) => p.id)) : new Set())
+                      }
+                    />
+                  </th>
+                )}
                 <th className="py-1">Número</th>
                 <th>Cliente</th>
                 <th>Fecha</th>
@@ -419,7 +529,24 @@ function PedidosContenido() {
             <tbody>
               {lista.map((p) => (
                 <tr key={p.id} className="border-b">
-                  <td className="py-1 font-medium">{p.numero}</td>
+                  {(esGenerador || esOperadorPuro) && (
+                    <td className="py-1 pr-2">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 align-middle"
+                        checked={seleccionWo.has(p.id)}
+                        onChange={() => alternarSeleccionWo(p.id)}
+                      />
+                    </td>
+                  )}
+                  <td className="py-1 font-medium">
+                    {p.numero}
+                    {p.exportadoWo && (
+                      <span className="ml-1.5 rounded bg-emerald-50 px-1.5 py-0.5 text-xs text-emerald-700" title="Exportado a World Office">
+                        WO {p.woDocumentoNumero}
+                      </span>
+                    )}
+                  </td>
                   <td>{p.cliente?.nombre ?? '—'}</td>
                   <td>{new Date(p.createdAt).toLocaleDateString()}</td>
                   <td>{p.numeroFactura ?? '—'}</td>
@@ -439,7 +566,7 @@ function PedidosContenido() {
                 </tr>
               ))}
               {lista.length === 0 && (
-                <tr><td colSpan={6} className="py-2 text-slate-500">Sin pedidos.</td></tr>
+                <tr><td colSpan={(esGenerador || esOperadorPuro) ? 7 : 6} className="py-2 text-slate-500">Sin pedidos.</td></tr>
               )}
             </tbody>
           </table>
@@ -458,10 +585,23 @@ function PedidosContenido() {
           <MarcoDocumento
             titulo="Orden de Pedido"
             acciones={
-              <button type="button" onClick={() => setPedido(null)}
-                className="rounded bg-white px-3 py-1 text-sofia-900 hover:bg-slate-100">
-                ✕ Cerrar
-              </button>
+              <span className="flex items-center gap-2">
+                {(esGenerador || esOperadorPuro) && pedido.estado !== 'CANCELADO' && (
+                  <button
+                    type="button"
+                    onClick={() => validarWo([pedido.id])}
+                    disabled={exportandoWo}
+                    title="Genera el archivo de importación de World Office para este pedido"
+                    className="rounded bg-emerald-700 px-3 py-1 text-white hover:bg-emerald-800 disabled:opacity-50"
+                  >
+                    Exportar a World Office
+                  </button>
+                )}
+                <button type="button" onClick={() => setPedido(null)}
+                  className="rounded bg-white px-3 py-1 text-sofia-900 hover:bg-slate-100">
+                  ✕ Cerrar
+                </button>
+              </span>
             }
           >
             <TarjetaEmisor
@@ -524,6 +664,15 @@ function PedidosContenido() {
                         <span className="text-slate-400">→</span>
                         <span className="rounded bg-red-50 px-2 py-0.5 text-red-700">
                           Última novedad: pendiente de corrección
+                        </span>
+                      </>
+                    )}
+                    {pedido.exportadoWo && (
+                      <>
+                        <span className="text-slate-400">→</span>
+                        <span className="rounded bg-emerald-50 px-2 py-0.5 text-emerald-700">
+                          Exportado a World Office · Documento {pedido.woDocumentoNumero}
+                          {pedido.exportadoWoAt ? ` · ${new Date(pedido.exportadoWoAt).toLocaleString('es-CO')}` : ''}
                         </span>
                       </>
                     )}
@@ -775,6 +924,81 @@ function PedidosContenido() {
               </button>
             )}
           </MarcoDocumento>
+        )}
+
+        {/* I51: modal de pre-validación de la exportación a World Office */}
+        {preflightWo && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-white p-6 shadow-xl">
+              <h3 className="mb-1 text-lg font-semibold text-slate-800">
+                Exportación a World Office — validación previa
+              </h3>
+              <p className="mb-4 text-sm text-slate-500">
+                {preflightWo.resumen.pedidos} pedido(s), {preflightWo.resumen.lineas} línea(s)
+                {preflightWo.resumen.documentoDesde !== null
+                  ? <>
+                      {' '}· documentos WO nuevos: {preflightWo.resumen.documentoDesde}
+                      {preflightWo.resumen.documentoHasta !== preflightWo.resumen.documentoDesde
+                        ? ` a ${preflightWo.resumen.documentoHasta}`
+                        : ''}
+                    </>
+                  : <> · conserva los números de documento WO ya asignados</>}
+              </p>
+
+              {preflightWo.errores.length > 0 && (
+                <div className="mb-4 rounded border border-red-200 bg-red-50 p-3">
+                  <p className="mb-1 text-sm font-semibold text-red-800">
+                    Errores que bloquean la exportación:
+                  </p>
+                  <ul className="list-inside list-disc space-y-0.5 text-sm text-red-700">
+                    {preflightWo.errores.map((e, i) => (
+                      <li key={i}>
+                        {e.numero ? <span className="font-medium">{e.numero}: </span> : null}
+                        {e.mensaje}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {preflightWo.advertencias.length > 0 && (
+                <div className="mb-4 rounded border border-amber-200 bg-amber-50 p-3">
+                  <p className="mb-1 text-sm font-semibold text-amber-800">Advertencias:</p>
+                  <ul className="list-inside list-disc space-y-0.5 text-sm text-amber-700">
+                    {preflightWo.advertencias.map((a, i) => (
+                      <li key={i}>
+                        {a.numero ? <span className="font-medium">{a.numero}: </span> : null}
+                        {a.mensaje}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {preflightWo.ok && (
+                <p className="mb-4 rounded bg-green-50 px-3 py-2 text-sm text-green-800">
+                  Sin errores. Al descargar, los pedidos quedan marcados con su número de
+                  documento WO para trazabilidad.
+                </p>
+              )}
+
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setPreflightWo(null)}
+                  className="rounded bg-slate-100 px-4 py-2 text-sm text-slate-700 hover:bg-slate-200"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={descargarWo}
+                  disabled={!preflightWo.ok || exportandoWo}
+                  className="rounded bg-emerald-700 px-4 py-2 text-sm text-white hover:bg-emerald-800 disabled:opacity-50"
+                >
+                  {exportandoWo ? 'Generando…' : 'Descargar archivo CSV'}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
         </AppShell>

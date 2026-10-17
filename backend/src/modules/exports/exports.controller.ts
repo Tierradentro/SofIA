@@ -1,13 +1,16 @@
 import {
   BadRequestException,
+  Body,
   Controller,
   Get,
+  Post,
   Query,
   Res,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { randomUUID } from 'crypto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/enums/role.enum';
 import { AuditService } from '../audit/audit.service';
@@ -17,6 +20,13 @@ import {
 } from '../../common/decorators/current-user.decorator';
 import { AuditModule } from '../audit/audit.module';
 import { Module } from '@nestjs/common';
+import {
+  WO_PARAM_PREFIX,
+  WoConfig,
+  WoPedidoInput,
+  construirCsvWo,
+  validarExportacionWo,
+} from './world-office';
 
 const COLUMNAS = [
   'codigo', 'descripcion', 'proveedor', 'marca', 'vehiculo', 'categoria',
@@ -221,8 +231,201 @@ export class ExportsController {
     );
   }
 
-  private async auditExport(user: AuthenticatedUser, reporte: string, registros: number) {
-    await this.audit.log({
+  /**
+   * I51: pre-validación de la exportación a World Office. Retorna errores
+   * bloqueantes y advertencias por pedido; el frontend la usa en el modal
+   * previo a la descarga.
+   */
+  @Post('world-office/preflight')
+  async woPreflight(@Body() body: { orderIds?: string[] }) {
+    const ctx = await this.cargarContextoWo(body?.orderIds);
+    return validarExportacionWo(ctx);
+  }
+
+  /**
+   * I51: genera el CSV de 57 columnas para el Asistente de Importación de
+   * World Office. Asigna a cada pedido el consecutivo WO de la empresa,
+   * marca los pedidos (exportado_wo, número y lote) y audita la exportación.
+   * Sin BOM: se replica el archivo validado como exitoso en WO.
+   */
+  @Post('world-office/pedidos.csv')
+  async woPedidosCsv(
+    @Body() body: { orderIds?: string[] },
+    @CurrentUser() user: AuthenticatedUser,
+    @Res() res: Response,
+  ) {
+    const ctx = await this.cargarContextoWo(body?.orderIds);
+    const pre = validarExportacionWo(ctx);
+    if (!pre.ok) {
+      throw new BadRequestException({
+        code: 'WO_PREFLIGHT_ERRORES',
+        message: 'Hay errores que bloquean la exportación a World Office',
+        ...pre,
+      });
+    }
+
+    const lote = randomUUID();
+    // Asignación del consecutivo y marcado de pedidos en una sola
+    // transacción con bloqueo de la fila del parámetro (evita duplicados
+    // si dos usuarios exportan a la vez).
+    const numerosWo = await this.dataSource.transaction(async (manager) => {
+      const rows = await manager.query(
+        `SELECT valor FROM system_params WHERE clave = $1 FOR UPDATE`,
+        [ctx.claveParam],
+      );
+      const actual = Number(rows[0]?.valor?.consecutivoActual ?? 0);
+      // Idempotencia: un pedido ya exportado conserva su número WO; solo los
+      // pedidos nuevos consumen consecutivo.
+      let siguiente = actual + 1;
+      const numeros = new Map<string, number>();
+      for (const p of ctx.pedidos) {
+        if (p.exportadoWo && p.woDocumentoNumero) {
+          numeros.set(p.id, p.woDocumentoNumero);
+        } else {
+          numeros.set(p.id, siguiente++);
+        }
+      }
+      await manager.query(
+        `UPDATE system_params
+         SET valor = jsonb_set(valor, '{consecutivoActual}', to_jsonb($2::int))
+         WHERE clave = $1`,
+        [ctx.claveParam, siguiente - 1],
+      );
+      for (const p of ctx.pedidos) {
+        await manager.query(
+          `UPDATE orders
+           SET exportado_wo = true, exportado_wo_at = now(),
+               wo_documento_numero = $2, lote_exportacion = $3
+           WHERE id = $1`,
+          [p.id, numeros.get(p.id), lote],
+        );
+      }
+      await this.audit.log(
+        {
+          usuarioId: user.id,
+          usuarioUsername: user.username,
+          accion: 'EXPORTACION_WORLD_OFFICE',
+          tabla: 'orders',
+          registroId: null,
+          valorNuevo: {
+            empresa: ctx.empresa?.nombre,
+            lote,
+            pedidos: ctx.pedidos.map((p) => ({
+              id: p.id,
+              numero: p.numero,
+              documentoWo: numeros.get(p.id),
+            })),
+            lineas: pre.resumen.lineas,
+          },
+        },
+        manager,
+      );
+      return numeros;
+    });
+
+    const csv = construirCsvWo({
+      config: ctx.config!,
+      pedidos: ctx.pedidos,
+      numerosWo,
+    });
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="WO-Pedidos-${ctx.empresa?.siglas ?? 'EMP'}-${new Date().toISOString().slice(0, 10)}.csv"`,
+    );
+    res.send(csv);
+  }
+
+  /** I51: carga pedidos + cliente + comercial + ítems y la config WO. */
+  private async cargarContextoWo(orderIds?: string[]): Promise<{
+    config: WoConfig | null;
+    claveParam: string;
+    empresa: { id: string; nombre: string; siglas: string } | null;
+    pedidos: WoPedidoInput[];
+    idsNoEncontrados: string[];
+    empresasMezcladas: boolean;
+  }> {
+    if (!Array.isArray(orderIds) || orderIds.length === 0) {
+      throw new BadRequestException('orderIds debe ser un arreglo con al menos un pedido');
+    }
+    if (orderIds.length > 200) {
+      throw new BadRequestException('Máximo 200 pedidos por exportación');
+    }
+    const uuidOk = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (orderIds.some((id) => typeof id !== 'string' || !uuidOk.test(id))) {
+      throw new BadRequestException('orderIds contiene identificadores inválidos');
+    }
+    const ids = [...new Set(orderIds)];
+
+    const rows: any[] = await this.dataSource.query(
+      `SELECT o.id, o.numero, o.estado, o.notas, o.created_at,
+              o.exportado_wo, o.wo_documento_numero, o.empresa_id,
+              cl.identificacion AS cliente_identificacion,
+              co.identificacion AS comercial_identificacion
+       FROM orders o
+       JOIN clients cl ON cl.id = o.cliente_id
+       LEFT JOIN comerciales co ON co.id = o.comercial_id
+       WHERE o.id = ANY($1::uuid[])
+       ORDER BY o.created_at ASC, o.numero ASC`,
+      [ids],
+    );
+    const encontrados = new Set(rows.map((r) => r.id));
+    const idsNoEncontrados = ids.filter((id) => !encontrados.has(id));
+
+    const items: any[] = rows.length
+      ? await this.dataSource.query(
+          `SELECT order_id, codigo, descripcion, cantidad, valor_unidad
+           FROM order_items WHERE order_id = ANY($1::uuid[])
+           ORDER BY created_at ASC`,
+          [ids],
+        )
+      : [];
+    const itemsPorPedido = new Map<string, any[]>();
+    for (const it of items) {
+      const arr = itemsPorPedido.get(it.order_id) ?? [];
+      arr.push(it);
+      itemsPorPedido.set(it.order_id, arr);
+    }
+
+    const empresaIds = [...new Set(rows.map((r) => r.empresa_id))];
+    const empresasMezcladas = empresaIds.length > 1;
+    const empresa = empresaIds.length
+      ? ((await this.dataSource.query(
+          `SELECT id, nombre, siglas FROM companies WHERE id = $1`,
+          [empresaIds[0]],
+        ))[0] ?? null)
+      : null;
+    const claveParam = `${WO_PARAM_PREFIX}${empresa?.siglas ?? '?'}`;
+    const configRow = empresa
+      ? await this.dataSource.query(
+          `SELECT valor FROM system_params WHERE clave = $1`,
+          [claveParam],
+        )
+      : [];
+    const config = (configRow[0]?.valor as WoConfig) ?? null;
+
+    const pedidos: WoPedidoInput[] = rows.map((r) => ({
+      id: r.id,
+      numero: r.numero,
+      estado: r.estado,
+      notas: r.notas,
+      createdAt: new Date(r.created_at),
+      exportadoWo: r.exportado_wo === true,
+      woDocumentoNumero: r.wo_documento_numero,
+      clienteIdentificacion: r.cliente_identificacion,
+      comercialIdentificacion: r.comercial_identificacion,
+      items: (itemsPorPedido.get(r.id) ?? []).map((it) => ({
+        codigo: it.codigo,
+        descripcion: it.descripcion,
+        cantidad: it.cantidad,
+        valorUnidad: it.valor_unidad,
+      })),
+    }));
+
+    return { config, claveParam, empresa, pedidos, idsNoEncontrados, empresasMezcladas };
+  }
+
+  private async auditExport(user: AuthenticatedUser, reporte: string, registros: number) {    await this.audit.log({
       usuarioId: user.id,
       usuarioUsername: user.username,
       accion: 'EXPORTACION_CSV',

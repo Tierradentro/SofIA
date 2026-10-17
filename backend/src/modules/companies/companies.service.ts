@@ -6,6 +6,8 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Company } from './entities/company.entity';
+import { SystemParam } from '../params/entities/system-param.entity';
+import { woConfigPorDefecto, WO_PARAM_PREFIX } from '../exports/world-office';
 import { CreateCompanyDto } from './dto/create-company.dto';
 import { UpdateCompanyDto } from './dto/update-company.dto';
 import { AuditService } from '../audit/audit.service';
@@ -25,6 +27,16 @@ export class CompaniesService {
     });
     if (dup) throw new ConflictException('La empresa o sus siglas ya existen');
     const company = await this.companies.save(this.companies.create(dto));
+    // I51: toda empresa nueva nace con su configuración de exportación a WO
+    // (valores por defecto; el administrador los ajusta en Parámetros).
+    await this.companies.manager.save(
+      SystemParam,
+      this.companies.manager.create(SystemParam, {
+        clave: `${WO_PARAM_PREFIX}${company.siglas}`,
+        valor: woConfigPorDefecto() as Record<string, any>,
+        descripcion: `Exportación a World Office de ${company.nombre} (nombre en WO, tipo doc, bodega, forma de pago, IVA y consecutivo)`,
+      }),
+    );
     await this.audit.log({
       usuarioId: admin.id,
       usuarioUsername: admin.username,

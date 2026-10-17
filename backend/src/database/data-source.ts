@@ -60,6 +60,7 @@ import { FondoPasilloI401753000018000 } from './migrations/1753000018000-fondo-p
 import { ClienteCorreoI411753000019000 } from './migrations/1753000019000-cliente-correo-i41';
 import { ProductoFotoI411753000020000 } from './migrations/1753000020000-producto-foto-i41';
 import { BahiaDevolucionesI421753000021000 } from './migrations/1753000021000-bahia-devoluciones-i42';
+import { WorldOfficeI511753000022000 } from './migrations/1753000022000-world-office-i51';
 import { runInitialSeed } from './seeds/initial.seed';
 
 export function buildDataSourceOptions(): DataSourceOptions {
@@ -135,6 +136,7 @@ export function buildDataSourceOptions(): DataSourceOptions {
       ClienteCorreoI411753000019000,
       ProductoFotoI411753000020000,
       BahiaDevolucionesI421753000021000,
+      WorldOfficeI511753000022000,
     ],
     synchronize: false,
     logging: false,

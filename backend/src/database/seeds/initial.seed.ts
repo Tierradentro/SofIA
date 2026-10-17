@@ -100,6 +100,35 @@ export async function runInitialSeed(dataSource: DataSource): Promise<void> {
     if (!exists) await paramRepo.save(paramRepo.create(p));
   }
 
+  // ---- I51: configuración de exportación a World Office por empresa ----
+  // (la migración I51 la crea para empresas preexistentes; aquí queda para
+  // instalaciones nuevas, donde la migración corre antes de crear empresas).
+  const empresas = await companyRepo.find();
+  for (const e of empresas) {
+    const clave = `wo.export.${e.siglas}`;
+    const exists = await paramRepo.findOne({ where: { clave } });
+    if (!exists) {
+      await paramRepo.save(
+        paramRepo.create({
+          clave,
+          valor: {
+            empresaNombre: '',
+            tipoDocumento: 'COT',
+            prefijo: '',
+            bodegaDefault: 'Principal',
+            unidadMedida: 'Und.',
+            formaPagoDefault: 'Credito 30 DIAS',
+            vendedorDefaultNit: '',
+            diasVencimiento: 30,
+            iva: 0.19,
+            consecutivoActual: 0,
+          },
+          descripcion: `Exportación a World Office de ${e.nombre} (nombre en WO, tipo doc, bodega, forma de pago, IVA y consecutivo)`,
+        }),
+      );
+    }
+  }
+
   // ---- Motivos PQRS (Spec §6) ----
   const garantia: Array<[string, string]> = [
     ['G01', 'Defecto de fabricación'],
