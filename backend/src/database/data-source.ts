@@ -61,6 +61,7 @@ import { ClienteCorreoI411753000019000 } from './migrations/1753000019000-client
 import { ProductoFotoI411753000020000 } from './migrations/1753000020000-producto-foto-i41';
 import { BahiaDevolucionesI421753000021000 } from './migrations/1753000021000-bahia-devoluciones-i42';
 import { WorldOfficeI511753000022000 } from './migrations/1753000022000-world-office-i51';
+import { WorldOfficeGlobalI521753000023000 } from './migrations/1753000023000-world-office-global-i52';
 import { runInitialSeed } from './seeds/initial.seed';
 
 export function buildDataSourceOptions(): DataSourceOptions {
@@ -137,6 +138,7 @@ export function buildDataSourceOptions(): DataSourceOptions {
       ProductoFotoI411753000020000,
       BahiaDevolucionesI421753000021000,
       WorldOfficeI511753000022000,
+      WorldOfficeGlobalI521753000023000,
     ],
     synchronize: false,
     logging: false,

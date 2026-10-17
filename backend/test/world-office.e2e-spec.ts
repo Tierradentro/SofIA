@@ -22,16 +22,13 @@ describe('Exportación World Office I51 (e2e)', () => {
   let comercialDefaultId: string;
 
   const configWo = {
-    empresaNombre: 'IMPORT - REPUESTOS EL ESCARABAJO S A S',
     tipoDocumento: 'COT',
     prefijo: '',
     bodegaDefault: 'Principal',
     unidadMedida: 'Und.',
     formaPagoDefault: 'Credito 30 DIAS',
-    vendedorDefaultNit: '',
     diasVencimiento: 30,
     iva: 0.19,
-    consecutivoActual: 0,
   };
 
   async function crearPedidoAlistado(
@@ -117,31 +114,44 @@ describe('Exportación World Office I51 (e2e)', () => {
       .send({ nombre: 'Comercial Base WO', identificacion: '1234567' });
     comercialDefaultId = comDefault.body.id;
 
-    // Configuración WO de IRE e ICV (sembrada por la migración/seed)
-    for (const siglas of ['IRE', 'ICV']) {
-      const put = await t.http
-        .put(`/api/v1/admin/params/wo.export.${siglas}`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ valor: configWo, motivo: 'Configuración inicial WO' });
-      expect(put.status).toBe(200);
-    }
+    // I52: la empresa emisora es el nombre de la empresa del pedido
+    await t.dataSource.query(
+      `UPDATE companies SET nombre='IMPORT - REPUESTOS EL ESCARABAJO S A S' WHERE id=$1`,
+      [ireId],
+    );
+
+    // I52: configuración GLOBAL de WO (una sola para todas las empresas)
+    const put = await t.http
+      .put('/api/v1/admin/params/wo.export')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ valor: configWo, motivo: 'Configuración inicial WO' });
+    expect(put.status).toBe(200);
   });
 
-  it('la migración sembró la configuración WO por empresa', async () => {
+  it('la migración sembró la config global y el consecutivo por empresa', async () => {
     const res = await t.http
       .get('/api/v1/admin/params')
       .set('Authorization', `Bearer ${adminToken}`);
     const claves = res.body.map((p: any) => p.clave);
-    expect(claves).toContain('wo.export.IRE');
-    expect(claves).toContain('wo.export.ICV');
+    expect(claves).toContain('wo.export');
+    expect(claves).toContain('wo.consecutivo.IRE');
+    expect(claves).toContain('wo.consecutivo.ICV');
+    // I52: las claves I51 por empresa fueron reemplazadas
+    expect(claves).not.toContain('wo.export.IRE');
   });
 
   it('valida la configuración WO (iva fuera de rango → 400)', async () => {
     const res = await t.http
-      .put('/api/v1/admin/params/wo.export.IRE')
+      .put('/api/v1/admin/params/wo.export')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ valor: { ...configWo, iva: 1.5 }, motivo: 'prueba' });
     expect(res.status).toBe(400);
+    // El consecutivo por empresa también se valida
+    const malo = await t.http
+      .put('/api/v1/admin/params/wo.consecutivo.IRE')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ valor: { consecutivoActual: -1 }, motivo: 'prueba' });
+    expect(malo.status).toBe(400);
   });
 
   it('preflight y CSV de un pedido alistado: 57 columnas, consecutivo y trazabilidad', async () => {
@@ -228,7 +238,7 @@ describe('Exportación World Office I51 (e2e)', () => {
     expect(csv2.status).toBe(201);
     expect(csv2.text.split('\n')[1].split(',')[3]).toBe('1');
     const cfg = await t.dataSource.query(
-      `SELECT valor FROM system_params WHERE clave='wo.export.IRE'`,
+      `SELECT valor FROM system_params WHERE clave='wo.consecutivo.IRE'`,
     );
     expect(cfg[0].valor.consecutivoActual).toBe(1);
   });
@@ -275,7 +285,8 @@ describe('Exportación World Office I51 (e2e)', () => {
     const pedIre = await crearPedidoAlistado(cli.body.id, null, ireId);
     const pedIcv = await crearPedidoAlistado(cli.body.id, null, icvId);
 
-    // Sin comercial en el pedido ni vendedor por defecto → también debe quejarse
+    // Sin comercial en el pedido → también debe quejarse (I52: el NIT del
+    // vendedor sale del comercial del pedido, no hay parámetro de respaldo)
     const pre = await t.http
       .post('/api/v1/exports/world-office/preflight')
       .set('Authorization', `Bearer ${generadorToken}`)
@@ -283,19 +294,19 @@ describe('Exportación World Office I51 (e2e)', () => {
     expect(pre.body.ok).toBe(false);
     const mensajes = pre.body.errores.map((e: any) => e.mensaje).join(' | ');
     expect(mensajes).toContain('misma empresa');
-    expect(mensajes).toContain('vendedor por defecto');
+    expect(mensajes).toContain('comercial con identificación');
   });
 
-  it('usa el vendedor por defecto cuando el pedido no tiene comercial', async () => {
-    await t.http
-      .put('/api/v1/admin/params/wo.export.ICV')
+  it('consecutivo independiente por empresa y NIT del comercial del pedido', async () => {
+    const comIcv = await t.http
+      .post('/api/v1/comerciales')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ valor: { ...configWo, vendedorDefaultNit: '9.999.999' }, motivo: 'vendedor respaldo' });
+      .send({ nombre: 'Comercial ICV', identificacion: 'CC 5.555.555' });
     const cli = await t.http
       .post('/api/v1/clients')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ nombre: 'Cliente ICV', identificacion: '800333444' });
-    const pedIcv = await crearPedidoAlistado(cli.body.id, null, icvId);
+    const pedIcv = await crearPedidoAlistado(cli.body.id, comIcv.body.id, icvId);
 
     const csv = await t.http
       .post('/api/v1/exports/world-office/pedidos.csv')
@@ -303,7 +314,7 @@ describe('Exportación World Office I51 (e2e)', () => {
       .send({ orderIds: [pedIcv] });
     expect(csv.status).toBe(201);
     const datos = csv.text.split('\n')[1].split(',');
-    expect(datos[5]).toBe('9999999');
+    expect(datos[5]).toBe('5555555'); // NIT del comercial, solo dígitos
     expect(datos[3]).toBe('1'); // consecutivo independiente por empresa
   });
 

@@ -35,22 +35,25 @@ const PARAMS_EDITABLES: Record<string, { campos: { key: string; label: string; t
   'logistica.horario_acceso': { campos: [] },
 };
 
-/** I51: editor de la configuración de exportación a World Office (por empresa). */
+/** I51/I52: editor de la configuración GLOBAL de exportación a World Office. */
 const CAMPOS_WO = [
-  { key: 'empresaNombre', label: 'Nombre de la empresa en WO', tipo: 'text' as const },
   { key: 'tipoDocumento', label: 'Tipo de documento (COT/PD)', tipo: 'text' as const },
   { key: 'prefijo', label: 'Prefijo del documento', tipo: 'text' as const },
   { key: 'bodegaDefault', label: 'Bodega en WO', tipo: 'text' as const },
   { key: 'unidadMedida', label: 'Unidad de medida en WO', tipo: 'text' as const },
   { key: 'formaPagoDefault', label: 'Forma de pago', tipo: 'text' as const },
-  { key: 'vendedorDefaultNit', label: 'NIT vendedor por defecto', tipo: 'text' as const },
   { key: 'diasVencimiento', label: 'Días de vencimiento', tipo: 'number' as const },
   { key: 'iva', label: 'IVA (decimal, ej. 0.19)', tipo: 'number' as const },
+];
+
+/** I52: editor del consecutivo del documento WO (único por empresa). */
+const CAMPOS_WO_CONSECUTIVO = [
   { key: 'consecutivoActual', label: 'Último consecutivo WO usado', tipo: 'number' as const },
 ];
 
 function configParam(clave: string) {
-  if (clave.startsWith('wo.export.')) return { campos: CAMPOS_WO };
+  if (clave === 'wo.export') return { campos: CAMPOS_WO };
+  if (clave.startsWith('wo.consecutivo.')) return { campos: CAMPOS_WO_CONSECUTIVO };
   return PARAMS_EDITABLES[clave];
 }
 

@@ -21,7 +21,8 @@ import {
 import { AuditModule } from '../audit/audit.module';
 import { Module } from '@nestjs/common';
 import {
-  WO_PARAM_PREFIX,
+  WO_CONSECUTIVO_PREFIX,
+  WO_PARAM_GLOBAL,
   WoConfig,
   WoPedidoInput,
   construirCsvWo,
@@ -271,7 +272,7 @@ export class ExportsController {
     const numerosWo = await this.dataSource.transaction(async (manager) => {
       const rows = await manager.query(
         `SELECT valor FROM system_params WHERE clave = $1 FOR UPDATE`,
-        [ctx.claveParam],
+        [ctx.claveConsecutivo],
       );
       const actual = Number(rows[0]?.valor?.consecutivoActual ?? 0);
       // Idempotencia: un pedido ya exportado conserva su número WO; solo los
@@ -289,7 +290,7 @@ export class ExportsController {
         `UPDATE system_params
          SET valor = jsonb_set(valor, '{consecutivoActual}', to_jsonb($2::int))
          WHERE clave = $1`,
-        [ctx.claveParam, siguiente - 1],
+        [ctx.claveConsecutivo, siguiente - 1],
       );
       for (const p of ctx.pedidos) {
         await manager.query(
@@ -325,6 +326,7 @@ export class ExportsController {
 
     const csv = construirCsvWo({
       config: ctx.config!,
+      empresaNombre: ctx.empresaNombre!,
       pedidos: ctx.pedidos,
       numerosWo,
     });
@@ -336,10 +338,12 @@ export class ExportsController {
     res.send(csv);
   }
 
-  /** I51: carga pedidos + cliente + comercial + ítems y la config WO. */
+  /** I51/I52: carga pedidos + cliente + comercial + ítems y la config WO. */
   private async cargarContextoWo(orderIds?: string[]): Promise<{
     config: WoConfig | null;
-    claveParam: string;
+    empresaNombre: string | null;
+    consecutivoActual: number | null;
+    claveConsecutivo: string;
     empresa: { id: string; nombre: string; siglas: string } | null;
     pedidos: WoPedidoInput[];
     idsNoEncontrados: string[];
@@ -395,14 +399,24 @@ export class ExportsController {
           [empresaIds[0]],
         ))[0] ?? null)
       : null;
-    const claveParam = `${WO_PARAM_PREFIX}${empresa?.siglas ?? '?'}`;
-    const configRow = empresa
+    // I52: configuración GLOBAL (wo.export) + consecutivo POR EMPRESA
+    // (wo.consecutivo.<SIGLAS>); empresa, vendedor y nota salen de la base.
+    const claveConsecutivo = `${WO_CONSECUTIVO_PREFIX}${empresa?.siglas ?? '?'}`;
+    const configRow = await this.dataSource.query(
+      `SELECT valor FROM system_params WHERE clave = $1`,
+      [WO_PARAM_GLOBAL],
+    );
+    const config = (configRow[0]?.valor as WoConfig) ?? null;
+    const consecRow = empresa
       ? await this.dataSource.query(
           `SELECT valor FROM system_params WHERE clave = $1`,
-          [claveParam],
+          [claveConsecutivo],
         )
       : [];
-    const config = (configRow[0]?.valor as WoConfig) ?? null;
+    const consecutivoActual =
+      consecRow.length && Number.isInteger(consecRow[0]?.valor?.consecutivoActual)
+        ? (consecRow[0].valor.consecutivoActual as number)
+        : null;
 
     const pedidos: WoPedidoInput[] = rows.map((r) => ({
       id: r.id,
@@ -422,7 +436,16 @@ export class ExportsController {
       })),
     }));
 
-    return { config, claveParam, empresa, pedidos, idsNoEncontrados, empresasMezcladas };
+    return {
+      config,
+      empresaNombre: empresa?.nombre ?? null,
+      consecutivoActual,
+      claveConsecutivo,
+      empresa,
+      pedidos,
+      idsNoEncontrados,
+      empresasMezcladas,
+    };
   }
 
   private async auditExport(user: AuthenticatedUser, reporte: string, registros: number) {    await this.audit.log({

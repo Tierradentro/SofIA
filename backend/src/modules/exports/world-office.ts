@@ -1,53 +1,51 @@
 /**
- * I51: exportación de pedidos a World Office (WO) — Asistente de Importación /
- * Migración de Documentos con Movimiento de Inventario.
+ * I51/I52: exportación de pedidos a World Office (WO) — Asistente de
+ * Importación / Migración de Documentos con Movimiento de Inventario.
  *
  * Lógica pura (sin NestJS ni TypeORM) para facilitar las pruebas unitarias:
- * - Configuración por empresa en system_params con clave `wo.export.<SIGLAS>`.
- * - Validación previa (preflight) con errores bloqueantes y advertencias.
+ * - Configuración GLOBAL en system_params clave `wo.export` (aplica a todas
+ *   las empresas: tipo doc, bodega, unidad, forma de pago, vencimiento, IVA).
+ * - Consecutivo POR EMPRESA en `wo.consecutivo.<SIGLAS>`.
+ * - Datos que ya están en la base y NO son parámetros: nombre de la empresa
+ *   emisora (companies), NIT del vendedor (comerciales.identificacion del
+ *   pedido), NIT del cliente (clients.identificacion) y nota (orders.notas).
  * - Construcción del CSV plano de 57 columnas (encabezado repetido por ítem),
  *   replicando el archivo validado como exitoso en WO (sin BOM, dd/mm/yyyy,
  *   IVA decimal, valores sin separador de miles).
  */
 
-export const WO_PARAM_PREFIX = 'wo.export.';
+/** Clave del parámetro global de exportación WO. */
+export const WO_PARAM_GLOBAL = 'wo.export';
+/** Prefijo de la clave del consecutivo WO por empresa. */
+export const WO_CONSECUTIVO_PREFIX = 'wo.consecutivo.';
 
-/** Configuración WO de una empresa (jsonb en system_params). */
+/** Configuración WO global (jsonb en system_params, clave `wo.export`). */
 export interface WoConfig {
-  /** Nombre exacto de la empresa en WO (maestro de empresas). */
-  empresaNombre: string;
   /** Abreviatura del documento en WO (COT = cotización, PD = pedido). */
   tipoDocumento: string;
   /** Prefijo del documento en WO (vacío si no maneja). */
   prefijo: string;
-  /** Bodega contable por defecto (ej. Principal). */
+  /** Bodega contable (ej. Principal). */
   bodegaDefault: string;
   /** Unidad de medida en WO (ej. Und.). */
   unidadMedida: string;
   /** Forma de pago según maestros WO (ej. Credito 30 DIAS). */
   formaPagoDefault: string;
-  /** NIT/cédula del vendedor de respaldo si el pedido no tiene comercial. */
-  vendedorDefaultNit: string;
   /** Días de crédito para la fecha de vencimiento de cada ítem. */
   diasVencimiento: number;
   /** IVA decimal aplicado a los ítems (0.19 = 19%). */
   iva: number;
-  /** Último número de documento WO usado; el próximo es consecutivoActual+1. */
-  consecutivoActual: number;
 }
 
 export function woConfigPorDefecto(): WoConfig {
   return {
-    empresaNombre: '',
     tipoDocumento: 'COT',
     prefijo: '',
     bodegaDefault: 'Principal',
     unidadMedida: 'Und.',
     formaPagoDefault: 'Credito 30 DIAS',
-    vendedorDefaultNit: '',
     diasVencimiento: 30,
     iva: 0.19,
-    consecutivoActual: 0,
   };
 }
 
@@ -121,15 +119,22 @@ export interface WoPreflight {
   };
 }
 
-/**
- * Solo dígitos: elimina prefijos (CC, NIT), espacios, puntos y guiones.
- * Además quita el dígito de verificación cuando viene separado al final
- * (ej. "NIT 901689082 1" o "901.689.082-1" → "901689082").
- */
+/** Solo dígitos: elimina prefijos (CC, NIT), espacios, puntos y guiones. */
 export function soloDigitos(v: string | null | undefined): string {
-  const s = (v ?? '').trim();
-  const sinDv = /[\s.\-]\d$/.test(s) ? s.slice(0, -1) : s;
-  return sinDv.replace(/\D+/g, '');
+  return (v ?? '').replace(/\D+/g, '');
+}
+
+/**
+ * Identificación del cliente para el Tercero Externo: solo números, y
+ * cuando el texto trae "NIT" se elimina el último dígito (el dígito de
+ * verificación): "NIT 901689082 1" → "901689082".
+ */
+export function nitClienteWo(v: string | null | undefined): string {
+  const digitos = soloDigitos(v);
+  if (/nit/i.test(v ?? '') && digitos.length > 1) {
+    return digitos.slice(0, -1);
+  }
+  return digitos;
 }
 
 /** dd/mm/yyyy en zona America/Bogota; diasExtra suma días calendario. */
@@ -165,12 +170,17 @@ const VACIOS_15 = Array(15).fill('');
  */
 export function validarExportacionWo(args: {
   config: WoConfig | null;
-  claveParam: string;
+  empresaNombre: string | null;
+  consecutivoActual: number | null;
+  claveConsecutivo: string;
   pedidos: WoPedidoInput[];
   idsNoEncontrados: string[];
   empresasMezcladas: boolean;
 }): WoPreflight {
-  const { config, claveParam, pedidos, idsNoEncontrados, empresasMezcladas } = args;
+  const {
+    config, empresaNombre, consecutivoActual, claveConsecutivo,
+    pedidos, idsNoEncontrados, empresasMezcladas,
+  } = args;
   const errores: WoProblema[] = [];
   const advertencias: WoProblema[] = [];
   const global = (mensaje: string) =>
@@ -181,26 +191,23 @@ export function validarExportacionWo(args: {
   }
   if (!config) {
     global(
-      `No existe la configuración de World Office (parámetro ${claveParam}). ` +
+      `No existe la configuración de World Office (parámetro ${WO_PARAM_GLOBAL}). ` +
         'Créela en Administración → Parámetros.',
     );
-  } else {
-    if (!config.empresaNombre?.trim()) {
-      global(
-        `Falta el nombre de la empresa en WO (${claveParam} → empresaNombre)`,
-      );
-    }
-    if (!config.tipoDocumento?.trim()) {
-      global(`Falta el tipo de documento WO (${claveParam} → tipoDocumento)`);
-    }
-    if (
-      !Number.isInteger(config.consecutivoActual) ||
-      config.consecutivoActual < 0
-    ) {
-      global(
-        `El consecutivo WO es inválido (${claveParam} → consecutivoActual debe ser entero ≥ 0)`,
-      );
-    }
+  } else if (!config.tipoDocumento?.trim()) {
+    global(`Falta el tipo de documento WO (${WO_PARAM_GLOBAL} → tipoDocumento)`);
+  }
+  if (!empresaNombre?.trim()) {
+    global('La empresa no tiene nombre (Empresa / Razón social emisora del pedido)');
+  }
+  if (
+    consecutivoActual === null ||
+    !Number.isInteger(consecutivoActual) ||
+    consecutivoActual < 0
+  ) {
+    global(
+      `El consecutivo WO es inválido o no existe (${claveConsecutivo} → consecutivoActual debe ser entero ≥ 0)`,
+    );
   }
   for (const id of idsNoEncontrados) {
     errores.push({
@@ -219,16 +226,11 @@ export function validarExportacionWo(args: {
     if (p.estado !== 'ALISTADO') {
       err(`Solo se exportan pedidos ALISTADOS (estado actual: ${p.estado})`);
     }
-    if (!soloDigitos(p.clienteIdentificacion)) {
+    if (!nitClienteWo(p.clienteIdentificacion)) {
       err('El cliente no tiene identificación (NIT/cédula) válida');
     }
-    const vendedor =
-      soloDigitos(p.comercialIdentificacion) ||
-      soloDigitos(config?.vendedorDefaultNit);
-    if (!vendedor) {
-      err(
-        'El pedido no tiene comercial con identificación y no hay vendedor por defecto configurado',
-      );
+    if (!soloDigitos(p.comercialIdentificacion)) {
+      err('El pedido no tiene comercial con identificación válida');
     }
     if (p.items.length === 0) err('El pedido no tiene ítems');
     for (const it of p.items) {
@@ -247,12 +249,13 @@ export function validarExportacionWo(args: {
     }
   }
 
-  const base = config?.consecutivoActual;
   // Solo los pedidos NUEVOS consumen consecutivo; los ya exportados
   // conservan el número de documento WO que se les asignó (idempotencia).
   const nuevos = pedidos.filter((p) => !p.exportadoWo).length;
   const consecutivoValido =
-    base !== undefined && Number.isInteger(base) && base >= 0;
+    consecutivoActual !== null &&
+    Number.isInteger(consecutivoActual) &&
+    consecutivoActual >= 0;
   return {
     ok: errores.length === 0,
     errores,
@@ -260,8 +263,8 @@ export function validarExportacionWo(args: {
     resumen: {
       pedidos: pedidos.length,
       lineas: pedidos.reduce((acc, p) => acc + p.items.length, 0),
-      documentoDesde: consecutivoValido && nuevos > 0 ? base! + 1 : null,
-      documentoHasta: consecutivoValido && nuevos > 0 ? base! + nuevos : null,
+      documentoDesde: consecutivoValido && nuevos > 0 ? consecutivoActual! + 1 : null,
+      documentoHasta: consecutivoValido && nuevos > 0 ? consecutivoActual! + nuevos : null,
     },
   };
 }
@@ -269,32 +272,30 @@ export function validarExportacionWo(args: {
 /**
  * Construye las líneas de datos del CSV (una por ítem, con el encabezado del
  * documento repetido). `numerosWo` asigna a cada pedido su número de
- * documento WO (consecutivo de la empresa).
+ * documento WO (consecutivo de la empresa o el ya asignado).
  */
 export function construirLineasWo(args: {
   config: WoConfig;
+  empresaNombre: string;
   pedidos: WoPedidoInput[];
   numerosWo: Map<string, number>;
 }): string[] {
-  const { config, pedidos, numerosWo } = args;
+  const { config, empresaNombre, pedidos, numerosWo } = args;
   const lineas: string[] = [];
 
   for (const p of pedidos) {
     const docNumero = numerosWo.get(p.id)!;
     const fecha = fechaWo(p.createdAt);
     const vencimiento = fechaWo(p.createdAt, config.diasVencimiento || 0);
-    const terceroInterno =
-      soloDigitos(p.comercialIdentificacion) ||
-      soloDigitos(config.vendedorDefaultNit);
     const encabezado: string[] = [
-      config.empresaNombre,
+      empresaNombre,
       config.tipoDocumento,
       config.prefijo ?? '',
       String(docNumero),
       fecha,
-      terceroInterno,
-      soloDigitos(p.clienteIdentificacion),
-      p.notas?.trim() || `PEDIDO SOFIA #${p.numero}`,
+      soloDigitos(p.comercialIdentificacion), // Tercero Interno: NIT del vendedor
+      nitClienteWo(p.clienteIdentificacion), // Tercero Externo: NIT del cliente
+      p.notas?.trim() || `PEDIDO SOFIA #${p.numero}`, // Nota: observaciones del pedido
       config.formaPagoDefault,
       fecha, // Fecha Entrega: por defecto la misma del pedido
       '', // Prefijo Documento Externo (vacío, como el archivo validado)
@@ -331,6 +332,7 @@ export function construirLineasWo(args: {
 /** CSV completo: encabezado de columnas + líneas. Sin BOM (como el archivo validado en WO). */
 export function construirCsvWo(args: {
   config: WoConfig;
+  empresaNombre: string;
   pedidos: WoPedidoInput[];
   numerosWo: Map<string, number>;
 }): string {

@@ -100,30 +100,40 @@ export async function runInitialSeed(dataSource: DataSource): Promise<void> {
     if (!exists) await paramRepo.save(paramRepo.create(p));
   }
 
-  // ---- I51: configuración de exportación a World Office por empresa ----
-  // (la migración I51 la crea para empresas preexistentes; aquí queda para
-  // instalaciones nuevas, donde la migración corre antes de crear empresas).
+  // ---- I51/I52: exportación a World Office ----
+  // Configuración GLOBAL (aplica a todas las empresas) + consecutivo POR
+  // EMPRESA. La migración I52 la crea en bases existentes; aquí queda para
+  // instalaciones nuevas.
+  const claveGlobalWo = 'wo.export';
+  const existeGlobalWo = await paramRepo.findOne({ where: { clave: claveGlobalWo } });
+  if (!existeGlobalWo) {
+    await paramRepo.save(
+      paramRepo.create({
+        clave: claveGlobalWo,
+        valor: {
+          tipoDocumento: 'COT',
+          prefijo: '',
+          bodegaDefault: 'Principal',
+          unidadMedida: 'Und.',
+          formaPagoDefault: 'Credito 30 DIAS',
+          diasVencimiento: 30,
+          iva: 0.19,
+        },
+        descripcion:
+          'Exportación a World Office: tipo doc, bodega, unidad, forma de pago, vencimiento e IVA (común a todas las empresas)',
+      }),
+    );
+  }
   const empresas = await companyRepo.find();
   for (const e of empresas) {
-    const clave = `wo.export.${e.siglas}`;
+    const clave = `wo.consecutivo.${e.siglas}`;
     const exists = await paramRepo.findOne({ where: { clave } });
     if (!exists) {
       await paramRepo.save(
         paramRepo.create({
           clave,
-          valor: {
-            empresaNombre: '',
-            tipoDocumento: 'COT',
-            prefijo: '',
-            bodegaDefault: 'Principal',
-            unidadMedida: 'Und.',
-            formaPagoDefault: 'Credito 30 DIAS',
-            vendedorDefaultNit: '',
-            diasVencimiento: 30,
-            iva: 0.19,
-            consecutivoActual: 0,
-          },
-          descripcion: `Exportación a World Office de ${e.nombre} (nombre en WO, tipo doc, bodega, forma de pago, IVA y consecutivo)`,
+          valor: { consecutivoActual: 0 },
+          descripcion: `Consecutivo del documento World Office de ${e.nombre} (último número usado; el próximo es +1)`,
         }),
       );
     }

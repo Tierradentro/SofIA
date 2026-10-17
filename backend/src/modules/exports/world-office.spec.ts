@@ -4,6 +4,7 @@ import {
   construirCsvWo,
   construirLineasWo,
   fechaWo,
+  nitClienteWo,
   numeroWo,
   soloDigitos,
   validarExportacionWo,
@@ -11,15 +12,14 @@ import {
 } from './world-office';
 
 /**
- * I51: pruebas del generador del CSV de World Office contra el fixture que
- * ya fue cargado exitosamente en WO (DocumentosVentasEncabezados…3450.csv).
+ * I51/I52: pruebas del generador del CSV de World Office contra el fixture
+ * que ya fue cargado exitosamente en WO (DocumentosVentas…3450.csv).
+ * I52: config global + consecutivo por empresa; empresa/vendedor/nota salen
+ * de la base de datos.
  */
-describe('World Office (I51) — generador CSV', () => {
-  const config = {
-    ...woConfigPorDefecto(),
-    empresaNombre: 'IMPORT - REPUESTOS EL ESCARABAJO S A S',
-    consecutivoActual: 3449,
-  };
+describe('World Office (I51/I52) — generador CSV', () => {
+  const config = woConfigPorDefecto();
+  const empresaNombre = 'IMPORT - REPUESTOS EL ESCARABAJO S A S';
 
   // 09/10/2026 al mediodía en Bogotá (evita ambigüedad de zona horaria)
   const creado = new Date('2026-10-09T12:00:00-05:00');
@@ -42,6 +42,13 @@ describe('World Office (I51) — generador CSV', () => {
       ...it,
     })),
   });
+  const lineasDe = (p: WoPedidoInput, cfg = config, emp = empresaNombre) =>
+    construirLineasWo({
+      config: cfg,
+      empresaNombre: emp,
+      pedidos: [p],
+      numerosWo: new Map([['p1', 3450]]),
+    });
 
   it('la plantilla tiene exactamente 57 columnas (31 encabezado + 26 detalle)', () => {
     expect(COLUMNAS_WO.length).toBe(57);
@@ -56,12 +63,7 @@ describe('World Office (I51) — generador CSV', () => {
       { codigo: '311115175B', descripcion: 'COLADOR ACEITE ESC (250) PCJ BRASIL' },
       { codigo: '1131151792', descripcion: 'TAPA COLADOR ACEITE ESC BRASIL' },
     ]);
-    const lineas = construirLineasWo({
-      config,
-      pedidos: [p],
-      numerosWo: new Map([['p1', 3450]]),
-    });
-    expect(lineas).toEqual([
+    expect(lineasDe(p)).toEqual([
       'IMPORT - REPUESTOS EL ESCARABAJO S A S,COT,,3450,09/10/2026,4245245,901689082,COTIZACIÓN,Credito 30 DIAS,09/10/2026,,3450,0,0,,,,,,,,,,,,,,,,,,311115175B,Principal,Und.,20,0.19,25210,0,08/11/2026,COLADOR ACEITE ESC (250) PCJ BRASIL,,,,,,,,,,,,,,,,,',
       'IMPORT - REPUESTOS EL ESCARABAJO S A S,COT,,3450,09/10/2026,4245245,901689082,COTIZACIÓN,Credito 30 DIAS,09/10/2026,,3450,0,0,,,,,,,,,,,,,,,,,,1131151792,Principal,Und.,20,0.19,25210,0,08/11/2026,TAPA COLADOR ACEITE ESC BRASIL,,,,,,,,,,,,,,,,,',
     ]);
@@ -70,6 +72,7 @@ describe('World Office (I51) — generador CSV', () => {
   it('el CSV lleva la fila de encabezados y no incluye BOM', () => {
     const csv = construirCsvWo({
       config,
+      empresaNombre,
       pedidos: [pedido([{}])],
       numerosWo: new Map([['p1', 3450]]),
     });
@@ -77,18 +80,23 @@ describe('World Office (I51) — generador CSV', () => {
     expect(filas[0]).toBe(COLUMNAS_WO.join(','));
     expect(filas.length).toBe(2);
     expect(csv.charCodeAt(0)).not.toBe(0xfeff);
-    // Cada línea de datos tiene 57 campos
-    expect(filas[1].split(',').length).toBeGreaterThanOrEqual(40);
   });
 
-  it('limpia identificaciones: solo dígitos y sin dígito de verificación', () => {
-    expect(soloDigitos('NIT 901689082 1')).toBe('901689082');
-    expect(soloDigitos('901.689.082-1')).toBe('901689082');
+  it('vendedor: solo números de la identificación del comercial', () => {
     expect(soloDigitos('CC 4.245.245')).toBe('4245245');
     expect(soloDigitos('1.045.234.567')).toBe('1045234567');
-    expect(soloDigitos('900555111')).toBe('900555111');
     expect(soloDigitos(null)).toBe('');
-    expect(soloDigitos('C-CSV')).toBe('');
+  });
+
+  it('cliente: solo números; con texto NIT se elimina el último dígito (DV)', () => {
+    expect(nitClienteWo('NIT 901689082 1')).toBe('901689082');
+    expect(nitClienteWo('Nit 901.689.082-1')).toBe('901689082');
+    expect(nitClienteWo('NIT9016890821')).toBe('901689082');
+    // Sin texto NIT se conservan todos los dígitos
+    expect(nitClienteWo('901.689.082-1')).toBe('9016890821');
+    expect(nitClienteWo('800111222')).toBe('800111222');
+    expect(nitClienteWo('CC 1.045.234.567')).toBe('1045234567');
+    expect(nitClienteWo(null)).toBe('');
   });
 
   it('formatea fechas dd/mm/yyyy y suma días de vencimiento', () => {
@@ -103,43 +111,23 @@ describe('World Office (I51) — generador CSV', () => {
     expect(numeroWo('20')).toBe('20');
   });
 
-  it('nota por defecto cuando el pedido no tiene notas', () => {
-    const p = { ...pedido([{}]), notas: null };
-    const lineas = construirLineasWo({
-      config,
-      pedidos: [p],
-      numerosWo: new Map([['p1', 3450]]),
-    });
-    expect(lineas[0].split(',')[7]).toBe('PEDIDO SOFIA #IRE-0021');
+  it('nota: observaciones del pedido; por defecto PEDIDO SOFIA #<numero>', () => {
+    expect(lineasDe(pedido([{}]))[0].split(',')[7]).toBe('COTIZACIÓN');
+    const sinNotas = { ...pedido([{}]), notas: null };
+    expect(lineasDe(sinNotas)[0].split(',')[7]).toBe('PEDIDO SOFIA #IRE-0021');
   });
 
-  it('usa el vendedor por defecto si el pedido no tiene comercial', () => {
-    const p = { ...pedido([{}]), comercialIdentificacion: null };
-    const cfg = { ...config, vendedorDefaultNit: '1.234.567' };
-    const lineas = construirLineasWo({
-      config: cfg,
-      pedidos: [p],
-      numerosWo: new Map([['p1', 3450]]),
-    });
-    expect(lineas[0].split(',')[5]).toBe('1234567');
+  it('la empresa emisora es el nombre de la empresa del pedido', () => {
+    expect(lineasDe(pedido([{}]))[0].split(',')[0]).toBe(empresaNombre);
   });
 
   it('escapa campos con comillas o comas', () => {
     const p = pedido([{ descripcion: 'TAPA "ESPECIAL", BRASIL' }]);
-    const lineas = construirLineasWo({
-      config,
-      pedidos: [p],
-      numerosWo: new Map([['p1', 3450]]),
-    });
-    expect(lineas[0]).toContain('"TAPA ""ESPECIAL"", BRASIL"');
+    expect(lineasDe(p)[0]).toContain('"TAPA ""ESPECIAL"", BRASIL"');
   });
 });
 
-describe('World Office (I51) — preflight', () => {
-  const config = {
-    ...woConfigPorDefecto(),
-    empresaNombre: 'IMPORT - REPUESTOS EL ESCARABAJO S A S',
-  };
+describe('World Office (I51/I52) — preflight', () => {
   const base: WoPedidoInput = {
     id: 'p1',
     numero: 'IRE-0021',
@@ -154,8 +142,10 @@ describe('World Office (I51) — preflight', () => {
   };
   const validar = (over: Partial<Parameters<typeof validarExportacionWo>[0]>) =>
     validarExportacionWo({
-      config,
-      claveParam: 'wo.export.IRE',
+      config: woConfigPorDefecto(),
+      empresaNombre: 'IMPORT - REPUESTOS EL ESCARABAJO S A S',
+      consecutivoActual: 0,
+      claveConsecutivo: 'wo.consecutivo.IRE',
       pedidos: [base],
       idsNoEncontrados: [],
       empresasMezcladas: false,
@@ -185,17 +175,17 @@ describe('World Office (I51) — preflight', () => {
     expect(r.errores[0].mensaje).toContain('identificación');
   });
 
-  it('bloquea si no hay comercial ni vendedor por defecto', () => {
+  it('bloquea si el pedido no tiene comercial con identificación', () => {
     const r = validar({ pedidos: [{ ...base, comercialIdentificacion: null }] });
     expect(r.ok).toBe(false);
-    expect(r.errores[0].mensaje).toContain('vendedor por defecto');
+    expect(r.errores[0].mensaje).toContain('comercial con identificación');
   });
 
-  it('bloquea sin configuración o sin nombre de empresa WO', () => {
+  it('bloquea sin configuración global o sin consecutivo de la empresa', () => {
     expect(validar({ config: null }).ok).toBe(false);
-    const r = validar({ config: { ...config, empresaNombre: '' } });
+    const r = validar({ consecutivoActual: null });
     expect(r.ok).toBe(false);
-    expect(r.errores[0].mensaje).toContain('empresaNombre');
+    expect(r.errores[0].mensaje).toContain('wo.consecutivo.IRE');
   });
 
   it('bloquea pedidos mezclados de varias empresas', () => {

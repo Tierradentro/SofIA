@@ -132,26 +132,26 @@ export class ParamsService {
           bad('zonaHoraria debe ser una zona IANA válida (p. ej. America/Bogota)');
         }
       }
-    } else if (clave.startsWith('wo.export.')) {
-      // I51: configuración de exportación a World Office por empresa.
+    } else if (clave === 'wo.export') {
+      // I52: configuración GLOBAL de exportación a World Office.
       const {
-        empresaNombre, tipoDocumento, prefijo, bodegaDefault, unidadMedida,
-        formaPagoDefault, vendedorDefaultNit, diasVencimiento, iva,
-        consecutivoActual,
+        tipoDocumento, prefijo, bodegaDefault, unidadMedida,
+        formaPagoDefault, diasVencimiento, iva,
       } = valor as any;
       const texto = (v: any) => v === undefined || typeof v === 'string';
-      if (![empresaNombre, tipoDocumento, prefijo, bodegaDefault, unidadMedida,
-        formaPagoDefault, vendedorDefaultNit].every(texto)) {
-        bad('los campos de texto deben ser cadenas (empresaNombre, tipoDocumento, prefijo, bodegaDefault, unidadMedida, formaPagoDefault, vendedorDefaultNit)');
+      if (![tipoDocumento, prefijo, bodegaDefault, unidadMedida,
+        formaPagoDefault].every(texto)) {
+        bad('los campos de texto deben ser cadenas (tipoDocumento, prefijo, bodegaDefault, unidadMedida, formaPagoDefault)');
       }
-      if (tipoDocumento !== undefined && tipoDocumento.length > 10)
-        bad('tipoDocumento máximo 10 caracteres');
-      if (empresaNombre !== undefined && empresaNombre.length > 200)
-        bad('empresaNombre máximo 200 caracteres');
+      if (tipoDocumento !== undefined && (tipoDocumento.length === 0 || tipoDocumento.length > 10))
+        bad('tipoDocumento es requerido (máximo 10 caracteres)');
       if (!Number.isInteger(diasVencimiento) || diasVencimiento < 0 || diasVencimiento > 3650)
         bad('diasVencimiento debe ser entero entre 0 y 3650');
       if (typeof iva !== 'number' || iva < 0 || iva > 1)
         bad('iva debe ser un decimal entre 0 y 1 (ej. 0.19)');
+    } else if (clave.startsWith('wo.consecutivo.')) {
+      // I52: consecutivo del documento WO por empresa.
+      const { consecutivoActual } = valor as any;
       if (!Number.isInteger(consecutivoActual) || consecutivoActual < 0)
         bad('consecutivoActual debe ser entero ≥ 0');
     }
