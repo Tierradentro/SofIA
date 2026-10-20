@@ -123,7 +123,7 @@ describe('Exports CSV B-6 (e2e)', () => {
     expect(tablas).toContain('Inventarios');
   });
 
-  it('RBAC negativo: Operador no puede exportar', async () => {
+  it('RBAC negativo: Operador no puede exportar los reportes generales (I53: sí puede el de World Office)', async () => {
     const res = await t.http
       .get('/api/v1/exports/pedidos.csv')
       .set('Authorization', `Bearer ${operadorToken}`);

@@ -3,6 +3,7 @@ import {
   WoPedidoInput,
   construirCsvWo,
   construirLineasWo,
+  construirXlsxWo,
   fechaWo,
   nitClienteWo,
   numeroWo,
@@ -124,6 +125,51 @@ describe('World Office (I51/I52) — generador CSV', () => {
   it('escapa campos con comillas o comas', () => {
     const p = pedido([{ descripcion: 'TAPA "ESPECIAL", BRASIL' }]);
     expect(lineasDe(p)[0]).toContain('"TAPA ""ESPECIAL"", BRASIL"');
+  });
+
+  it('I53: el .xlsx replica campo por campo el formato que espera WO', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const XLSX = require('xlsx');
+    const p = pedido([
+      { codigo: '311115175B', descripcion: 'COLADOR ACEITE ESC (250) PCJ BRASIL' },
+      { codigo: '1131151792', descripcion: 'TAPA COLADOR ACEITE ESC BRASIL' },
+    ]);
+    const buf = await construirXlsxWo({
+      config,
+      empresaNombre,
+      siglas: 'IRE',
+      pedidos: [p],
+      numerosWo: new Map([['p1', 3500]]),
+    });
+    const wb = XLSX.read(buf, { type: 'buffer' });
+    expect(wb.SheetNames).toEqual(['IRE']); // hoja con las siglas, como en WO
+    const matriz: any[][] = XLSX.utils.sheet_to_json(wb.Sheets.IRE, {
+      header: 1,
+      blankrows: false,
+    });
+    expect(matriz.length).toBe(3); // encabezado + 2 ítems
+    expect(matriz[0]).toEqual(COLUMNAS_WO); // 57 columnas exactas
+    const esperada = [
+      'IMPORT - REPUESTOS EL ESCARABAJO S A S', 'COT', '', 3500, '09/10/2026',
+      '4245245', '901689082', 'COTIZACIÓN', 'Credito 30 DIAS', '09/10/2026',
+      '', 3500, 0, 0,
+      ...Array(15).fill(''), '', '',
+      '311115175B', 'Principal', 'Und.', 20, 0.19, 25210, 0, '08/11/2026',
+      'COLADOR ACEITE ESC (250) PCJ BRASIL', '',
+      ...Array(15).fill(''), '',
+    ];
+    // Vacíos: sheet_to_json no recorta con raw:false → normalizamos undefined
+    const fila = matriz[1].map((v: any) => (v === undefined ? '' : v));
+    expect(fila.length).toBe(57);
+    expect(fila).toEqual(esperada);
+    // Los números son números reales y las fechas/NITs son texto
+    expect(typeof matriz[1][3]).toBe('number'); // Documento Número
+    expect(typeof matriz[1][34]).toBe('number'); // Cantidad
+    expect(typeof matriz[1][35]).toBe('number'); // IVA
+    expect(typeof matriz[1][36]).toBe('number'); // Valor Unitario
+    expect(typeof matriz[1][4]).toBe('string'); // Fecha dd/mm/yyyy
+    expect(typeof matriz[1][5]).toBe('string'); // Tercero Interno
+    expect(matriz[2][31]).toBe('1131151792');
   });
 });
 

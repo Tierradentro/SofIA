@@ -341,3 +341,86 @@ export function construirCsvWo(args: {
     ...construirLineasWo(args),
   ].join('\n');
 }
+
+/**
+ * I53: libro .xlsx en el formato que espera World Office (validado con
+ * WO_Prueba_3500.xlsx): hoja nombrada con las siglas de la empresa, encabezado
+ * en negrilla con relleno azul claro (FF99CCFF), textos como texto y números
+ * (documento, cantidades, IVA, valores) como números reales, fechas dd/mm/yyyy
+ * como texto. Se genera con ExcelJS porque SheetJS Community no escribe
+ * estilos de celda en el .xlsx.
+ */
+export async function construirXlsxWo(args: {
+  config: WoConfig;
+  empresaNombre: string;
+  siglas: string;
+  pedidos: WoPedidoInput[];
+  numerosWo: Map<string, number>;
+}): Promise<Buffer> {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const ExcelJS = require('exceljs');
+  const { config, empresaNombre, pedidos, numerosWo } = args;
+
+  const wb = new ExcelJS.Workbook();
+  // La hoja se nombra con las siglas de la empresa (IRE/ICV), como en WO
+  const ws = wb.addWorksheet(args.siglas || 'WO');
+  ws.columns = COLUMNAS_WO.map((h) => ({
+    width: Math.min(h.length + 2, 36),
+  }));
+
+  // Encabezado: negrilla + relleno azul claro (FF99CCFF), como el archivo WO
+  ws.addRow(COLUMNAS_WO);
+  const filaEncabezado = ws.getRow(1);
+  filaEncabezado.font = { bold: true };
+  filaEncabezado.eachCell((cell: any) => {
+    cell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF99CCFF' },
+    };
+  });
+
+  for (const p of pedidos) {
+    const docNumero = numerosWo.get(p.id)!;
+    const fecha = fechaWo(p.createdAt);
+    const vencimiento = fechaWo(p.createdAt, config.diasVencimiento || 0);
+    const encabezado: any[] = [
+      empresaNombre,
+      config.tipoDocumento,
+      config.prefijo ?? '',
+      docNumero, // Documento Número: numérico
+      fecha, // dd/mm/yyyy como texto
+      soloDigitos(p.comercialIdentificacion),
+      nitClienteWo(p.clienteIdentificacion),
+      p.notas?.trim() || `PEDIDO SOFIA #${p.numero}`,
+      config.formaPagoDefault,
+      fecha,
+      '',
+      docNumero, // Número Documento Externo: numérico
+      0, // Verificado
+      0, // Anulado
+      ...VACIOS_15,
+      '',
+      '',
+    ];
+    for (const it of p.items) {
+      const detalle: any[] = [
+        it.codigo ?? '',
+        config.bodegaDefault,
+        config.unidadMedida,
+        Number(it.cantidad),
+        Number(config.iva),
+        Number(it.valorUnidad),
+        0, // Descuento
+        vencimiento,
+        it.descripcion ?? '',
+        '',
+        ...VACIOS_15,
+        '',
+      ];
+      ws.addRow([...encabezado, ...detalle]);
+    }
+  }
+
+  return Buffer.from(await wb.xlsx.writeBuffer());
+}

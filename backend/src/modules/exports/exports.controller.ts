@@ -25,7 +25,7 @@ import {
   WO_PARAM_GLOBAL,
   WoConfig,
   WoPedidoInput,
-  construirCsvWo,
+  construirXlsxWo,
   validarExportacionWo,
 } from './world-office';
 
@@ -48,13 +48,14 @@ function csvEscape(v: any): string {
  * mantiene trazabilidad a la empresa.
  */
 @Controller('exports')
-@Roles(Role.GENERADOR, Role.ADMINISTRADOR)
+@Roles(Role.GENERADOR, Role.ADMINISTRADOR, Role.OPERADOR)
 export class ExportsController {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly audit: AuditService,
   ) {}
 
+  @Roles(Role.GENERADOR, Role.ADMINISTRADOR)
   @Get('products.csv')
   async productsCsv(
     @Query('empresaId') empresaId: string,
@@ -139,6 +140,7 @@ export class ExportsController {
   }
 
   /** B-6 (spec §11): pedidos con empresa, cliente, comercial y totales. */
+  @Roles(Role.GENERADOR, Role.ADMINISTRADOR)
   @Get('pedidos.csv')
   async pedidosCsv(@CurrentUser() user: AuthenticatedUser, @Res() res: Response) {
     const rows: any[] = await this.dataSource.query(
@@ -163,6 +165,7 @@ export class ExportsController {
   }
 
   /** B-6 (spec §11): despachos (globales, B-1) con empresas por ítem y transporte. */
+  @Roles(Role.GENERADOR, Role.ADMINISTRADOR)
   @Get('despachos.csv')
   async despachosCsv(@CurrentUser() user: AuthenticatedUser, @Res() res: Response) {
     const rows: any[] = await this.dataSource.query(
@@ -187,6 +190,7 @@ export class ExportsController {
   }
 
   /** B-6 (spec §11): trazabilidad cliente → pedidos → despachos. */
+  @Roles(Role.GENERADOR, Role.ADMINISTRADOR)
   @Get('cliente-pedidos-despachos.csv')
   async clientePedidosDespachosCsv(@CurrentUser() user: AuthenticatedUser, @Res() res: Response) {
     const rows: any[] = await this.dataSource.query(
@@ -209,6 +213,7 @@ export class ExportsController {
   }
 
   /** B-6 + HU-051 (spec §11): actividades de inventarios con diferencias. */
+  @Roles(Role.GENERADOR, Role.ADMINISTRADOR)
   @Get('inventarios.csv')
   async inventariosCsv(@CurrentUser() user: AuthenticatedUser, @Res() res: Response) {
     const rows: any[] = await this.dataSource.query(
@@ -249,7 +254,7 @@ export class ExportsController {
    * marca los pedidos (exportado_wo, número y lote) y audita la exportación.
    * Sin BOM: se replica el archivo validado como exitoso en WO.
    */
-  @Post('world-office/pedidos.csv')
+  @Post('world-office/pedidos.xlsx')
   async woPedidosCsv(
     @Body() body: { orderIds?: string[] },
     @CurrentUser() user: AuthenticatedUser,
@@ -324,18 +329,24 @@ export class ExportsController {
       return numeros;
     });
 
-    const csv = construirCsvWo({
+    // I53: el formato que espera WO es .xlsx (hoja con las siglas de la
+    // empresa; textos como texto y números como números reales).
+    const xlsx = await construirXlsxWo({
       config: ctx.config!,
       empresaNombre: ctx.empresaNombre!,
+      siglas: ctx.empresa?.siglas ?? 'WO',
       pedidos: ctx.pedidos,
       numerosWo,
     });
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename="WO-Pedidos-${ctx.empresa?.siglas ?? 'EMP'}-${new Date().toISOString().slice(0, 10)}.csv"`,
+      `attachment; filename="WO-Pedidos-${ctx.empresa?.siglas ?? 'EMP'}-${new Date().toISOString().slice(0, 10)}.xlsx"`,
     );
-    res.send(csv);
+    res.send(xlsx);
   }
 
   /** I51/I52: carga pedidos + cliente + comercial + ítems y la config WO. */

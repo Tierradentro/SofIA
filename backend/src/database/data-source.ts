@@ -62,6 +62,7 @@ import { ProductoFotoI411753000020000 } from './migrations/1753000020000-product
 import { BahiaDevolucionesI421753000021000 } from './migrations/1753000021000-bahia-devoluciones-i42';
 import { WorldOfficeI511753000022000 } from './migrations/1753000022000-world-office-i51';
 import { WorldOfficeGlobalI521753000023000 } from './migrations/1753000023000-world-office-global-i52';
+import { ComercialIdentificacionDigitosI531753000024000 } from './migrations/1753000024000-comercial-identificacion-i53';
 import { runInitialSeed } from './seeds/initial.seed';
 
 export function buildDataSourceOptions(): DataSourceOptions {
@@ -139,6 +140,7 @@ export function buildDataSourceOptions(): DataSourceOptions {
       BahiaDevolucionesI421753000021000,
       WorldOfficeI511753000022000,
       WorldOfficeGlobalI521753000023000,
+      ComercialIdentificacionDigitosI531753000024000,
     ],
     synchronize: false,
     logging: false,

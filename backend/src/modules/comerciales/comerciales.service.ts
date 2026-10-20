@@ -4,6 +4,7 @@ import { DataSource, ILike, Repository } from 'typeorm';
 import { Comercial } from './entities/comercial.entity';
 import { CreateComercialDto, UpdateComercialDto } from './dto/comercial.dto';
 import { AuditService } from '../audit/audit.service';
+import { soloDigitos } from '../exports/world-office';
 
 const TABLA = 'comerciales';
 
@@ -17,6 +18,10 @@ export class ComercialesService {
   ) {}
 
   async create(dto: CreateComercialDto, user: { id: string; username: string }) {
+    // I53: la identificación se conserva solo con dígitos — la exportación a
+    // World Office exige números limpios y el prefijo (CC, puntos, guiones)
+    // causaba rechazos.
+    if (dto.identificacion) dto.identificacion = soloDigitos(dto.identificacion);
     const comercial = await this.comerciales.save(this.comerciales.create(dto));
     await this.audit.log({
       usuarioId: user.id,
@@ -128,6 +133,8 @@ export class ComercialesService {
   async update(id: string, dto: UpdateComercialDto, user: { id: string; username: string }) {
     const comercial = await this.findOne(id);
     const anterior = { ...comercial };
+    // I53: identificación solo con dígitos (ver create).
+    if (dto.identificacion) dto.identificacion = soloDigitos(dto.identificacion);
     Object.assign(comercial, dto);
     const saved = await this.comerciales.save(comercial);
     await this.audit.log({

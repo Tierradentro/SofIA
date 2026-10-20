@@ -6,11 +6,14 @@ import {
   ADMIN,
   ADMIN_NUEVA_CLAVE,
 } from './helpers/test-app';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const XLSX = require('xlsx');
 
 /**
  * I51: exportación de pedidos a World Office (WO).
- * Preflight (errores bloqueantes + advertencias), CSV de 57 columnas con el
- * consecutivo WO por empresa, marcado del pedido (trazabilidad) y auditoría.
+ * Preflight (errores bloqueantes + advertencias), archivo .xlsx de 57 columnas
+ * con el consecutivo WO por empresa, marcado del pedido (trazabilidad) y
+ * auditoría. I53: el archivo es Excel (.xlsx), igual al que espera WO.
  */
 describe('Exportación World Office I51 (e2e)', () => {
   let t: TestApp;
@@ -30,6 +33,29 @@ describe('Exportación World Office I51 (e2e)', () => {
     diasVencimiento: 30,
     iva: 0.19,
   };
+
+  function leerXlsx(res: any): any[][] {
+    const wb = XLSX.read(res.body, { type: 'buffer' });
+    const hoja = wb.SheetNames[0];
+    return XLSX.utils.sheet_to_json(wb.Sheets[hoja], {
+      header: 1,
+      defval: '',
+    }) as any[][];
+  }
+
+  // supertest no entrega binarios en res.body por defecto: parser manual.
+  function descargarXlsxWo(token: string, orderIds: string[]) {
+    return t.http
+      .post('/api/v1/exports/world-office/pedidos.xlsx')
+      .set('Authorization', `Bearer ${token}`)
+      .buffer(true)
+      .parse((res: any, cb: any) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (c: Buffer) => chunks.push(c));
+        res.on('end', () => cb(null, Buffer.concat(chunks)));
+      })
+      .send({ orderIds });
+  }
 
   async function crearPedidoAlistado(
     clienteId: string,
@@ -154,7 +180,7 @@ describe('Exportación World Office I51 (e2e)', () => {
     expect(malo.status).toBe(400);
   });
 
-  it('preflight y CSV de un pedido alistado: 57 columnas, consecutivo y trazabilidad', async () => {
+  it('preflight y Excel de un pedido alistado: 57 columnas, consecutivo y trazabilidad', async () => {
     const cli = await t.http
       .post('/api/v1/clients')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -178,30 +204,28 @@ describe('Exportación World Office I51 (e2e)', () => {
       documentoHasta: 1,
     });
 
-    const csv = await t.http
-      .post('/api/v1/exports/world-office/pedidos.csv')
-      .set('Authorization', `Bearer ${generadorToken}`)
-      .send({ orderIds: [pedidoId] });
-    expect(csv.status).toBe(201);
-    expect(csv.headers['content-disposition']).toContain('WO-Pedidos-IRE-');
-    const filas = csv.text.split('\n');
-    expect(filas.length).toBe(2);
-    expect(filas[0].startsWith('Encabezados: Empresa,')).toBe(true);
-    expect(filas[0].split(',').length).toBe(57);
-    expect(csv.text.charCodeAt(0)).not.toBe(0xfeff);
-    const datos = filas[1].split(',');
+    const xls = await descargarXlsxWo(generadorToken, [pedidoId]);
+    expect(xls.status).toBe(201);
+    expect(xls.headers['content-type']).toContain('spreadsheetml');
+    expect(xls.headers['content-disposition']).toContain('WO-Pedidos-IRE-');
+    expect(xls.headers['content-disposition']).toContain('.xlsx');
+    const matriz = leerXlsx(xls);
+    expect(matriz.length).toBe(2);
+    expect(matriz[0].length).toBe(57);
+    expect(matriz[0][0]).toBe('Encabezados: Empresa');
+    const datos = matriz[1];
     expect(datos.length).toBe(57);
     expect(datos[0]).toBe('IMPORT - REPUESTOS EL ESCARABAJO S A S');
     expect(datos[1]).toBe('COT');
-    expect(datos[3]).toBe('1'); // primer consecutivo WO
+    expect(datos[3]).toBe(1); // primer consecutivo WO (numérico)
     expect(datos[5]).toBe('4245245'); // comercial limpio
     expect(datos[6]).toBe('901689082'); // NIT sin DV
     expect(datos[8]).toBe('Credito 30 DIAS');
     expect(datos[31]).toBe('WO-001');
     expect(datos[32]).toBe('Principal');
-    expect(datos[34]).toBe('20');
-    expect(datos[35]).toBe('0.19');
-    expect(datos[36]).toBe('25210');
+    expect(datos[34]).toBe(20);
+    expect(datos[35]).toBe(0.19);
+    expect(datos[36]).toBe(25210);
 
     // Trazabilidad en el pedido
     const pedido = await t.http
@@ -231,12 +255,9 @@ describe('Exportación World Office I51 (e2e)', () => {
     expect(pre2.body.advertencias[0].mensaje).toContain('conservará el documento 1');
     expect(pre2.body.resumen.documentoDesde).toBeNull();
 
-    const csv2 = await t.http
-      .post('/api/v1/exports/world-office/pedidos.csv')
-      .set('Authorization', `Bearer ${generadorToken}`)
-      .send({ orderIds: [pedidoId] });
-    expect(csv2.status).toBe(201);
-    expect(csv2.text.split('\n')[1].split(',')[3]).toBe('1');
+    const xls2 = await descargarXlsxWo(generadorToken, [pedidoId]);
+    expect(xls2.status).toBe(201);
+    expect(leerXlsx(xls2)[1][3]).toBe(1);
     const cfg = await t.dataSource.query(
       `SELECT valor FROM system_params WHERE clave='wo.consecutivo.IRE'`,
     );
@@ -268,13 +289,13 @@ describe('Exportación World Office I51 (e2e)', () => {
     expect(mensajes).toContain('ALISTADOS');
     expect(mensajes).toContain('identificación');
 
-    // El CSV se bloquea con los mismos errores
-    const csv = await t.http
-      .post('/api/v1/exports/world-office/pedidos.csv')
+    // El Excel se bloquea con los mismos errores
+    const xls = await t.http
+      .post('/api/v1/exports/world-office/pedidos.xlsx')
       .set('Authorization', `Bearer ${generadorToken}`)
       .send({ orderIds: [abierto.body.id] });
-    expect(csv.status).toBe(400);
-    expect(csv.body.code).toBe('WO_PREFLIGHT_ERRORES');
+    expect(xls.status).toBe(400);
+    expect(xls.body.code).toBe('WO_PREFLIGHT_ERRORES');
   });
 
   it('bloquea la mezcla de empresas en una sola exportación', async () => {
@@ -308,18 +329,32 @@ describe('Exportación World Office I51 (e2e)', () => {
       .send({ nombre: 'Cliente ICV', identificacion: '800333444' });
     const pedIcv = await crearPedidoAlistado(cli.body.id, comIcv.body.id, icvId);
 
-    const csv = await t.http
-      .post('/api/v1/exports/world-office/pedidos.csv')
-      .set('Authorization', `Bearer ${generadorToken}`)
-      .send({ orderIds: [pedIcv] });
-    expect(csv.status).toBe(201);
-    const datos = csv.text.split('\n')[1].split(',');
+    const xls = await descargarXlsxWo(generadorToken, [pedIcv]);
+    expect(xls.status).toBe(201);
+    const datos = leerXlsx(xls)[1];
     expect(datos[5]).toBe('5555555'); // NIT del comercial, solo dígitos
-    expect(datos[3]).toBe('1'); // consecutivo independiente por empresa
+    expect(datos[3]).toBe(1); // consecutivo independiente por empresa
   });
 
-  it('RBAC: GENERADOR y ADMINISTRADOR exportan; COMERCIAL no (I51)', async () => {
-    // Operador usa la vista de pedidos pero el endpoint es Generador/Admin;
+  it('RBAC: GENERADOR, ADMINISTRADOR y OPERADOR exportan; COMERCIAL no (I53)', async () => {
+    // I53: Operador también puede generar el archivo de World Office.
+    const cli = await t.http
+      .post('/api/v1/clients')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'Cliente RBAC WO', identificacion: '900999888' });
+    const pedidoId = await crearPedidoAlistado(cli.body.id, comercialDefaultId);
+
+    const preOp = await t.http
+      .post('/api/v1/exports/world-office/preflight')
+      .set('Authorization', `Bearer ${operadorToken}`)
+      .send({ orderIds: [pedidoId] });
+    expect(preOp.status).toBe(201);
+    expect(preOp.body.ok).toBe(true);
+
+    const xlsOp = await descargarXlsxWo(operadorToken, [pedidoId]);
+    expect(xlsOp.status).toBe(201);
+    expect(xlsOp.headers['content-type']).toContain('spreadsheetml');
+
     // Comercial queda fuera por rol.
     await t.http
       .post('/api/v1/users')

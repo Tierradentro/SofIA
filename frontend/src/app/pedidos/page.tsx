@@ -256,7 +256,7 @@ function PedidosContenido() {
     if (!preflightWo) return;
     setExportandoWo(true);
     const s = obtenerSesion();
-    const res = await fetch(`${API_BASE}/exports/world-office/pedidos.csv`, {
+    const res = await fetch(`${API_BASE}/exports/world-office/pedidos.xlsx`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${s?.token}`,
@@ -280,15 +280,15 @@ function PedidosContenido() {
     const a = document.createElement('a');
     const m = (res.headers.get('Content-Disposition') ?? '').match(/filename="([^"]+)"/);
     a.href = url;
-    a.download = m?.[1] ?? 'WO-Pedidos.csv';
+    a.download = m?.[1] ?? 'WO-Pedidos.xlsx';
     a.click();
     URL.revokeObjectURL(url);
     const { documentoDesde, documentoHasta } = preflightWo.resumen;
     setMensaje(
       documentoDesde !== null
-        ? `Archivo de World Office generado (documentos ${documentoDesde}${documentoHasta && documentoHasta !== documentoDesde ? `–${documentoHasta}` : ''}). ` +
+        ? `Archivo Excel de World Office generado (documentos ${documentoDesde}${documentoHasta && documentoHasta !== documentoDesde ? `–${documentoHasta}` : ''}). ` +
           'Cárguelo en WO: Asistente de Importación → Documentos con Movimiento de Inventario → plantilla "Encabezado Movimiento Inventario Documentos Ventas WO".'
-        : 'Archivo de World Office generado conservando los números de documento ya asignados. ' +
+        : 'Archivo Excel de World Office generado conservando los números de documento ya asignados. ' +
           'Cárguelo en WO: Asistente de Importación → Documentos con Movimiento de Inventario → plantilla "Encabezado Movimiento Inventario Documentos Ventas WO".',
     );
     setPreflightWo(null);
@@ -994,7 +994,7 @@ function PedidosContenido() {
                   disabled={!preflightWo.ok || exportandoWo}
                   className="rounded bg-emerald-700 px-4 py-2 text-sm text-white hover:bg-emerald-800 disabled:opacity-50"
                 >
-                  {exportandoWo ? 'Generando…' : 'Descargar archivo CSV'}
+                  {exportandoWo ? 'Generando…' : 'Descargar archivo Excel (.xlsx)'}
                 </button>
               </div>
             </div>
