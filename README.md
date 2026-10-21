@@ -37,13 +37,19 @@ docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
 
 ## Desarrollo local del backend
 
+El backend y el ocr-worker usan **pnpm** (el Dockerfile los instala con pnpm;
+`npm ci` moría de forma intermitente en EasyPanel con "Exit handler never
+called!"). Para desarrollo local se puede usar pnpm o npm — ambos respetan las
+mismas versiones del `package-lock.json`/`pnpm-lock.yaml`.
+
 ```bash
 cd backend
 cp .env.example .env          # ajusta DB_HOST=localhost
-npm install
-npm run migration:run         # crea esquema
-npm run seed                  # semillas I0
-npm run start:dev
+corepack enable               # una sola vez, para tener pnpm
+pnpm install
+pnpm run migration:run        # crea esquema
+pnpm run seed                 # semillas I0
+pnpm run start:dev
 ```
 
 ## Pruebas

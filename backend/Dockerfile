@@ -1,13 +1,16 @@
 FROM node:22-alpine AS build
 WORKDIR /app
-COPY package*.json ./
-RUN npm ci --no-audit --no-fund
+# pnpm en lugar de npm: `npm ci` moría de forma intermitente en EasyPanel con
+# "npm error Exit handler never called!" (bug conocido de npm bajo carga de
+# builds paralelos). pnpm tiene un modo de red mucho más liviano y no lo
+# sufre. corepack ya viene con node:22-alpine.
+RUN corepack enable && corepack prepare pnpm@9 --activate
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 COPY . .
-# Se poda devDependencies aquí para que el runtime copie los node_modules
-# ya listos en vez de correr un segundo `npm ci` (ese paso doble disparaba
-# el bug intermitente de npm "Exit handler never called!" bajo la carga de
-# builds paralelos en EasyPanel).
-RUN npm run build && npm prune --omit=dev
+# Se poda devDependencies aquí para que el runtime copie los node_modules ya
+# listos (sin una segunda instalación de dependencias).
+RUN pnpm run build && pnpm prune --prod
 
 FROM node:22-alpine AS runtime
 WORKDIR /app
