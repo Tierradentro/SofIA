@@ -424,13 +424,13 @@ export async function construirXlsxWo(args: {
     }
   }
 
-  // Formatos pedidos por WO (I53 ajuste): Sucursal y Clasificación del
-  // encabezado y Personalizado1..15 del detalle con formato TEXTO ('@');
-  // Centro costos y Código Centro Costos del detalle con formato NÚMERO.
+  // Formatos pedidos por WO (I53/I54): Sucursal y Clasificación del
+  // encabezado y Centro costos / Código Centro Costos del detalle con
+  // formato NÚMERO; Personalizado1..15 del detalle con formato TEXTO ('@').
   // Al aplicarse sobre la columna completa, las celdas vacías también
   // quedan con el formato.
-  ws.getColumn(30).numFmt = '@'; // Encabezados: Sucursal
-  ws.getColumn(31).numFmt = '@'; // Encabezados: Clasificación
+  ws.getColumn(30).numFmt = '0'; // Encabezados: Sucursal
+  ws.getColumn(31).numFmt = '0'; // Encabezados: Clasificación
   ws.getColumn(41).numFmt = '0'; // Detalle: Centro costos
   for (let c = 42; c <= 56; c++) ws.getColumn(c).numFmt = '@'; // Personalizado1..15
   ws.getColumn(57).numFmt = '0'; // Detalle: Código Centro Costos

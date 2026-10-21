@@ -172,15 +172,15 @@ describe('World Office (I51/I52) — generador CSV', () => {
     expect(typeof matriz[1][5]).toBe('string'); // Tercero Interno
     expect(matriz[2][31]).toBe('1131151792');
     // Formatos de celda pedidos por WO: Sucursal y Clasificación del
-    // encabezado y Personalizado1..15 del detalle como TEXTO ('@');
-    // Centro costos y Código Centro Costos como NÚMERO.
+    // encabezado y Centro costos / Código Centro Costos del detalle como
+    // NÚMERO; Personalizado1..15 del detalle como TEXTO ('@').
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const ExcelJS = require('exceljs');
     const wb2 = new ExcelJS.Workbook();
     await wb2.xlsx.load(buf);
     const ws2 = wb2.getWorksheet('IRE');
-    expect(ws2.getColumn(30).numFmt).toBe('@'); // Encabezados: Sucursal
-    expect(ws2.getColumn(31).numFmt).toBe('@'); // Encabezados: Clasificación
+    expect(ws2.getColumn(30).numFmt).toBe('0'); // Encabezados: Sucursal
+    expect(ws2.getColumn(31).numFmt).toBe('0'); // Encabezados: Clasificación
     expect(ws2.getColumn(41).numFmt).toBe('0'); // Detalle: Centro costos
     expect(ws2.getColumn(57).numFmt).toBe('0'); // Detalle: Código Centro Costos
     for (let c = 42; c <= 56; c++) {
