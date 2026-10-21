@@ -163,6 +163,8 @@ export function csvEscapeWo(v: any): string {
 }
 
 const VACIOS_15 = Array(15).fill('');
+// Versión con celdas realmente vacías para el .xlsx (como el archivo WO)
+const VACIOS_15_NULL = Array(15).fill(null);
 
 /**
  * Validación previa a la exportación. Errores bloquean la generación del
@@ -414,13 +416,21 @@ export async function construirXlsxWo(args: {
         0, // Descuento
         vencimiento,
         it.descripcion ?? '',
-        '',
-        ...VACIOS_15,
-        '',
+        null, // Detalle: Centro costos (formato número)
+        ...VACIOS_15_NULL, // Detalle: Personalizado1..15 (formato texto)
+        null, // Detalle: Código Centro Costos (formato número)
       ];
       ws.addRow([...encabezado, ...detalle]);
     }
   }
+
+  // Formatos pedidos por WO (I53 ajuste): Detalle: Centro costos y
+  // Detalle: Código Centro Costos con formato NÚMERO; Detalle:
+  // Personalizado1..15 con formato TEXTO ('@'). Al aplicarse sobre la
+  // columna completa, las celdas vacías también quedan con el formato.
+  ws.getColumn(41).numFmt = '0'; // Detalle: Centro costos
+  for (let c = 42; c <= 56; c++) ws.getColumn(c).numFmt = '@'; // Personalizado1..15
+  ws.getColumn(57).numFmt = '0'; // Detalle: Código Centro Costos
 
   return Buffer.from(await wb.xlsx.writeBuffer());
 }

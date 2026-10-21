@@ -102,6 +102,13 @@ export function NuevoPedido({
   const [direcciones, setDirecciones] = useState<DireccionCliente[]>([]);
   const [direccionId, setDireccionId] = useState('');
   const [comercialId, setComercialId] = useState(comerciales[0]?.id ?? '');
+  // El primer comercial queda seleccionado por defecto; como la lista llega
+  // de forma asíncrona, se preselecciona cuando carga si el campo está vacío
+  // (sin comercial el backend rechaza el pedido: "El campo 'comercialId' no
+  // es válido").
+  useEffect(() => {
+    if (!comercialId && comerciales.length) setComercialId(comerciales[0].id);
+  }, [comerciales, comercialId]);
   const [ciudad, setCiudad] = useState('');
   // I18: búsqueda del cliente por nombre o identificación (lista completa)
   const [busquedaCliente, setBusquedaCliente] = useState('');

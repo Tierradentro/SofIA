@@ -146,6 +146,7 @@ describe('World Office (I51/I52) — generador CSV', () => {
     const matriz: any[][] = XLSX.utils.sheet_to_json(wb.Sheets.IRE, {
       header: 1,
       blankrows: false,
+      defval: '',
     });
     expect(matriz.length).toBe(3); // encabezado + 2 ítems
     expect(matriz[0]).toEqual(COLUMNAS_WO); // 57 columnas exactas
@@ -170,6 +171,18 @@ describe('World Office (I51/I52) — generador CSV', () => {
     expect(typeof matriz[1][4]).toBe('string'); // Fecha dd/mm/yyyy
     expect(typeof matriz[1][5]).toBe('string'); // Tercero Interno
     expect(matriz[2][31]).toBe('1131151792');
+    // Formatos de celda pedidos por WO: Personalizado1..15 del detalle como
+    // TEXTO ('@'); Centro costos y Código Centro Costos como NÚMERO.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const ExcelJS = require('exceljs');
+    const wb2 = new ExcelJS.Workbook();
+    await wb2.xlsx.load(buf);
+    const ws2 = wb2.getWorksheet('IRE');
+    expect(ws2.getColumn(41).numFmt).toBe('0'); // Detalle: Centro costos
+    expect(ws2.getColumn(57).numFmt).toBe('0'); // Detalle: Código Centro Costos
+    for (let c = 42; c <= 56; c++) {
+      expect(ws2.getColumn(c).numFmt).toBe('@'); // Detalle: PersonalizadoN
+    }
   });
 });
 

@@ -207,7 +207,7 @@ describe('Exportación World Office I51 (e2e)', () => {
     const xls = await descargarXlsxWo(generadorToken, [pedidoId]);
     expect(xls.status).toBe(201);
     expect(xls.headers['content-type']).toContain('spreadsheetml');
-    expect(xls.headers['content-disposition']).toContain('WO-Pedidos-IRE-');
+    expect(xls.headers['content-disposition']).toContain('WO-Pedidos-IRE-1');
     expect(xls.headers['content-disposition']).toContain('.xlsx');
     const matriz = leerXlsx(xls);
     expect(matriz.length).toBe(2);

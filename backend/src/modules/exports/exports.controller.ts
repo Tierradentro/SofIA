@@ -342,9 +342,15 @@ export class ExportsController {
       'Content-Type',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
+    // El nombre incluye el/los números de secuencia WO asignados:
+    // WO-Pedidos-IRE-3450.xlsx (o WO-Pedidos-IRE-3450-3452.xlsx si son varios)
+    const numeros = [...numerosWo.values()];
+    const desde = Math.min(...numeros);
+    const hasta = Math.max(...numeros);
+    const rango = desde === hasta ? `${desde}` : `${desde}-${hasta}`;
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename="WO-Pedidos-${ctx.empresa?.siglas ?? 'EMP'}-${new Date().toISOString().slice(0, 10)}.xlsx"`,
+      `attachment; filename="WO-Pedidos-${ctx.empresa?.siglas ?? 'EMP'}-${rango}.xlsx"`,
     );
     res.send(xlsx);
   }
