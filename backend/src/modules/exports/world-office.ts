@@ -386,10 +386,17 @@ export async function construirXlsxWo(args: {
     const docNumero = numerosWo.get(p.id)!;
     const fecha = fechaWo(p.createdAt);
     const vencimiento = fechaWo(p.createdAt, config.diasVencimiento || 0);
+    // Réplica del script de transformación validado en WO: solo 8 columnas
+    // llevan número real (Documento Número, Número_Documento_Externo,
+    // Verificado, Anulado, Cantidad, IVA, Valor Unitario y Descuento) y TODA
+    // celda sin dato queda realmente vacía (null) — nunca "" — y sin
+    // formatos de columna. Así, Sucursal, Clasificación, Centro costos,
+    // Personalizado1..15 y Código Centro Costos quedan en formato General
+    // y vacías, exactamente como los "Personalizado" del archivo exitoso.
     const encabezado: any[] = [
       empresaNombre,
       config.tipoDocumento,
-      config.prefijo ?? '',
+      config.prefijo || null, // Encabezados: Prefijo: vacío si no aplica
       docNumero, // Documento Número: numérico
       fecha, // dd/mm/yyyy como texto
       soloDigitos(p.comercialIdentificacion),
@@ -397,13 +404,13 @@ export async function construirXlsxWo(args: {
       p.notas?.trim() || `PEDIDO SOFIA #${p.numero}`,
       config.formaPagoDefault,
       fecha,
-      '',
+      null, // Prefijo Documento Externo: vacío
       docNumero, // Número Documento Externo: numérico
       0, // Verificado
       0, // Anulado
-      ...VACIOS_15,
-      '',
-      '',
+      ...VACIOS_15_NULL, // Encabezados: Personalizado 1..15: vacías
+      null, // Encabezados: Sucursal: vacía
+      null, // Encabezados: Clasificación: vacía
     ];
     for (const it of p.items) {
       const detalle: any[] = [
@@ -416,24 +423,13 @@ export async function construirXlsxWo(args: {
         0, // Descuento
         vencimiento,
         it.descripcion ?? '',
-        null, // Detalle: Centro costos (formato número)
-        ...VACIOS_15_NULL, // Detalle: Personalizado1..15 (formato texto)
-        null, // Detalle: Código Centro Costos (formato número)
+        null, // Detalle: Centro costos: vacío
+        ...VACIOS_15_NULL, // Detalle: Personalizado1..15: vacíos
+        null, // Detalle: Código Centro Costos: vacío
       ];
       ws.addRow([...encabezado, ...detalle]);
     }
   }
-
-  // Formatos pedidos por WO (I53/I54): Sucursal y Clasificación del
-  // encabezado y Centro costos / Código Centro Costos del detalle con
-  // formato NÚMERO; Personalizado1..15 del detalle con formato TEXTO ('@').
-  // Al aplicarse sobre la columna completa, las celdas vacías también
-  // quedan con el formato.
-  ws.getColumn(30).numFmt = '0'; // Encabezados: Sucursal
-  ws.getColumn(31).numFmt = '0'; // Encabezados: Clasificación
-  ws.getColumn(41).numFmt = '0'; // Detalle: Centro costos
-  for (let c = 42; c <= 56; c++) ws.getColumn(c).numFmt = '@'; // Personalizado1..15
-  ws.getColumn(57).numFmt = '0'; // Detalle: Código Centro Costos
 
   return Buffer.from(await wb.xlsx.writeBuffer());
 }

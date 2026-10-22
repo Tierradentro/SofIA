@@ -171,20 +171,21 @@ describe('World Office (I51/I52) — generador CSV', () => {
     expect(typeof matriz[1][4]).toBe('string'); // Fecha dd/mm/yyyy
     expect(typeof matriz[1][5]).toBe('string'); // Tercero Interno
     expect(matriz[2][31]).toBe('1131151792');
-    // Formatos de celda pedidos por WO: Sucursal y Clasificación del
-    // encabezado y Centro costos / Código Centro Costos del detalle como
-    // NÚMERO; Personalizado1..15 del detalle como TEXTO ('@').
+    // Réplica del script validado en WO: SIN formatos de columna; toda celda
+    // sin dato queda realmente vacía (null). Solo 8 columnas llevan número
+    // (3, 11, 12, 13, 34, 35, 36, 37 en 0-based) y el resto texto o vacío.
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const ExcelJS = require('exceljs');
     const wb2 = new ExcelJS.Workbook();
     await wb2.xlsx.load(buf);
     const ws2 = wb2.getWorksheet('IRE');
-    expect(ws2.getColumn(30).numFmt).toBe('0'); // Encabezados: Sucursal
-    expect(ws2.getColumn(31).numFmt).toBe('0'); // Encabezados: Clasificación
-    expect(ws2.getColumn(41).numFmt).toBe('0'); // Detalle: Centro costos
-    expect(ws2.getColumn(57).numFmt).toBe('0'); // Detalle: Código Centro Costos
-    for (let c = 42; c <= 56; c++) {
-      expect(ws2.getColumn(c).numFmt).toBe('@'); // Detalle: PersonalizadoN
+    for (let c = 1; c <= 57; c++) {
+      expect(ws2.getColumn(c).numFmt).toBeUndefined(); // formato General
+    }
+    // Sucursal, Clasificación, Centro costos, Personalizado1..15 y Código
+    // Centro Costos vacíos (null), como los "Personalizado" del archivo WO
+    for (const c of [30, 31, 41, 42, 43, 56, 57]) {
+      expect(ws2.getRow(2).getCell(c).value).toBeNull();
     }
   });
 });
