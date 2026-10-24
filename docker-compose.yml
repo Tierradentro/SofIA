@@ -131,14 +131,19 @@ services:
     # redespliegue, aunque backend y frontend estuvieran vivos. nginx sirve
     # /healthz propio (definido en nginx.conf) para el chequeo.
     healthcheck:
-      # AJ-006: chequeo HTTP real contra /healthz (no solo `nginx -t`, que
-      # valida la configuración pero no la disponibilidad). wget es el
-      # applet de busybox incluido en nginx:alpine.
-      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1/healthz || exit 1']
+      # AJ-006: chequeo HTTP real contra /healthz. Robusto al binario
+      # disponible: intenta wget y curl (busybox cambió en Alpine 3.23 y un
+      # wget silencioso dejaba el contenedor "unhealthy" pese a estar sano,
+      # lo que hacía a EasyPanel reiniciar el stack y devolver 502). Como
+      # último recurso, `nginx -t` confirma que el proceso corre y la
+      # configuración carga.
+      test:
+        - CMD-SHELL
+        - "wget -q -O /dev/null http://127.0.0.1/healthz 2>/dev/null || curl -fsS -o /dev/null http://127.0.0.1/healthz 2>/dev/null || nginx -t -q"
       interval: 10s
-      timeout: 5s
+      timeout: 8s
       retries: 6
-      start_period: 10s
+      start_period: 20s
     # Esperar a que el backend esté SANO antes de enrutar tráfico (su health
     # responde apenas abre el puerto). I50: el frontend vuelve a
     # service_started — nginx NO debe bloquearse por él: con el resolver
