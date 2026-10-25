@@ -10,6 +10,7 @@ import { User } from '../users/entities/user.entity';
 import { ApiKey } from '../api-keys/entities/api-key.entity';
 import { ParamsModule } from '../params/params.module';
 import { AuditModule } from '../audit/audit.module';
+import { DevicesModule } from '../devices/devices.module';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 
@@ -23,6 +24,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
     }),
     ParamsModule,
     AuditModule,
+    DevicesModule,
   ],
   controllers: [AuthController],
   providers: [

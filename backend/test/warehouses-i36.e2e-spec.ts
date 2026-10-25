@@ -5,6 +5,7 @@ import {
   TestApp,
   ADMIN,
   ADMIN_NUEVA_CLAVE,
+  DISPOSITIVO_TEST,
 } from './helpers/test-app';
 
 // I36: sin caché del horario de logística en el guard (determinismo de pruebas)
@@ -355,7 +356,7 @@ describe('I36 ajustes (e2e)', () => {
     // El inicio de sesión también se bloquea y queda auditado
     const login = await t.http
       .post('/api/v1/auth/login')
-      .send({ username: 'operador.i36', password: 'OperadorClave9' });
+      .send({ username: 'operador.i36', password: 'OperadorClave9', dispositivo: DISPOSITIVO_TEST });
     expect(login.status).toBe(403);
     expect(login.body.code).toBe('FUERA_DE_HORARIO');
     const auditoria = await t.dataSource.query(

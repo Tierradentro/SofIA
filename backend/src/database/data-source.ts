@@ -54,6 +54,7 @@ import { WarehouseZone } from '../modules/warehouses/entities/warehouse-zone.ent
 import { WarehouseRack } from '../modules/warehouses/entities/warehouse-rack.entity';
 import { WarehouseArea } from '../modules/warehouses/entities/warehouse-area.entity';
 import { WarehouseProductLocation } from '../modules/warehouses/entities/warehouse-product-location.entity';
+import { Device } from '../modules/devices/entities/device.entity';
 import { WarehousesI321753000016000 } from './migrations/1753000016000-warehouses-i32';
 import { AreasConfigurablesI351753000017000 } from './migrations/1753000017000-areas-configurables-i35';
 import { FondoPasilloI401753000018000 } from './migrations/1753000018000-fondo-pasillo-i40';
@@ -63,6 +64,7 @@ import { BahiaDevolucionesI421753000021000 } from './migrations/1753000021000-ba
 import { WorldOfficeI511753000022000 } from './migrations/1753000022000-world-office-i51';
 import { WorldOfficeGlobalI521753000023000 } from './migrations/1753000023000-world-office-global-i52';
 import { ComercialIdentificacionDigitosI531753000024000 } from './migrations/1753000024000-comercial-identificacion-i53';
+import { DispositivosI571753000025000 } from './migrations/1753000025000-dispositivos-i57';
 import { runInitialSeed } from './seeds/initial.seed';
 
 export function buildDataSourceOptions(): DataSourceOptions {
@@ -114,6 +116,7 @@ export function buildDataSourceOptions(): DataSourceOptions {
       WarehouseRack,
       WarehouseArea,
       WarehouseProductLocation,
+      Device,
     ],
     migrations: [
       InitI0I11753000000000,
@@ -141,6 +144,7 @@ export function buildDataSourceOptions(): DataSourceOptions {
       WorldOfficeI511753000022000,
       WorldOfficeGlobalI521753000023000,
       ComercialIdentificacionDigitosI531753000024000,
+      DispositivosI571753000025000,
     ],
     synchronize: false,
     logging: false,

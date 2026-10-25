@@ -5,7 +5,12 @@ import {
   TestApp,
   ADMIN,
   ADMIN_NUEVA_CLAVE,
+  DISPOSITIVO_TEST,
+  aprobarDispositivoTest,
 } from './helpers/test-app';
+
+/** I57: todo login exige la huella del navegador. */
+const CON_DISP = (creds: object) => ({ ...creds, dispositivo: DISPOSITIVO_TEST });
 
 /**
  * HU-004/005 + RBAC: creación de usuarios por Administrador, auditoría,
@@ -26,6 +31,8 @@ describe('Usuarios y RBAC (e2e)', () => {
       ADMIN.password,
       ADMIN_NUEVA_CLAVE,
     );
+    // I57: los logins directos de este archivo esperan token de una vez
+    await aprobarDispositivoTest();
   });
 
   afterAll(async () => {
@@ -87,7 +94,7 @@ describe('Usuarios y RBAC (e2e)', () => {
   it('M02: el usuario nuevo debe cambiar la clave en su primer login', async () => {
     const res = await t.http
       .post('/api/v1/auth/login')
-      .send({ username: 'operador1', password: 'ClaveInicial1' });
+      .send(CON_DISP({ username: 'operador1', password: 'ClaveInicial1' }));
     expect(res.status).toBe(200);
     expect(res.body.usuario.debeCambiarClave).toBe(true);
 
@@ -143,7 +150,7 @@ describe('Usuarios y RBAC (e2e)', () => {
 
     const login = await t.http
       .post('/api/v1/auth/login')
-      .send({ username: 'operador1', password: 'OperadorClave9' });
+      .send(CON_DISP({ username: 'operador1', password: 'OperadorClave9' }));
     expect(login.status).toBe(401);
 
     const logs = await t.dataSource.query(
@@ -172,7 +179,7 @@ describe('Usuarios y RBAC (e2e)', () => {
 
     const login = await t.http
       .post('/api/v1/auth/login')
-      .send({ username: 'operador1', password: temporal });
+      .send(CON_DISP({ username: 'operador1', password: temporal }));
     expect(login.status).toBe(200);
     expect(login.body.usuario.debeCambiarClave).toBe(true);
   });

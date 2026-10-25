@@ -21,6 +21,7 @@ import {
   Map,
   MapPin,
   Menu,
+  MonitorSmartphone,
   Package,
   RotateCcw,
   ScanText,
@@ -67,6 +68,7 @@ const NAV_OPERACIONES: ItemNav[] = [
 
 const NAV_ADMIN: ItemNav[] = [
   { href: '/admin/usuarios', etiqueta: 'Usuarios', icono: UserCog, roles: ['ADMINISTRADOR'] },
+  { href: '/admin/dispositivos', etiqueta: 'Dispositivos', icono: MonitorSmartphone, roles: ['ADMINISTRADOR'] },
   { href: '/empresas', etiqueta: 'Empresas', icono: Building2, roles: ['ADMINISTRADOR'] },
   { href: '/importaciones', etiqueta: 'Importaciones', icono: FileUp, roles: ['ADMINISTRADOR'] },
   { href: '/ocr', etiqueta: 'Procesar OCR', icono: ScanText, roles: ['ADMINISTRADOR'] },

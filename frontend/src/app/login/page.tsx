@@ -1,28 +1,83 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Lock, LogIn, ShieldCheck, User } from 'lucide-react';
-import { guardarSesion, login, mensajeError } from '@/lib/api';
+import { Suspense, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Hourglass, Lock, LogIn, ShieldCheck, ShieldX, User } from 'lucide-react';
+import { estadoDispositivo, guardarSesion, login, mensajeError } from '@/lib/api';
 import { LogoSofia } from '@/components/logo';
 
 /** HU-001: inicio de sesión. Error genérico sin revelar información sensible. */
 export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginInterno />
+    </Suspense>
+  );
+}
+
+
+function LoginInterno() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
+  // I57: espera de aprobación de la terminal (navegador no autorizado aún)
+  const [esperandoAprobacion, setEsperandoAprobacion] = useState(false);
+  const [dispositivoNegado, setDispositivoNegado] = useState('');
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  // I57: aviso cuando una sesión vigente fue cerrada por revocación
+  useEffect(() => {
+    if (searchParams.get('dispositivo') === 'bloqueado') {
+      setError('Este navegador fue desautorizado por el administrador. La sesión se cerró.');
+    }
+  }, [searchParams]);
+
+  // I57: mientras la terminal está PENDIENTE, sondear cada 5 s; cuando el
+  // administrador la aprueba se reintenta el login con las mismas
+  // credenciales que el usuario dejó en el formulario.
+  useEffect(() => {
+    if (!esperandoAprobacion) return;
+    const sondeo = setInterval(async () => {
+      const estado = await estadoDispositivo();
+      if (estado === 'APROBADO') {
+        clearInterval(sondeo);
+        setEsperandoAprobacion(false);
+        await intentarLogin();
+      } else if (estado === 'RECHAZADO' || estado === 'REVOCADO') {
+        clearInterval(sondeo);
+        setEsperandoAprobacion(false);
+        setDispositivoNegado(
+          estado === 'RECHAZADO'
+            ? 'El administrador rechazó este navegador. Si cree que es un error, contáctelo.'
+            : 'La autorización de este navegador fue revocada. Contacte al administrador.',
+        );
+      }
+    }, 5000);
+    return () => clearInterval(sondeo);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [esperandoAprobacion]);
+
+  async function intentarLogin() {
     setCargando(true);
     setError('');
     try {
       const { status, body } = await login(username, password);
-      if (status === 200) {
+      if (status === 200 && body.access_token && body.usuario) {
         guardarSesion({ token: body.access_token, usuario: body.usuario });
         router.replace(body.usuario.debeCambiarClave ? '/cambiar-clave' : '/dashboard');
+      } else if (status === 200 && body.dispositivoAutorizado === false) {
+        // I57: credenciales válidas pero el navegador no está autorizado
+        if (body.estadoDispositivo === 'PENDIENTE') {
+          setEsperandoAprobacion(true);
+        } else {
+          setDispositivoNegado(
+            body.estadoDispositivo === 'RECHAZADO'
+              ? 'El administrador rechazó este navegador. Si cree que es un error, contáctelo.'
+              : 'La autorización de este navegador fue revocada. Contacte al administrador.',
+          );
+        }
       } else if (status === 401) {
         setError(mensajeError(body, 'Usuario o contraseña incorrectos'));
       } else {
@@ -37,6 +92,52 @@ export default function LoginPage() {
     } finally {
       setCargando(false);
     }
+  }
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setDispositivoNegado('');
+    await intentarLogin();
+  }
+
+  // I57: pantalla de espera de aprobación de la terminal
+  if (esperandoAprobacion) {
+    return (
+      <main className="relative flex min-h-screen flex-col bg-sofia-950">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/login-fondo.jpg"
+          alt=""
+          className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+        />
+        <div className="absolute inset-0 bg-sofia-950/55" />
+        <header className="relative z-10 px-6 py-5 md:px-10">
+          <p className="text-lg font-bold tracking-tight text-white drop-shadow">
+            SofIA Logística Inteligente
+          </p>
+        </header>
+        <div className="relative z-10 flex flex-1 items-center justify-center px-4 pb-10">
+          <div className="w-full max-w-md rounded-2xl bg-white/95 p-8 text-center shadow-2xl backdrop-blur">
+            <Hourglass size={44} className="mx-auto mb-4 animate-pulse text-sofia-600" />
+            <h1 className="text-xl font-semibold text-sofia-900">Terminal pendiente de aprobación</h1>
+            <p className="mt-3 text-sm text-slate-600">
+              Sus credenciales son correctas, pero este navegador aún no está autorizado.
+              Un administrador debe aprobarlo en el módulo de dispositivos.
+            </p>
+            <p className="mt-3 text-sm text-slate-500">
+              Esta pantalla continuará automáticamente cuando el navegador sea aprobado.
+            </p>
+            <button
+              type="button"
+              onClick={() => setEsperandoAprobacion(false)}
+              className="mt-6 text-sm font-medium text-sofia-700 hover:underline"
+            >
+              Volver al inicio de sesión
+            </button>
+          </div>
+        </div>
+      </main>
+    );
   }
 
   return (
@@ -104,6 +205,13 @@ export default function LoginPage() {
           <p className="mb-5 text-right text-xs text-slate-500">
             ¿Olvidó su contraseña? Contacte al administrador del sistema.
           </p>
+
+          {dispositivoNegado && (
+            <p className="mb-4 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <ShieldX size={16} className="mt-0.5 shrink-0" />
+              {dispositivoNegado}
+            </p>
+          )}
 
           {error && (
             <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">

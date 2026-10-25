@@ -18,6 +18,7 @@ import { Role } from '../enums/role.enum';
 import { ApiKey } from '../../modules/api-keys/entities/api-key.entity';
 import { TokenBlacklistService } from '../../modules/auth/token-blacklist.service';
 import { ParamsService } from '../../modules/params/params.service';
+import { DevicesService } from '../../modules/devices/devices.service';
 import {
   descripcionHorario,
   estaEnHorarioLogistica,
@@ -50,6 +51,7 @@ export class JwtAuthGuard implements CanActivate {
     @InjectRepository(ApiKey) private readonly apiKeys: Repository<ApiKey>,
     private readonly blacklist: TokenBlacklistService,
     private readonly params: ParamsService,
+    private readonly devices: DevicesService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -99,6 +101,27 @@ export class JwtAuthGuard implements CanActivate {
       jti: payload.jti,
       exp: payload.exp,
     };
+
+    // I57: control de dispositivos — solo navegadores autorizados. El
+    // token de un navegador lleva el claim disp (huella registrada en el
+    // login) y aquí se verifica que el dispositivo SIGA aprobado: una
+    // revocación bloquea de inmediato las sesiones ya emitidas. Si la
+    // petición trae el header X-Device-Id (el frontend siempre lo envía)
+    // debe coincidir con el del token. Las integraciones con X-API-Key no
+    // pasan por aquí.
+    if (payload.disp) {
+      const headerDispositivo: string = request.headers['x-device-id'] || '';
+      const coincide = !headerDispositivo || headerDispositivo === payload.disp;
+      if (!coincide || !(await this.devices.estaAprobado(payload.disp))) {
+        throw new ForbiddenException({
+          statusCode: 403,
+          code: 'DISPOSITIVO_NO_AUTORIZADO',
+          message:
+            'Este navegador no está autorizado para usar la aplicación. ' +
+            'Consulte al administrador del sistema.',
+        });
+      }
+    }
 
     // I36: control de acceso por horario de logística. No aplica al
     // Administrador ni a los sistemas externos (rol API con X-API-Key, que

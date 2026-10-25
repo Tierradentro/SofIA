@@ -4,7 +4,11 @@ import {
   TestApp,
   ADMIN,
   ADMIN_NUEVA_CLAVE,
+  DISPOSITIVO_TEST,
 } from './helpers/test-app';
+
+/** I57: todo login exige la huella del navegador. */
+const CON_DISP = (creds: object) => ({ ...creds, dispositivo: DISPOSITIVO_TEST });
 
 /**
  * HU-001/002/003 + M02: login, mensaje genérico, bloqueo 5 intentos,
@@ -24,7 +28,7 @@ describe('Autenticación (e2e)', () => {
   });
 
   it('HU-001: login Admin/Admin exitoso con cambio de clave obligatorio (M14/M02)', async () => {
-    const res = await t.http.post('/api/v1/auth/login').send(ADMIN);
+    const res = await t.http.post('/api/v1/auth/login').send(CON_DISP(ADMIN));
     expect(res.status).toBe(200);
     expect(res.body.access_token).toBeDefined();
     expect(res.body.usuario.rol).toBe('ADMINISTRADOR');
@@ -34,10 +38,10 @@ describe('Autenticación (e2e)', () => {
   it('HU-001: credenciales inválidas muestran error genérico sin revelar información', async () => {
     const a = await t.http
       .post('/api/v1/auth/login')
-      .send({ username: 'noexiste', password: 'x' });
+      .send(CON_DISP({ username: 'noexiste', password: 'x' }));
     const b = await t.http
       .post('/api/v1/auth/login')
-      .send({ username: 'Admin', password: 'incorrecta' });
+      .send(CON_DISP({ username: 'Admin', password: 'incorrecta' }));
     expect(a.status).toBe(401);
     expect(b.status).toBe(401);
     expect(a.body.message).toBe(b.body.message);
@@ -45,7 +49,7 @@ describe('Autenticación (e2e)', () => {
   });
 
   it('M02: la puerta de cambio de clave bloquea otros endpoints hasta cambiarla', async () => {
-    const login = await t.http.post('/api/v1/auth/login').send(ADMIN);
+    const login = await t.http.post('/api/v1/auth/login').send(CON_DISP(ADMIN));
     const token = login.body.access_token;
     const res = await t.http
       .get('/api/v1/users')
@@ -55,7 +59,7 @@ describe('Autenticación (e2e)', () => {
   });
 
   it('HU-003: cambio de clave exige actual correcta, confirmación y política', async () => {
-    const login = await t.http.post('/api/v1/auth/login').send(ADMIN);
+    const login = await t.http.post('/api/v1/auth/login').send(CON_DISP(ADMIN));
     const token = login.body.access_token;
 
     // Confirmación no coincide
@@ -90,7 +94,7 @@ describe('Autenticación (e2e)', () => {
     // Ahora sí accede
     const relogin = await t.http
       .post('/api/v1/auth/login')
-      .send({ username: 'Admin', password: ADMIN_NUEVA_CLAVE });
+      .send(CON_DISP({ username: 'Admin', password: ADMIN_NUEVA_CLAVE }));
     expect(relogin.status).toBe(200);
     expect(relogin.body.usuario.debeCambiarClave).toBe(false);
   });
@@ -112,13 +116,13 @@ describe('Autenticación (e2e)', () => {
     for (let i = 0; i < 5; i++) {
       const res = await t.http
         .post('/api/v1/auth/login')
-        .send({ username: 'operador.test', password: 'mala' });
+        .send(CON_DISP({ username: 'operador.test', password: 'mala' }));
       expect(res.status).toBe(401);
     }
     // Sexto intento con la clave correcta: sigue fuera (bloqueado)
     const res = await t.http
       .post('/api/v1/auth/login')
-      .send({ username: 'operador.test', password: 'ClaveInicial1' });
+      .send(CON_DISP({ username: 'operador.test', password: 'ClaveInicial1' }));
     expect(res.status).toBe(401);
     expect(res.body.message).toBe('Usuario o contraseña incorrectos');
 
@@ -149,7 +153,7 @@ describe('Autenticación (e2e)', () => {
   async function loginAdmin(): Promise<string> {
     const res = await t.http
       .post('/api/v1/auth/login')
-      .send({ username: 'Admin', password: ADMIN_NUEVA_CLAVE });
+      .send(CON_DISP({ username: 'Admin', password: ADMIN_NUEVA_CLAVE }));
     return res.body.access_token;
   }
 });

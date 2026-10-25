@@ -21,6 +21,8 @@ import { PasswordPolicyService } from './password-policy.service';
 import { TokenBlacklistService } from './token-blacklist.service';
 import { AuditService } from '../audit/audit.service';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { DevicesService, InfoDispositivo } from '../devices/devices.service';
+import { DeviceEstado } from '../devices/entities/device.entity';
 
 /** Mensaje genérico: nunca revela si el usuario existe o está bloqueado (HU-001). */
 const INVALID_CREDENTIALS = 'Usuario o contraseña incorrectos';
@@ -37,10 +39,16 @@ export class AuthService {
     private readonly passwordPolicy: PasswordPolicyService,
     private readonly blacklist: TokenBlacklistService,
     private readonly audit: AuditService,
+    private readonly devices: DevicesService,
   ) {}
 
-  /** HU-001: login con bloqueo por intentos fallidos y expiración de clave (M02). */
-  async login(username: string, password: string) {
+  /**
+   * HU-001: login con bloqueo por intentos fallidos y expiración de clave
+   * (M02). I57: exige la huella del navegador; el token queda ligado al
+   * dispositivo (claim disp). Si el navegador no está autorizado no se
+   * emite token: se responde el estado para la pantalla de espera.
+   */
+  async login(username: string, password: string, dispositivo: InfoDispositivo, ip?: string) {
     const user = await this.users.findOne({ where: { username } });
 
     if (!user || user.estado !== UserStatus.ACTIVO) {
@@ -116,6 +124,27 @@ export class AuthService {
       }
     }
 
+    // I57: registrar el navegador y exigir que esté autorizado. El primer
+    // login de un Administrador desde un navegador nuevo lo aprueba en el
+    // acto (puerta de entrada del sistema); para los demás roles queda
+    // PENDIENTE hasta que un Administrador decida. Sin token si no está
+    // aprobado: la pantalla de espera sondea /devices/estado.
+    const device = await this.devices.registrarEnLogin(dispositivo, user, ip);
+    if (device.estado !== DeviceEstado.APROBADO) {
+      await this.audit.log({
+        usuarioId: user.id,
+        usuarioUsername: user.username,
+        accion: 'LOGIN_DISPOSITIVO_NO_AUTORIZADO',
+        tabla: 'devices',
+        registroId: device.id,
+        valorNuevo: { estado: device.estado },
+      });
+      return {
+        dispositivoAutorizado: false,
+        estadoDispositivo: device.estado,
+      };
+    }
+
     user.intentosFallidos = 0;
     await this.users.save(user);
 
@@ -127,16 +156,18 @@ export class AuthService {
       registroId: user.id,
     });
 
-    return this.issueToken(user);
+    return this.issueToken(user, dispositivo.deviceId);
   }
 
-  private issueToken(user: User) {
+  private issueToken(user: User, deviceId?: string) {
     const jti = randomUUID();
     const token = this.jwtService.sign({
       sub: user.id,
       username: user.username,
       rol: user.rol,
       jti,
+      // I57: token ligado al navegador autorizado que inició la sesión
+      ...(deviceId ? { disp: deviceId } : {}),
     });
     return {
       access_token: token,

@@ -15,6 +15,7 @@ import { AdminModule } from './modules/admin/admin.module';
 import { ParamsModule } from './modules/params/params.module';
 import { CarriersModule } from './modules/carriers/carriers.module';
 import { ApiKeysModule } from './modules/api-keys/api-keys.module';
+import { DevicesModule } from './modules/devices/devices.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { ClientsModule } from './modules/clients/clients.module';
 import { ComercialesModule } from './modules/comerciales/comerciales.module';
@@ -69,6 +70,7 @@ import { WarehousesModule } from './modules/warehouses/warehouses.module';
     AdminModule,
     CarriersModule,
     ApiKeysModule,
+    DevicesModule,
     DocumentsModule,
     ClientsModule,
     ComercialesModule,

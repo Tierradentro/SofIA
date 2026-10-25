@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Ip, Post } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
@@ -17,8 +17,9 @@ export class AuthController {
   @Public()
   @Post('login')
   @HttpCode(200)
-  login(@Body() dto: LoginDto) {
-    return this.auth.login(dto.username, dto.password);
+  login(@Body() dto: LoginDto, @Ip() ip: string) {
+    // I57: la huella del navegador viaja en el cuerpo; la IP la pone Express
+    return this.auth.login(dto.username, dto.password, dto.dispositivo, ip);
   }
 
   /** HU-002 */
