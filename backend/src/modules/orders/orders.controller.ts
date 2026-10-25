@@ -8,9 +8,11 @@ import {
   Patch,
   Post,
   Query,
+  Res,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { OrdersService } from './orders.service';
 import {
@@ -28,7 +30,7 @@ import {
   AuthenticatedUser,
 } from '../../common/decorators/current-user.decorator';
 import { UploadedFilePayload } from '../documents/documents.service';
-import { parseLimiteLista } from '../../common/utils/limite-lista';
+import { parseLimiteLista, parsePaginaLista } from '../../common/utils/limite-lista';
 
 /**
  * M08 (EP-07): pedidos y alistamiento.
@@ -62,19 +64,31 @@ export class OrdersController {
   // un usuario API autenticado no debe navegar los pedidos del WMS
   @Get()
   @Roles(Role.GENERADOR, Role.OPERADOR, Role.COMERCIAL, Role.ADMINISTRADOR)
-  findAll(
+  async findAll(
     @CurrentUser() user: AuthenticatedUser,
     @Query('empresaId') empresaId?: string,
     @Query('estado') estado?: OrderStatus,
     @Query('clienteId') clienteId?: string,
     @Query('limite') limite?: string,
+    @Query('pagina') pagina?: string,
+    @Res({ passthrough: true }) res?: Response,
   ) {
     if (estado && !Object.values(OrderStatus).includes(estado)) {
       throw new BadRequestException('estado inválido');
     }
     const comercialId = user.rol === Role.COMERCIAL ? (user as any).comercialId : undefined;
-    // I43: las listas pueden pedir 100, 500 o todos (limite=0) los registros
-    return this.orders.findAll(empresaId, estado, clienteId, comercialId, parseLimiteLista(limite));
+    // I43: las listas pueden pedir 100, 500 o todos (limite=0) los registros.
+    // I56: con pagina se navega el resultado; X-Total-Count informa el total.
+    const { items, total } = await this.orders.findAll(
+      empresaId,
+      estado,
+      clienteId,
+      comercialId,
+      parseLimiteLista(limite),
+      parsePaginaLista(pagina),
+    );
+    res?.setHeader('X-Total-Count', String(total));
+    return items;
   }
 
   /** HU-029: pedido con productos y cantidades a alistar. */

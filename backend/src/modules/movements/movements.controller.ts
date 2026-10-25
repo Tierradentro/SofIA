@@ -1,8 +1,9 @@
-import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { MovementsService } from './movements.service';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/enums/role.enum';
-import { parseLimiteLista } from '../../common/utils/limite-lista';
+import { parseLimiteLista, parsePaginaLista } from '../../common/utils/limite-lista';
 
 /**
  * Consulta de movimientos de inventario (trazabilidad M18).
@@ -25,8 +26,20 @@ export class MovementsController {
   }
 
   @Get()
-  byEmpresa(@Query('empresaId') empresaId: string, @Query('limite') limite?: string) {
-    // I43: las listas pueden pedir 100, 500 o todos (limite=0) los registros
-    return this.movements.byEmpresa(empresaId, parseLimiteLista(limite));
+  async byEmpresa(
+    @Query('empresaId') empresaId: string,
+    @Query('limite') limite?: string,
+    @Query('pagina') pagina?: string,
+    @Res({ passthrough: true }) res?: Response,
+  ) {
+    // I43: las listas pueden pedir 100, 500 o todos (limite=0) los registros.
+    // I56: con pagina se navega el resultado; X-Total-Count informa el total.
+    const { items, total } = await this.movements.byEmpresa(
+      empresaId,
+      parseLimiteLista(limite),
+      parsePaginaLista(pagina),
+    );
+    res?.setHeader('X-Total-Count', String(total));
+    return items;
   }
 }

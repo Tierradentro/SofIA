@@ -6,13 +6,14 @@ import { Search } from 'lucide-react';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 import { AppShell } from '@/components/app-shell';
 import {
-  aplicarLimiteLista,
+  PaginadorLista,
   CLASE_BOTON_PRIMARIO,
   CLASE_INPUT,
   CLASES_TABLA,
   EncabezadoPagina,
   LimiteLista,
   SelectorLimiteLista,
+  usePaginacionLista,
   Tarjeta,
 } from '@/components/ui';
 
@@ -56,6 +57,8 @@ export default function ComercialesPage() {
   const [mensaje, setMensaje] = useState('');
   // I43: cuántos registros muestra la lista (100, 500 o todos)
   const [limite, setLimite] = useState<LimiteLista>(100);
+  // I56: paginación en cliente sobre la lista completa
+  const { items: comercialesPagina, pagina, totalPaginas, irA } = usePaginacionLista(comerciales, limite);
   // I35: modal de actividad del comercial
   const [resumen, setResumen] = useState<ResumenComercial | null>(null);
   const [resumenCargando, setResumenCargando] = useState(false);
@@ -171,7 +174,7 @@ export default function ComercialesPage() {
             </tr>
           </thead>
           <tbody>
-            {aplicarLimiteLista(comerciales, limite).map((c) => (
+            {comercialesPagina.map((c) => (
               <tr key={c.id} className={CLASES_TABLA.fila}>
                 <td className={`${CLASES_TABLA.celda} font-medium`}>{c.nombre}</td>
                 <td className={CLASES_TABLA.celda}>{c.identificacion}</td>
@@ -217,6 +220,7 @@ export default function ComercialesPage() {
         </div>
         <div className="flex justify-end border-t border-slate-100 px-4 py-2.5">
           <SelectorLimiteLista limite={limite} onChange={setLimite} total={comerciales.length} />
+          <PaginadorLista pagina={pagina} totalPaginas={totalPaginas} onChange={irA} />
         </div>
       </Tarjeta>
 

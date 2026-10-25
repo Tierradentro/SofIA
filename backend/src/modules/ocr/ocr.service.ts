@@ -271,16 +271,18 @@ export class OcrService {
     return { eliminado: true };
   }
 
-  async findAll(estado?: OcrDocumentStatus, limite?: number) {
+  async findAll(estado?: OcrDocumentStatus, limite?: number, pagina = 1) {
     const where = estado ? { estado } : {};
-    const docs = await this.ocrDocs.find({
+    // I43: limite=0 (o «todos») quita el tope; sin parámetro se conserva 100.
+    // I56: skip/take por página y total para el paginador del frontend.
+    const take = limite === 0 ? undefined : (limite ?? 100);
+    const [docs, total] = await this.ocrDocs.findAndCount({
       where,
       relations: { document: true },
       order: { createdAt: 'DESC' },
-      // I43: limite=0 (o «todos») quita el tope; sin parámetro se conserva 100
-      ...(limite === 0 ? {} : { take: limite ?? 100 }),
+      ...(take === undefined ? {} : { skip: (pagina - 1) * take, take }),
     });
-    return docs.map((d) => this.toResponse(d, false));
+    return { items: docs.map((d) => this.toResponse(d, false)), total };
   }
 
   async findOne(id: string): Promise<OcrDocument> {

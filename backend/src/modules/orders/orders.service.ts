@@ -768,6 +768,7 @@ export class OrdersService {
     clienteId?: string,
     comercialId?: string,
     limite?: number,
+    pagina = 1,
   ) {
     const where: any = {};
     if (empresaId) where.empresaId = empresaId;
@@ -775,11 +776,13 @@ export class OrdersService {
     if (clienteId) where.clienteId = clienteId;
     // Tablero del comercial (M02): solo pedidos asociados a su comercial
     if (comercialId) where.comercialId = comercialId;
-    const pedidos = await this.orders.find({
+    // I43: limite=0 (o «todos») quita el tope; sin parámetro se conserva 200.
+    // I56: skip/take por página y total para el paginador del frontend.
+    const take = limite === 0 ? undefined : (limite ?? 200);
+    const [pedidos, total] = await this.orders.findAndCount({
       where,
       order: { createdAt: 'DESC' },
-      // I43: limite=0 (o «todos») quita el tope; sin parámetro se conserva 200
-      ...(limite === 0 ? {} : { take: limite ?? 200 }),
+      ...(take === undefined ? {} : { skip: (pagina - 1) * take, take }),
     });
     // I21: la tabla de pedidos necesita el nombre del cliente — el listado
     // no cargaba la relación y la columna salía siempre vacía ("—").
@@ -790,7 +793,7 @@ export class OrdersService {
         })
       : [];
     const porId = new Map(clientes.map((c) => [c.id, c]));
-    return pedidos.map((p) => {
+    const items = pedidos.map((p) => {
       const cliente = porId.get(p.clienteId);
       return {
         ...p,
@@ -799,6 +802,7 @@ export class OrdersService {
           : null,
       };
     });
+    return { items, total };
   }
 
   async getDetalle(id: string, user?: Usuario) {

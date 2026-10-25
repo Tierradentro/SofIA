@@ -99,14 +99,18 @@ export class MovementsService {
   }
 
   /** Consulta por empresa (auditoría operativa y dashboard). */
-  async byEmpresa(empresaId: string, limit?: number) {
-    const movimientos = await this.dataSource.getRepository(InventoryMovement).find({
-      where: { empresaId },
-      order: { fecha: 'DESC' },
-      // I43: limite=0 (o «todos») quita el tope; sin parámetro se conserva 200
-      ...(limit === 0 ? {} : { take: Math.min(1000, limit ?? 200) }),
-    });
-    return this.conUsuarios(movimientos);
+  async byEmpresa(empresaId: string, limit?: number, pagina = 1) {
+    // I43: limite=0 (o «todos») quita el tope; sin parámetro se conserva 200.
+    // I56: skip/take por página y total para el paginador del frontend.
+    const take = limit === 0 ? undefined : Math.min(1000, limit ?? 200);
+    const [movimientos, total] = await this.dataSource
+      .getRepository(InventoryMovement)
+      .findAndCount({
+        where: { empresaId },
+        order: { fecha: 'DESC' },
+        ...(take === undefined ? {} : { skip: (pagina - 1) * take, take }),
+      });
+    return { items: await this.conUsuarios(movimientos), total };
   }
 
   /**

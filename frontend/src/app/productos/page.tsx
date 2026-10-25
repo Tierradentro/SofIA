@@ -6,7 +6,8 @@ import { CheckCircle2, Filter, Plus, Search } from 'lucide-react';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 import { AppShell } from '@/components/app-shell';
 import {
-  aplicarLimiteLista,
+  PaginadorLista,
+  usePaginacionLista,
   CLASE_BOTON_PRIMARIO,
   CLASE_INPUT,
   CLASES_TABLA,
@@ -310,6 +311,9 @@ export default function ProductosPage() {
     if (filtroExistencia === 'sin' && Number(p.cantidad) > 0) return false;
     return true;
   });
+
+  // I56: paginación en cliente sobre la lista completa
+  const { items: productosFiltradosPagina, pagina, totalPaginas, irA } = usePaginacionLista(productosFiltrados, limite);
 
   return (
     <AppShell sesion={sesion}>
@@ -697,7 +701,7 @@ export default function ProductosPage() {
               </tr>
             </thead>
             <tbody>
-              {aplicarLimiteLista(productosFiltrados, limite).map((p) => (
+              {productosFiltradosPagina.map((p) => (
                 <tr key={p.id} className={CLASES_TABLA.fila}>
                   <td className={`${CLASES_TABLA.celda} font-medium`}>
                     {p.codigo}
@@ -770,6 +774,7 @@ export default function ProductosPage() {
         {productosFiltrados.length > 0 && (
           <div className="flex justify-end border-t border-slate-100 px-4 py-2.5">
             <SelectorLimiteLista limite={limite} onChange={setLimite} total={productosFiltrados.length} />
+            <PaginadorLista pagina={pagina} totalPaginas={totalPaginas} onChange={irA} />
           </div>
         )}
       </Tarjeta>

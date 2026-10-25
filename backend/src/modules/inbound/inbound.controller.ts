@@ -8,6 +8,7 @@ import {
   Post,
   Put,
   Query,
+  Res,
 } from '@nestjs/common';
 import { InboundService } from './inbound.service';
 import {
@@ -18,7 +19,8 @@ import {
   CreateInboundDto,
   UpdateInboundDto,
 } from './dto/inbound.dto';
-import { parseLimiteLista } from '../../common/utils/limite-lista';
+import type { Response } from 'express';
+import { parseLimiteLista, parsePaginaLista } from '../../common/utils/limite-lista';
 import { InboundStatus } from './entities/inbound-receipt.entity';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/enums/role.enum';
@@ -46,16 +48,26 @@ export class InboundController {
 
   @Get()
   @Roles(Role.OPERADOR, Role.GENERADOR, Role.ADMINISTRADOR)
-  findAll(
+  async findAll(
     @Query('empresaId') empresaId?: string,
     @Query('estado') estado?: InboundStatus,
     @Query('limite') limite?: string,
+    @Query('pagina') pagina?: string,
+    @Res({ passthrough: true }) res?: Response,
   ) {
     if (estado && !Object.values(InboundStatus).includes(estado)) {
       throw new BadRequestException('estado inválido');
     }
-    // I43: las listas pueden pedir 100, 500 o todos (limite=0) los registros
-    return this.inbound.findAll(empresaId, estado, parseLimiteLista(limite));
+    // I43: las listas pueden pedir 100, 500 o todos (limite=0) los registros.
+    // I56: con pagina se navega el resultado; X-Total-Count informa el total.
+    const { items, total } = await this.inbound.findAll(
+      empresaId,
+      estado,
+      parseLimiteLista(limite),
+      parsePaginaLista(pagina),
+    );
+    res?.setHeader('X-Total-Count', String(total));
+    return items;
   }
 
   @Get(':id')

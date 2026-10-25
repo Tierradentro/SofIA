@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, obtenerSesion, mensajeError, Sesion } from '@/lib/api';
 import { AppShell } from '@/components/app-shell';
-import { EncabezadoPagina, LimiteLista, SelectorLimiteLista } from '@/components/ui';
+import { EncabezadoPagina, LimiteLista, PaginadorLista, SelectorLimiteLista, totalPaginasLista } from '@/components/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 
@@ -28,6 +28,8 @@ export default function AuditoriaPage() {
   const [total, setTotal] = useState(0);
   // I43: cuántos registros pide la lista al backend (100, 500 o todos)
   const [limite, setLimite] = useState<LimiteLista>(100);
+  // I56: página actual (la auditoría ya pagina en backend con page/limit)
+  const [pagina, setPagina] = useState(1);
   const [filtros, setFiltros] = useState({ tabla: '', accion: '', fechaDesde: '', fechaHasta: '' });
   const [motivoPurga, setMotivoPurga] = useState('');
   const [mensaje, setMensaje] = useState('');
@@ -58,11 +60,13 @@ export default function AuditoriaPage() {
       .catch(() => setError('No se pudo descargar el respaldo'));
   }
 
-  async function cargar(limiteElegido: LimiteLista = limite) {
+  async function cargar(limiteElegido: LimiteLista = limite, paginaElegida: number = pagina) {
     const params = new URLSearchParams();
     Object.entries(filtros).forEach(([k, v]) => v && params.set(k, v));
-    // I43: el límite lo aplica el backend (100, 500 o todos con limit=0)
+    // I43: el límite lo aplica el backend (100, 500 o todos con limit=0).
+    // I56: page navega el resultado paginado del backend.
     params.set('limit', String(limiteElegido));
+    params.set('page', String(paginaElegida));
     const { status, body } = await api<{ data: Log[]; total: number }>(`/audit?${params}`);
     if (status === 200) {
       setLogs(body.data);
@@ -157,7 +161,7 @@ export default function AuditoriaPage() {
             onChange={(e) => setFiltros({ ...filtros, fechaHasta: e.target.value })}
           />
         </label>
-        <button onClick={() => cargar()} className="rounded bg-sofia-600 px-4 py-1.5 text-white">
+        <button onClick={() => { setPagina(1); cargar(limite, 1); }} className="rounded bg-sofia-600 px-4 py-1.5 text-white">
           Filtrar
         </button>
       </div>
@@ -168,9 +172,18 @@ export default function AuditoriaPage() {
           limite={limite}
           onChange={(l) => {
             setLimite(l);
-            cargar(l);
+            setPagina(1);
+            cargar(l, 1);
           }}
           total={total}
+        />
+        <PaginadorLista
+          pagina={pagina}
+          totalPaginas={totalPaginasLista(total, limite)}
+          onChange={(p) => {
+            setPagina(p);
+            cargar(limite, p);
+          }}
         />
       </div>
       <div className="overflow-x-auto">

@@ -7,7 +7,7 @@ import { tiempoRelativo } from '@/lib/tiempo';
 import { useAvisoEstadosPedidos } from '@/lib/sonido';
 import { AppShell } from '@/components/app-shell';
 import { SelectorEmpresa } from '@/components/selector-empresa';
-import { COLORES_PESTANA, EncabezadoPagina, LimiteLista, SelectorLimiteLista } from '@/components/ui';
+import { COLORES_PESTANA, EncabezadoPagina, LimiteLista, PaginadorLista, SelectorLimiteLista, totalPaginasLista } from '@/components/ui';
 import {
   ConteoItems,
   docCampo,
@@ -99,6 +99,9 @@ function PedidosContenido() {
   const [lista, setLista] = useState<Pedido[]>([]);
   // I43: cuántos registros pide la lista al backend (100, 500 o todos)
   const [limite, setLimite] = useState<LimiteLista>(100);
+  // I56: página actual y total real (header X-Total-Count del backend)
+  const [pagina, setPagina] = useState(1);
+  const [totalPedidos, setTotalPedidos] = useState(0);
   // QA Func. 3.1: pestañas principales (ciclo activo) + "Otros estados" secundario
   const [pestana, setPestana] = useState<'ABIERTO' | 'ALISTADO' | 'APROBADO' | 'DESPACHADO' | 'OTROS'>('ABIERTO');
   const [filtroEstado, setFiltroEstado] = useState('');
@@ -180,6 +183,11 @@ function PedidosContenido() {
       return () => clearInterval(sondeo);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empresaId, pestana, filtroEstado, limite, pagina]);
+
+  // I56: volver a la primera página al cambiar de empresa, pestaña, filtro o límite
+  useEffect(() => {
+    setPagina(1);
   }, [empresaId, pestana, filtroEstado, limite]);
 
   // I21: aviso sonoro al cambiar el estado de un pedido (excepto CANCELADO)
@@ -190,9 +198,15 @@ function PedidosContenido() {
     if (pestana !== 'OTROS') estado = pestana;
     else if (filtroEstado) estado = filtroEstado;
     const q = estado ? `&estado=${estado}` : '';
-    // I43: el límite lo aplica el backend (100, 500 o todos con limite=0)
-    const { status, body } = await api<Pedido[]>(`/orders?empresaId=${empresaId}${q}&limite=${limite}`);
-    if (status === 200) setLista(body);
+    // I43: el límite lo aplica el backend (100, 500 o todos con limite=0).
+    // I56: pagina navega el resultado; el total llega en X-Total-Count.
+    const { status, body, total } = await api<Pedido[]>(
+      `/orders?empresaId=${empresaId}${q}&limite=${limite}&pagina=${pagina}`,
+    );
+    if (status === 200) {
+      setLista(body);
+      if (total !== undefined) setTotalPedidos(total);
+    }
   }
 
   async function abrir(id: string) {
@@ -573,7 +587,8 @@ function PedidosContenido() {
           </div>
           {/* I43: cuántos pedidos lista el backend */}
           <div className="mt-2 flex justify-end">
-            <SelectorLimiteLista limite={limite} onChange={setLimite} total={lista.length} />
+            <SelectorLimiteLista limite={limite} onChange={setLimite} total={totalPedidos} />
+            <PaginadorLista pagina={pagina} totalPaginas={totalPaginasLista(totalPedidos, limite)} onChange={setPagina} />
           </div>
         </section>
 

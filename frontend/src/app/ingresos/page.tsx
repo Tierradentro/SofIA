@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 import { AppShell } from '@/components/app-shell';
 import { SelectorEmpresa } from '@/components/selector-empresa';
-import { EncabezadoPagina, LimiteLista, SelectorLimiteLista } from '@/components/ui';
+import { EncabezadoPagina, LimiteLista, PaginadorLista, SelectorLimiteLista, totalPaginasLista } from '@/components/ui';
 
 interface Empresa {
   id: string;
@@ -72,6 +72,9 @@ export default function IngresosPage() {
   const [lista, setLista] = useState<Ingreso[]>([]);
   // I43: cuántos registros pide la lista al backend (100, 500 o todos)
   const [limite, setLimite] = useState<LimiteLista>(100);
+  // I56: página actual y total real (header X-Total-Count del backend)
+  const [pagina, setPagina] = useState(1);
+  const [totalIngresos, setTotalIngresos] = useState(0);
   const [ingreso, setIngreso] = useState<Ingreso | null>(null);
 
   // Creación
@@ -114,13 +117,24 @@ export default function IngresosPage() {
   useEffect(() => {
     if (empresaId) cargarLista();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [empresaId, limite]);
+  }, [empresaId, limite, pagina]);
 
   async function cargarLista() {
-    // I43: el límite lo aplica el backend (100, 500 o todos con limite=0)
-    const { status, body } = await api<Ingreso[]>(`/inbound?empresaId=${empresaId}&limite=${limite}`);
-    if (status === 200) setLista(body);
+    // I43: el límite lo aplica el backend (100, 500 o todos con limite=0).
+    // I56: pagina navega el resultado; el total llega en X-Total-Count.
+    const { status, body, total } = await api<Ingreso[]>(
+      `/inbound?empresaId=${empresaId}&limite=${limite}&pagina=${pagina}`,
+    );
+    if (status === 200) {
+      setLista(body);
+      if (total !== undefined) setTotalIngresos(total);
+    }
   }
+
+  // I56: volver a la primera página al cambiar de empresa o límite
+  useEffect(() => {
+    setPagina(1);
+  }, [empresaId, limite]);
 
   async function abrir(id: string) {
     const { status, body } = await api<Ingreso>(`/inbound/${id}`);
@@ -411,7 +425,8 @@ export default function IngresosPage() {
           </table>
           {/* I43: cuántos ingresos lista el backend */}
           <div className="mt-2 flex justify-end">
-            <SelectorLimiteLista limite={limite} onChange={setLimite} total={lista.length} />
+            <SelectorLimiteLista limite={limite} onChange={setLimite} total={totalIngresos} />
+            <PaginadorLista pagina={pagina} totalPaginas={totalPaginasLista(totalIngresos, limite)} onChange={setPagina} />
           </div>
           </div>
         </section>

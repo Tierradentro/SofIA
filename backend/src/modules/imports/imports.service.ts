@@ -143,15 +143,17 @@ export class ImportsService {
     return this.toResponse(job);
   }
 
-  async findAll(tipo?: ImportType, limite?: number) {
+  async findAll(tipo?: ImportType, limite?: number, pagina = 1) {
     const where = tipo ? { tipo } : {};
-    // I43: limite=0 (o «todos») quita el tope; sin parámetro se conserva 100
-    const jobs = await this.jobs.find({
+    // I43: limite=0 (o «todos») quita el tope; sin parámetro se conserva 100.
+    // I56: skip/take por página y total para el paginador del frontend.
+    const take = limite === 0 ? undefined : (limite ?? 100);
+    const [jobs, total] = await this.jobs.findAndCount({
       where,
       order: { createdAt: 'DESC' },
-      ...(limite === 0 ? {} : { take: limite ?? 100 }),
+      ...(take === undefined ? {} : { skip: (pagina - 1) * take, take }),
     });
-    return jobs.map((j) => this.toResponse(j, false));
+    return { items: jobs.map((j) => this.toResponse(j, false)), total };
   }
 
   /**

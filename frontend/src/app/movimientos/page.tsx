@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, obtenerSesion, Sesion } from '@/lib/api';
 import { AppShell } from '@/components/app-shell';
-import { EncabezadoPagina, LimiteLista, SelectorLimiteLista } from '@/components/ui';
+import { EncabezadoPagina, LimiteLista, PaginadorLista, SelectorLimiteLista, totalPaginasLista } from '@/components/ui';
 
 interface Empresa { id: string; nombre: string; siglas: string }
 interface Producto { id: string; codigo: string; descripcion: string }
@@ -49,6 +49,9 @@ export default function MovimientosPage() {
   const [movimientos, setMovimientos] = useState<Movimiento[]>([]);
   // I43: cuántos movimientos pide la lista al backend (100, 500 o todos)
   const [limite, setLimite] = useState<LimiteLista>(100);
+  // I56: página actual y total real (header X-Total-Count del backend)
+  const [pagina, setPagina] = useState(1);
+  const [totalMovimientos, setTotalMovimientos] = useState(0);
   const [cargando, setCargando] = useState(false);
   const [reconciliacion, setReconciliacion] = useState<any>(null);
 
@@ -73,12 +76,23 @@ export default function MovimientosPage() {
       if (status === 200) setProductos(body);
     });
     setCargando(true);
-    // I43: el límite lo aplica el backend (100, 500 o todos con limite=0)
-    api<Movimiento[]>(`/movements?empresaId=${empresaId}&limite=${limite}`).then(({ status, body }) => {
-      if (status === 200) setMovimientos(body);
-      setCargando(false);
-    });
+    // I43: el límite lo aplica el backend (100, 500 o todos con limite=0).
+    // I56: pagina navega el resultado; el total llega en X-Total-Count.
+    api<Movimiento[]>(`/movements?empresaId=${empresaId}&limite=${limite}&pagina=${pagina}`).then(
+      ({ status, body, total }) => {
+        if (status === 200) {
+          setMovimientos(body);
+          if (total !== undefined) setTotalMovimientos(total);
+        }
+        setCargando(false);
+      },
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empresaId, limite, pagina]);
+
+  // I56: volver a la primera página al cambiar de empresa o límite
+  useEffect(() => {
+    setPagina(1);
   }, [empresaId, limite]);
 
   useEffect(() => {
@@ -184,7 +198,10 @@ export default function MovimientosPage() {
           {/* I43: cuántos movimientos lista el backend (vista por empresa) */}
           {!productId && (
             <div className="flex justify-end border-t border-slate-100 px-3 py-2">
-              <SelectorLimiteLista limite={limite} onChange={setLimite} total={movimientos.length} />
+              <SelectorLimiteLista limite={limite} onChange={setLimite} total={productId ? movimientos.length : totalMovimientos} />
+              {!productId && (
+                <PaginadorLista pagina={pagina} totalPaginas={totalPaginasLista(totalMovimientos, limite)} onChange={setPagina} />
+              )}
             </div>
           )}
         </div>

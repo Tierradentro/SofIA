@@ -6,7 +6,7 @@ import { MapPin, Search } from 'lucide-react';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 import { AppShell } from '@/components/app-shell';
 import {
-  aplicarLimiteLista,
+  PaginadorLista,
   CLASE_BOTON_PRIMARIO,
   CLASE_BOTON_SECUNDARIO,
   CLASE_INPUT,
@@ -15,6 +15,7 @@ import {
   Insignia,
   LimiteLista,
   SelectorLimiteLista,
+  usePaginacionLista,
   Tarjeta,
 } from '@/components/ui';
 
@@ -57,6 +58,8 @@ export default function ClientesPage() {
   const [mensaje, setMensaje] = useState('');
   // I43: cuántos registros muestra la lista (100, 500 o todos)
   const [limite, setLimite] = useState<LimiteLista>(100);
+  // I56: paginación en cliente sobre la lista completa
+  const { items: clientesPagina, pagina, totalPaginas, irA } = usePaginacionLista(clientes, limite);
 
   const puedeEditar = ['GENERADOR', 'ADMINISTRADOR'].includes(sesion?.usuario.rol || '');
 
@@ -287,7 +290,7 @@ export default function ClientesPage() {
             </tr>
           </thead>
           <tbody>
-            {aplicarLimiteLista(clientes, limite).map((c) => (
+            {clientesPagina.map((c) => (
               <tr key={c.id} className={CLASES_TABLA.fila}>
                 <td className={`${CLASES_TABLA.celda} font-medium`}>{c.nombre}</td>
                 <td className={CLASES_TABLA.celda}>{c.identificacion}</td>
@@ -343,6 +346,7 @@ export default function ClientesPage() {
         </div>
         <div className="flex justify-end border-t border-slate-100 px-4 py-2.5">
           <SelectorLimiteLista limite={limite} onChange={setLimite} total={clientes.length} />
+          <PaginadorLista pagina={pagina} totalPaginas={totalPaginas} onChange={irA} />
         </div>
       </Tarjeta>
 

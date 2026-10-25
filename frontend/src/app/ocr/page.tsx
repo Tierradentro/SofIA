@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 import { AppShell } from '@/components/app-shell';
-import { EncabezadoPagina, LimiteLista, SelectorLimiteLista } from '@/components/ui';
+import { EncabezadoPagina, LimiteLista, PaginadorLista, SelectorLimiteLista, totalPaginasLista } from '@/components/ui';
 
 interface Empresa {
   id: string;
@@ -112,6 +112,9 @@ export default function OcrPage() {
   const [historial, setHistorial] = useState<OcrDoc[]>([]);
   // I43: cuántos documentos pide el historial al backend (100, 500 o todos)
   const [limite, setLimite] = useState<LimiteLista>(100);
+  // I56: página actual y total real (header X-Total-Count del backend)
+  const [pagina, setPagina] = useState(1);
+  const [totalHistorial, setTotalHistorial] = useState(0);
   const [mensaje, setMensaje] = useState('');
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
@@ -132,10 +135,16 @@ export default function OcrPage() {
     cargarHistorial();
   }, [router]);
 
-  async function cargarHistorial(limiteElegido: LimiteLista = limite) {
-    // I43: el límite lo aplica el backend (100, 500 o todos con limite=0)
-    const { status, body } = await api<OcrDoc[]>(`/ocr/documents?limite=${limiteElegido}`);
-    if (status === 200) setHistorial(body);
+  async function cargarHistorial(limiteElegido: LimiteLista = limite, paginaElegida: number = pagina) {
+    // I43: el límite lo aplica el backend (100, 500 o todos con limite=0).
+    // I56: pagina navega el resultado; el total llega en X-Total-Count.
+    const { status, body, total } = await api<OcrDoc[]>(
+      `/ocr/documents?limite=${limiteElegido}&pagina=${paginaElegida}`,
+    );
+    if (status === 200) {
+      setHistorial(body);
+      if (total !== undefined) setTotalHistorial(total);
+    }
   }
 
   async function procesar() {
@@ -533,14 +542,23 @@ export default function OcrPage() {
             </tbody>
           </table>
           {/* I43: cuántos documentos lista el backend */}
-          <div className="mt-2 flex justify-end">
+          <div className="mt-2 flex flex-wrap items-center justify-end gap-3">
             <SelectorLimiteLista
               limite={limite}
               onChange={(l) => {
                 setLimite(l);
-                cargarHistorial(l);
+                setPagina(1);
+                cargarHistorial(l, 1);
               }}
-              total={historial.length}
+              total={totalHistorial}
+            />
+            <PaginadorLista
+              pagina={pagina}
+              totalPaginas={totalPaginasLista(totalHistorial, limite)}
+              onChange={(pg) => {
+                setPagina(pg);
+                cargarHistorial(limite, pg);
+              }}
             />
           </div>
           </div>

@@ -1,3 +1,6 @@
+'use client';
+
+import { useEffect, useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
 
 /** I17: primitivas visuales compartidas (sistema de diseño de las plantillas). */
@@ -173,6 +176,75 @@ export type LimiteLista = 100 | 500 | 0;
 /** Recorta la lista según el límite elegido (0 = todos). */
 export function aplicarLimiteLista<T>(lista: T[], limite: LimiteLista): T[] {
   return limite === 0 ? lista : lista.slice(0, limite);
+}
+
+/**
+ * I56: paginador de lista. Con límite 100/500 permite avanzar por los
+ * bloques hasta el final; con «Todos» (0) hay una sola página.
+ */
+export function PaginadorLista({
+  pagina,
+  totalPaginas,
+  onChange,
+}: {
+  pagina: number;
+  totalPaginas: number;
+  onChange: (p: number) => void;
+}) {
+  if (totalPaginas <= 1) return null;
+  const boton =
+    'rounded-lg border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40';
+  return (
+    <div className="flex items-center gap-2 text-sm text-slate-500">
+      <button
+        type="button"
+        aria-label="Página anterior"
+        className={boton}
+        disabled={pagina <= 1}
+        onClick={() => onChange(pagina - 1)}
+      >
+        ‹ Anterior
+      </button>
+      <span>
+        Página <b className="text-slate-700">{pagina}</b> de{' '}
+        <b className="text-slate-700">{totalPaginas.toLocaleString('es-CO')}</b>
+      </span>
+      <button
+        type="button"
+        aria-label="Página siguiente"
+        className={boton}
+        disabled={pagina >= totalPaginas}
+        onClick={() => onChange(pagina + 1)}
+      >
+        Siguiente ›
+      </button>
+    </div>
+  );
+}
+
+/** Número de páginas de una lista según el límite elegido (0 = una página). */
+export function totalPaginasLista(total: number, limite: LimiteLista): number {
+  if (limite === 0 || total <= 0) return 1;
+  return Math.ceil(total / limite);
+}
+
+/**
+ * I56: paginación en cliente para listas que ya traen todos los registros.
+ * Devuelve los ítems de la página actual y mantiene la página dentro de
+ * rango cuando la lista o el límite cambian.
+ */
+export function usePaginacionLista<T>(lista: T[], limite: LimiteLista) {
+  const [pagina, setPagina] = useState(1);
+  const totalPaginas = totalPaginasLista(lista.length, limite);
+  const paginaActual = Math.min(pagina, totalPaginas);
+  useEffect(() => {
+    setPagina(1);
+  }, [limite, lista.length]);
+  const items =
+    limite === 0
+      ? lista
+      : lista.slice((paginaActual - 1) * limite, paginaActual * limite);
+  return { items, pagina: paginaActual, totalPaginas, irA: setPagina };
 }
 
 /** Selector «100 / 500 / Todos» con el conteo visible de la lista. */

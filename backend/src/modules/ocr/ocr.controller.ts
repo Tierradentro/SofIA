@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
   Query,
+  Res,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -23,7 +24,8 @@ import {
   AuthenticatedUser,
 } from '../../common/decorators/current-user.decorator';
 import { UploadedFilePayload } from '../documents/documents.service';
-import { parseLimiteLista } from '../../common/utils/limite-lista';
+import type { Response } from 'express';
+import { parseLimiteLista, parsePaginaLista } from '../../common/utils/limite-lista';
 
 /**
  * HU-018/020/021, CU-009: procesamiento OCR configurable.
@@ -71,12 +73,24 @@ export class OcrController {
 
   @Get('documents')
   @Roles(Role.GENERADOR, Role.ADMINISTRADOR)
-  findAll(@Query('estado') estado?: OcrDocumentStatus, @Query('limite') limite?: string) {
+  async findAll(
+    @Query('estado') estado?: OcrDocumentStatus,
+    @Query('limite') limite?: string,
+    @Query('pagina') pagina?: string,
+    @Res({ passthrough: true }) res?: Response,
+  ) {
     if (estado && !Object.values(OcrDocumentStatus).includes(estado)) {
       throw new BadRequestException('estado inválido');
     }
-    // I43: las listas pueden pedir 100, 500 o todos (limite=0) los registros
-    return this.ocr.findAll(estado, parseLimiteLista(limite));
+    // I43: las listas pueden pedir 100, 500 o todos (limite=0) los registros.
+    // I56: con pagina se navega el resultado; X-Total-Count informa el total.
+    const { items, total } = await this.ocr.findAll(
+      estado,
+      parseLimiteLista(limite),
+      parsePaginaLista(pagina),
+    );
+    res?.setHeader('X-Total-Count', String(total));
+    return items;
   }
 
   @Get('documents/:id')

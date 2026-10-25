@@ -6,6 +6,7 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
+  Res,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -20,7 +21,8 @@ import {
   AuthenticatedUser,
 } from '../../common/decorators/current-user.decorator';
 import { UploadedFilePayload } from '../documents/documents.service';
-import { parseLimiteLista } from '../../common/utils/limite-lista';
+import type { Response } from 'express';
+import { parseLimiteLista, parsePaginaLista } from '../../common/utils/limite-lista';
 
 /**
  * M18 / EP-04: importación desde la maestra contable.
@@ -50,9 +52,21 @@ export class ImportsController {
 
   @Get()
   @Roles(Role.ADMINISTRADOR)
-  findAll(@Query('tipo') tipo?: ImportType, @Query('limite') limite?: string) {
-    // I43: las listas pueden pedir 100, 500 o todos (limite=0) los registros
-    return this.imports.findAll(tipo, parseLimiteLista(limite));
+  async findAll(
+    @Query('tipo') tipo?: ImportType,
+    @Query('limite') limite?: string,
+    @Query('pagina') pagina?: string,
+    @Res({ passthrough: true }) res?: Response,
+  ) {
+    // I43: las listas pueden pedir 100, 500 o todos (limite=0) los registros.
+    // I56: con pagina se navega el resultado; X-Total-Count informa el total.
+    const { items, total } = await this.imports.findAll(
+      tipo,
+      parseLimiteLista(limite),
+      parsePaginaLista(pagina),
+    );
+    res?.setHeader('X-Total-Count', String(total));
+    return items;
   }
 
   /** HU-016: resumen de validación con diferencias. */

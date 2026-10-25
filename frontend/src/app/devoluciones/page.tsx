@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 import { AppShell } from '@/components/app-shell';
-import { aplicarLimiteLista, CLASE_BOTON_PRIMARIO, CLASE_BOTON_SECUNDARIO, EncabezadoPagina, LimiteLista, SelectorLimiteLista } from '@/components/ui';
+import { PaginadorLista, usePaginacionLista, CLASE_BOTON_PRIMARIO, CLASE_BOTON_SECUNDARIO, EncabezadoPagina, LimiteLista, SelectorLimiteLista } from '@/components/ui';
 
 interface Cliente { id: string; nombre: string }
 interface Comercial { id: string; nombre: string }
@@ -83,6 +83,8 @@ export default function DevolucionesPage() {
   const [lista, setLista] = useState<Caso[]>([]);
   // I43: cuántos registros muestra la lista (100, 500 o todos)
   const [limite, setLimite] = useState<LimiteLista>(100);
+  // I56: paginación en cliente sobre la lista completa
+  const { items: listaPagina, pagina, totalPaginas, irA } = usePaginacionLista(lista, limite);
   const [filtroEstado, setFiltroEstado] = useState('');
   const [caso, setCaso] = useState<Caso | null>(null);
 
@@ -674,7 +676,7 @@ export default function DevolucionesPage() {
               </tr>
             </thead>
             <tbody>
-              {aplicarLimiteLista(lista, limite).map((c) => (
+              {listaPagina.map((c) => (
                 <tr key={c.id} className="border-b last:border-0">
                   <td className="py-2 font-medium">{c.codigo}</td>
                   <td>{c.clienteNombre}</td>
@@ -704,6 +706,7 @@ export default function DevolucionesPage() {
         {/* I43: cuántos casos muestra la lista */}
         <div className="mt-2 flex justify-end">
           <SelectorLimiteLista limite={limite} onChange={setLimite} total={lista.length} />
+            <PaginadorLista pagina={pagina} totalPaginas={totalPaginas} onChange={irA} />
         </div>
       </section>
         </AppShell>

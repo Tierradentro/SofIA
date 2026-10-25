@@ -439,17 +439,19 @@ export class InboundService {
 
   // ---------------------------------------------------------------
 
-  async findAll(empresaId?: string, estado?: InboundStatus, limite?: number) {
+  async findAll(empresaId?: string, estado?: InboundStatus, limite?: number, pagina = 1) {
     const where: any = {};
     if (empresaId) where.empresaId = empresaId;
     if (estado) where.estado = estado;
-    const receipts = await this.receipts.find({
+    // I43: limite=0 (o «todos») quita el tope; sin parámetro se conserva 200.
+    // I56: skip/take por página y total para el paginador del frontend.
+    const take = limite === 0 ? undefined : (limite ?? 200);
+    const [receipts, total] = await this.receipts.findAndCount({
       where,
       order: { createdAt: 'DESC' },
-      // I43: limite=0 (o «todos») quita el tope; sin parámetro se conserva 200
-      ...(limite === 0 ? {} : { take: limite ?? 200 }),
+      ...(take === undefined ? {} : { skip: (pagina - 1) * take, take }),
     });
-    return receipts;
+    return { items: receipts, total };
   }
 
   async getDetalle(id: string) {

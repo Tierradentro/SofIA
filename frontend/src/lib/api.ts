@@ -81,7 +81,7 @@ async function parseBody<T>(res: Response): Promise<T> {
 export async function api<T = any>(
   path: string,
   options: RequestInit = {},
-): Promise<{ status: number; body: T }> {
+): Promise<{ status: number; body: T; total?: number }> {
   const sesion = obtenerSesion();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -91,7 +91,10 @@ export async function api<T = any>(
   const res = await fetch(`${API_URL}${path}`, { ...options, headers });
   manejar401(res.status);
   const body = await parseBody<T>(res);
-  return { status: res.status, body };
+  // I56: las listas paginadas informan el total en X-Total-Count
+  const totalHeader = res.headers.get('x-total-count');
+  const total = totalHeader !== null ? Number(totalHeader) : undefined;
+  return { status: res.status, body, total };
 }
 
 /** Subida multipart (L-5): FormData sin Content-Type manual. */

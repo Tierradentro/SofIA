@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, obtenerSesion, Sesion, mensajeError } from '@/lib/api';
 import { AppShell } from '@/components/app-shell';
-import { aplicarLimiteLista, CLASE_BOTON_PRIMARIO, CLASE_BOTON_SECUNDARIO, EncabezadoPagina, LimiteLista, SelectorLimiteLista } from '@/components/ui';
+import { PaginadorLista, usePaginacionLista, CLASE_BOTON_PRIMARIO, CLASE_BOTON_SECUNDARIO, EncabezadoPagina, LimiteLista, SelectorLimiteLista } from '@/components/ui';
 
 interface Empresa { id: string; nombre: string; siglas: string }
 interface Producto { id: string; codigo: string; descripcion: string; cantidad: number }
@@ -57,6 +57,8 @@ export default function InventariosPage() {
   const [lista, setLista] = useState<Jornada[]>([]);
   // I43: cuántos registros muestra la lista (100, 500 o todos)
   const [limite, setLimite] = useState<LimiteLista>(100);
+  // I56: paginación en cliente sobre la lista completa
+  const { items: listaPagina, pagina, totalPaginas, irA } = usePaginacionLista(lista, limite);
   const [filtroEstado, setFiltroEstado] = useState('');
   const [jornada, setJornada] = useState<Jornada | null>(null);
 
@@ -416,7 +418,7 @@ export default function InventariosPage() {
               </tr>
             </thead>
             <tbody>
-              {aplicarLimiteLista(lista, limite).map((j) => (
+              {listaPagina.map((j) => (
                 <tr key={j.id} className="border-b last:border-0">
                   <td className="py-2 font-medium">{j.numero}</td>
                   <td>{ESTADOS[j.estado]}</td>
@@ -433,6 +435,7 @@ export default function InventariosPage() {
         {/* I43: cuántas jornadas muestra la lista */}
         <div className="mt-2 flex justify-end">
           <SelectorLimiteLista limite={limite} onChange={setLimite} total={lista.length} />
+            <PaginadorLista pagina={pagina} totalPaginas={totalPaginas} onChange={irA} />
         </div>
       </section>
         </AppShell>
