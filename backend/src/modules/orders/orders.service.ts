@@ -12,6 +12,7 @@ import { Order, OrderStatus } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { OrderCounter } from './entities/order-counter.entity';
 import {
+  AdjustPricesDto,
   CancelOrderDto,
   CorrectOrderDto,
   CreateOrderDto,
@@ -654,10 +655,22 @@ export class OrdersService {
     const matcher = await this.buildMatcher(order.empresaId);
     const d = ocrDoc.datosExtraidos as any;
     const itemsFactura: { codigo: string; cantidad: number }[] = [];
+    // I60: World Office trunca el código en la factura; los cruces parciales
+    // (por letras del código y/o parte del nombre) quedan en la auditoría.
+    const crucesParciales: { referencia: string; codigo: string; criterio: string }[] = [];
     for (const i of d.items ?? []) {
-      const { producto } = matcher.match(String(i.referencia ?? ''));
+      const referencia = String(i.referencia ?? '');
+      let { producto, criterio } = matcher.match(referencia);
+      if (!producto) {
+        const parcial = matcher.matchParcial(referencia, i.descripcion);
+        producto = parcial.producto;
+        criterio = parcial.criterio;
+      }
+      if (producto && criterio && criterio.includes('PARCIAL')) {
+        crucesParciales.push({ referencia, codigo: producto.codigo, criterio });
+      }
       itemsFactura.push({
-        codigo: producto ? producto.codigo : String(i.referencia ?? ''),
+        codigo: producto ? producto.codigo : referencia,
         cantidad: Number(i.cantidad) || 0,
       });
     }
@@ -689,7 +702,53 @@ export class OrdersService {
       tabla: TABLA,
       registroId: id,
       valorAnterior: { estado: OrderStatus.ALISTADO },
-      valorNuevo: { estado: OrderStatus.APROBADO, numeroFactura: order.numeroFactura },
+      valorNuevo: {
+        estado: OrderStatus.APROBADO,
+        numeroFactura: order.numeroFactura,
+        ...(crucesParciales.length ? { crucesParciales } : {}),
+      },
+    });
+    return this.getDetalle(id);
+  }
+
+  /**
+   * I61: ajuste de precios del pedido por el Administrador, en CUALQUIER
+   * estado (incluidos Alistado, Aprobado y Despachado). Solo cambia los
+   * valores unitarios/totales de las líneas indicadas; no toca cantidades,
+   * alistamiento ni estado. Cada cambio queda en auditoría con antes/después.
+   */
+  async adjustPrices(id: string, dto: AdjustPricesDto, user: Usuario) {
+    const order = await this.findOne(id);
+    const items = await this.items.find({ where: { orderId: id } });
+    const porId = new Map(items.map((i) => [i.id, i]));
+    const cambios: { itemId: string; codigo: string; antes: number; despues: number }[] = [];
+    for (const ajuste of dto.items) {
+      const item = porId.get(ajuste.itemId);
+      if (!item) {
+        throw new BadRequestException(
+          `El ítem ${ajuste.itemId} no pertenece a este pedido`,
+        );
+      }
+      const valor = Number(ajuste.valorUnidad);
+      if (!Number.isFinite(valor) || valor < 0) {
+        throw new BadRequestException('valorUnidad debe ser un número mayor o igual a cero');
+      }
+      const antes = Number(item.valorUnidad);
+      if (antes !== valor) {
+        cambios.push({ itemId: item.id, codigo: item.codigo, antes, despues: valor });
+      }
+      item.valorUnidad = valor as any;
+      item.valorTotal = (item.cantidad * valor) as any;
+    }
+    await this.items.save([...porId.values()]);
+    await this.audit.log({
+      usuarioId: user.id,
+      usuarioUsername: user.username,
+      accion: 'PEDIDO_PRECIOS_AJUSTADOS',
+      tabla: TABLA,
+      registroId: id,
+      valorAnterior: { estado: order.estado, precios: cambios.map((c) => ({ codigo: c.codigo, valor: c.antes })) },
+      valorNuevo: { estado: order.estado, precios: cambios.map((c) => ({ codigo: c.codigo, valor: c.despues })) },
     });
     return this.getDetalle(id);
   }
