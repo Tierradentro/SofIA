@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
 
 /** I17: primitivas visuales compartidas (sistema de diseño de las plantillas). */
@@ -237,8 +237,15 @@ export function usePaginacionLista<T>(lista: T[], limite: LimiteLista) {
   const [pagina, setPagina] = useState(1);
   const totalPaginas = totalPaginasLista(lista.length, limite);
   const paginaActual = Math.min(pagina, totalPaginas);
+  const prevClave = useRef(`${limite}:${lista.length}`);
   useEffect(() => {
-    setPagina(1);
+    // Reiniciar solo cuando cambian el límite o el tamaño de la lista;
+    // el orden y el contenido pueden variar (recargas) sin saltar de página
+    const clave = `${limite}:${lista.length}`;
+    if (prevClave.current !== clave) {
+      prevClave.current = clave;
+      setPagina(1);
+    }
   }, [limite, lista.length]);
   const items =
     limite === 0

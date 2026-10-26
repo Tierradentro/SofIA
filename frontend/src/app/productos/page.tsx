@@ -114,6 +114,16 @@ export default function ProductosPage() {
   const [error, setError] = useState('');
   // I43: cuántos registros muestra la lista (100, 500 o todos)
   const [limite, setLimite] = useState<LimiteLista>(100);
+  // I56: paginación en cliente sobre la lista filtrada. El hook va ANTES
+  // del «if (!sesion) return null»: los hooks no pueden ser condicionales.
+  const productosFiltrados = productos.filter((p) => {
+    if (filtroMarca.trim() && !(p.marca ?? '').toLowerCase().includes(filtroMarca.trim().toLowerCase())) return false;
+    if (filtroUbicacion.trim() && !(p.ubicacion ?? '').toLowerCase().includes(filtroUbicacion.trim().toLowerCase())) return false;
+    if (filtroExistencia === 'con' && !(Number(p.cantidad) > 0)) return false;
+    if (filtroExistencia === 'sin' && Number(p.cantidad) > 0) return false;
+    return true;
+  });
+  const { items: productosFiltradosPagina, pagina, totalPaginas, irA } = usePaginacionLista(productosFiltrados, limite);
 
   const esGenerador = sesion?.usuario.rol === 'GENERADOR';
   const esAdmin = sesion?.usuario.rol === 'ADMINISTRADOR';
@@ -301,19 +311,10 @@ export default function ProductosPage() {
 
   if (!sesion) return null;
 
-  // I25: se aplican sobre la lista ya cargada (empresa + búsqueda parcial)
+  // I25: se aplican sobre la lista ya cargada (empresa + búsqueda parcial);
+  // productosFiltrados se calcula arriba, junto al hook de paginación (I56)
   const filtrosActivos =
     filtroMarca.trim() !== '' || filtroUbicacion.trim() !== '' || filtroExistencia !== 'todas';
-  const productosFiltrados = productos.filter((p) => {
-    if (filtroMarca.trim() && !(p.marca ?? '').toLowerCase().includes(filtroMarca.trim().toLowerCase())) return false;
-    if (filtroUbicacion.trim() && !(p.ubicacion ?? '').toLowerCase().includes(filtroUbicacion.trim().toLowerCase())) return false;
-    if (filtroExistencia === 'con' && !(Number(p.cantidad) > 0)) return false;
-    if (filtroExistencia === 'sin' && Number(p.cantidad) > 0) return false;
-    return true;
-  });
-
-  // I56: paginación en cliente sobre la lista completa
-  const { items: productosFiltradosPagina, pagina, totalPaginas, irA } = usePaginacionLista(productosFiltrados, limite);
 
   return (
     <AppShell sesion={sesion}>
