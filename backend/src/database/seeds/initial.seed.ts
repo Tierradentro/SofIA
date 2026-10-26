@@ -11,6 +11,10 @@ import { Role } from '../../common/enums/role.enum';
 import { UserStatus } from '../../common/enums/user-status.enum';
 import { PqrsConcept } from '../../common/enums/pqrs-concept.enum';
 import { runWarehouseSeed } from './warehouse.seed';
+import {
+  WO_CONFIG_PREFIX,
+  woConfigPorDefecto,
+} from '../../modules/exports/world-office';
 
 /**
  * Semillas I0 (idempotentes):
@@ -134,6 +138,19 @@ export async function runInitialSeed(dataSource: DataSource): Promise<void> {
           clave,
           valor: { consecutivoActual: 0 },
           descripcion: `Consecutivo del documento World Office de ${e.nombre} (último número usado; el próximo es +1)`,
+        }),
+      );
+    }
+    // I62: configuración de exportación WO separada por empresa
+    const claveConfig = `${WO_CONFIG_PREFIX}${e.siglas}`;
+    const existeConfig = await paramRepo.findOne({ where: { clave: claveConfig } });
+    if (!existeConfig) {
+      const global = await paramRepo.findOne({ where: { clave: 'wo.export' } });
+      await paramRepo.save(
+        paramRepo.create({
+          clave: claveConfig,
+          valor: global?.valor ?? woConfigPorDefecto(),
+          descripcion: `Exportación a World Office de ${e.nombre}: tipo doc, bodega, unidad, forma de pago, vencimiento e IVA`,
         }),
       );
     }

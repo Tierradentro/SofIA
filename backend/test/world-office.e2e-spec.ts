@@ -10,10 +10,12 @@ import {
 const XLSX = require('xlsx');
 
 /**
- * I51: exportación de pedidos a World Office (WO).
+ * I51/I52/I62: exportación de pedidos a World Office (WO).
  * Preflight (errores bloqueantes + advertencias), archivo .xlsx de 57 columnas
  * con el consecutivo WO por empresa, marcado del pedido (trazabilidad) y
  * auditoría. I53: el archivo es Excel (.xlsx), igual al que espera WO.
+ * I62: la configuración de exportación es POR EMPRESA (wo.export.<SIGLAS>);
+ * la clave global wo.export queda solo como respaldo histórico.
  */
 describe('Exportación World Office I51 (e2e)', () => {
   let t: TestApp;
@@ -146,29 +148,30 @@ describe('Exportación World Office I51 (e2e)', () => {
       [ireId],
     );
 
-    // I52: configuración GLOBAL de WO (una sola para todas las empresas)
+    // I62: configuración de WO POR EMPRESA (se actualiza la sembrada por la
+    // migración; la global wo.export queda como respaldo histórico).
     const put = await t.http
-      .put('/api/v1/admin/params/wo.export')
+      .put('/api/v1/admin/params/wo.export.IRE')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ valor: configWo, motivo: 'Configuración inicial WO' });
+      .send({ valor: configWo, motivo: 'Configuración inicial WO de IRE' });
     expect(put.status).toBe(200);
   });
 
-  it('la migración sembró la config global y el consecutivo por empresa', async () => {
+  it('la migración sembró la config por empresa y el consecutivo por empresa', async () => {
     const res = await t.http
       .get('/api/v1/admin/params')
       .set('Authorization', `Bearer ${adminToken}`);
     const claves = res.body.map((p: any) => p.clave);
-    expect(claves).toContain('wo.export');
+    // I62: cada empresa tiene su propia configuración de exportación
+    expect(claves).toContain('wo.export.IRE');
+    expect(claves).toContain('wo.export.ICV');
     expect(claves).toContain('wo.consecutivo.IRE');
     expect(claves).toContain('wo.consecutivo.ICV');
-    // I52: las claves I51 por empresa fueron reemplazadas
-    expect(claves).not.toContain('wo.export.IRE');
   });
 
-  it('valida la configuración WO (iva fuera de rango → 400)', async () => {
+  it('valida la configuración WO por empresa (iva fuera de rango → 400)', async () => {
     const res = await t.http
-      .put('/api/v1/admin/params/wo.export')
+      .put('/api/v1/admin/params/wo.export.IRE')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ valor: { ...configWo, iva: 1.5 }, motivo: 'prueba' });
     expect(res.status).toBe(400);
@@ -334,6 +337,60 @@ describe('Exportación World Office I51 (e2e)', () => {
     const datos = leerXlsx(xls)[1];
     expect(datos[5]).toBe('5555555'); // NIT del comercial, solo dígitos
     expect(datos[3]).toBe(1); // consecutivo independiente por empresa
+  });
+
+  it('I62: la configuración separada por empresa se respeta en el archivo', async () => {
+    // ICV exporta con sus propios parámetros (bodega, forma de pago e IVA
+    // distintos de los de IRE); se actualiza la clave sembrada por la migración.
+    const put = await t.http
+      .put('/api/v1/admin/params/wo.export.ICV')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        valor: {
+          ...configWo,
+          bodegaDefault: 'Bodega ICV Norte',
+          formaPagoDefault: 'Contado',
+          iva: 0,
+          tipoDocumento: 'PD',
+        },
+        motivo: 'Configuración propia de ICV',
+      });
+    expect(put.status).toBe(200);
+
+    const com = await t.http
+      .post('/api/v1/comerciales')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'Comercial ICV 2', identificacion: '777888999' });
+    const cli = await t.http
+      .post('/api/v1/clients')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'Cliente ICV 2', identificacion: '800777111' });
+    const pedIcv = await crearPedidoAlistado(cli.body.id, com.body.id, icvId);
+
+    const xls = await descargarXlsxWo(generadorToken, [pedIcv]);
+    expect(xls.status).toBe(201);
+    const datos = leerXlsx(xls)[1];
+    expect(datos[1]).toBe('PD'); // tipo de documento propio de ICV
+    expect(datos[8]).toBe('Contado'); // forma de pago propia
+    expect(datos[32]).toBe('Bodega ICV Norte'); // bodega propia
+    expect(datos[35]).toBe(0); // IVA propio
+    const nombreIcv = (await t.dataSource.query(
+      `SELECT nombre FROM companies WHERE id=$1`, [icvId],
+    ))[0].nombre;
+    expect(datos[0]).toBe(nombreIcv);
+
+    // El pedido de IRE sigue usando SU configuración (Credito 30 DIAS / Principal)
+    const cliIre = await t.http
+      .post('/api/v1/clients')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'Cliente IRE Post-I62', identificacion: '800222333' });
+    const pedIre = await crearPedidoAlistado(cliIre.body.id, comercialDefaultId, ireId);
+    const xlsIre = await descargarXlsxWo(generadorToken, [pedIre]);
+    const datosIre = leerXlsx(xlsIre)[1];
+    expect(datosIre[1]).toBe('COT');
+    expect(datosIre[8]).toBe('Credito 30 DIAS');
+    expect(datosIre[32]).toBe('Principal');
+    expect(datosIre[35]).toBe(0.19);
   });
 
   it('RBAC: GENERADOR, ADMINISTRADOR y OPERADOR exportan; COMERCIAL no (I53)', async () => {

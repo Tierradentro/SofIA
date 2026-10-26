@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SystemParam, PARAM_KEYS } from './entities/system-param.entity';
 import { HORARIO_LOGISTICA_DEFAULT, HorarioLogistica } from './horario-logistica';
+import { woConfigPorDefecto } from '../exports/world-office';
 
 export interface PasswordPolicy {
   min_length: number;
@@ -70,9 +71,18 @@ export class ParamsService {
     admin: { id: string; username: string },
     audit: { log: (e: any) => Promise<any> },
   ) {
-    const param = await this.repo.findOne({ where: { clave } });
+    let param = await this.repo.findOne({ where: { clave } });
     if (!param) {
-      throw new NotFoundException(`Parámetro '${clave}' no existe`);
+      // I62: la configuración WO por empresa puede no existir aún; se crea
+      // con los valores por defecto y se actualiza en el mismo paso.
+      if (!clave.startsWith('wo.export.')) {
+        throw new NotFoundException(`Parámetro '${clave}' no existe`);
+      }
+      param = this.repo.create({
+        clave,
+        valor: woConfigPorDefecto(),
+        descripcion: `Configuración de exportación a World Office de la empresa ${clave.slice('wo.export.'.length)}`,
+      });
     }
     this.validateValue(clave, valor);
     const anterior = param.valor;
@@ -132,8 +142,10 @@ export class ParamsService {
           bad('zonaHoraria debe ser una zona IANA válida (p. ej. America/Bogota)');
         }
       }
-    } else if (clave === 'wo.export') {
-      // I52: configuración GLOBAL de exportación a World Office.
+    } else if (clave === 'wo.export' || clave.startsWith('wo.export.')) {
+      // I52→I62: configuración de exportación a World Office. Desde I62 es
+      // POR EMPRESA (`wo.export.<SIGLAS>`); la clave global `wo.export`
+      // queda como respaldo histórico y se valida igual.
       const {
         tipoDocumento, prefijo, bodegaDefault, unidadMedida,
         formaPagoDefault, diasVencimiento, iva,

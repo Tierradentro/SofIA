@@ -7,7 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Company } from './entities/company.entity';
 import { SystemParam } from '../params/entities/system-param.entity';
-import { WO_CONSECUTIVO_PREFIX } from '../exports/world-office';
+import { WO_CONSECUTIVO_PREFIX, woClaveConfig, woConfigPorDefecto } from '../exports/world-office';
 import { CreateCompanyDto } from './dto/create-company.dto';
 import { UpdateCompanyDto } from './dto/update-company.dto';
 import { AuditService } from '../audit/audit.service';
@@ -27,14 +27,23 @@ export class CompaniesService {
     });
     if (dup) throw new ConflictException('La empresa o sus siglas ya existen');
     const company = await this.companies.save(this.companies.create(dto));
-    // I52: toda empresa nueva nace con su consecutivo de documento WO
-    // (la configuración de exportación es global: parámetro `wo.export`).
+    // I52: toda empresa nueva nace con su consecutivo de documento WO.
+    // I62: y con su PROPIA configuración de exportación WO (por empresa,
+    // sembrada con los valores por defecto; se ajusta en Parámetros).
     await this.companies.manager.save(
       SystemParam,
       this.companies.manager.create(SystemParam, {
         clave: `${WO_CONSECUTIVO_PREFIX}${company.siglas}`,
         valor: { consecutivoActual: 0 },
         descripcion: `Consecutivo del documento World Office de ${company.nombre} (último número usado; el próximo es +1)`,
+      }),
+    );
+    await this.companies.manager.save(
+      SystemParam,
+      this.companies.manager.create(SystemParam, {
+        clave: woClaveConfig(company.siglas),
+        valor: woConfigPorDefecto(),
+        descripcion: `Configuración de exportación a World Office de ${company.nombre}`,
       }),
     );
     await this.audit.log({

@@ -35,7 +35,7 @@ const PARAMS_EDITABLES: Record<string, { campos: { key: string; label: string; t
   'logistica.horario_acceso': { campos: [] },
 };
 
-/** I51/I52: editor de la configuración GLOBAL de exportación a World Office. */
+/** I51/I52/I62: editor de la configuración de exportación a World Office. */
 const CAMPOS_WO = [
   { key: 'tipoDocumento', label: 'Tipo de documento (COT/PD)', tipo: 'text' as const },
   { key: 'prefijo', label: 'Prefijo del documento', tipo: 'text' as const },
@@ -52,7 +52,9 @@ const CAMPOS_WO_CONSECUTIVO = [
 ];
 
 function configParam(clave: string) {
-  if (clave === 'wo.export') return { campos: CAMPOS_WO };
+  // I62: la configuración WO es por empresa (wo.export.<SIGLAS>); la clave
+  // global histórica (wo.export) también es editable como respaldo.
+  if (clave === 'wo.export' || clave.startsWith('wo.export.')) return { campos: CAMPOS_WO };
   if (clave.startsWith('wo.consecutivo.')) return { campos: CAMPOS_WO_CONSECUTIVO };
   return PARAMS_EDITABLES[clave];
 }

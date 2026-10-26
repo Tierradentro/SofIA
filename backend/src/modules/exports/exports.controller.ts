@@ -26,7 +26,9 @@ import {
   WoConfig,
   WoPedidoInput,
   construirXlsxWo,
+  resolverConfigWo,
   validarExportacionWo,
+  woClaveConfig,
 } from './world-office';
 
 const COLUMNAS = [
@@ -355,9 +357,10 @@ export class ExportsController {
     res.send(xlsx);
   }
 
-  /** I51/I52: carga pedidos + cliente + comercial + ítems y la config WO. */
+  /** I51/I52/I62: carga pedidos + cliente + comercial + ítems y la config WO de la empresa. */
   private async cargarContextoWo(orderIds?: string[]): Promise<{
     config: WoConfig | null;
+    claveConfig: string;
     empresaNombre: string | null;
     consecutivoActual: number | null;
     claveConsecutivo: string;
@@ -416,14 +419,20 @@ export class ExportsController {
           [empresaIds[0]],
         ))[0] ?? null)
       : null;
-    // I52: configuración GLOBAL (wo.export) + consecutivo POR EMPRESA
-    // (wo.consecutivo.<SIGLAS>); empresa, vendedor y nota salen de la base.
+    // I52→I62: la configuración de exportación es POR EMPRESA
+    // (wo.export.<SIGLAS>); la clave global histórica (wo.export) queda solo
+    // como respaldo mientras la migración siembra las de cada empresa.
     const claveConsecutivo = `${WO_CONSECUTIVO_PREFIX}${empresa?.siglas ?? '?'}`;
-    const configRow = await this.dataSource.query(
-      `SELECT valor FROM system_params WHERE clave = $1`,
-      [WO_PARAM_GLOBAL],
+    const claveConfig = woClaveConfig(empresa?.siglas ?? '?');
+    const configRows: any[] = await this.dataSource.query(
+      `SELECT clave, valor FROM system_params WHERE clave = ANY($1::text[])`,
+      [[claveConfig, WO_PARAM_GLOBAL]],
     );
-    const config = (configRow[0]?.valor as WoConfig) ?? null;
+    const { config } = resolverConfigWo(
+      configRows.find((r) => r.clave === claveConfig),
+      configRows.find((r) => r.clave === WO_PARAM_GLOBAL),
+      claveConfig,
+    );
     const consecRow = empresa
       ? await this.dataSource.query(
           `SELECT valor FROM system_params WHERE clave = $1`,
@@ -455,6 +464,7 @@ export class ExportsController {
 
     return {
       config,
+      claveConfig,
       empresaNombre: empresa?.nombre ?? null,
       consecutivoActual,
       claveConsecutivo,

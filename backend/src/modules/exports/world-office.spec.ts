@@ -7,8 +7,10 @@ import {
   fechaWo,
   nitClienteWo,
   numeroWo,
+  resolverConfigWo,
   soloDigitos,
   validarExportacionWo,
+  woClaveConfig,
   woConfigPorDefecto,
 } from './world-office';
 
@@ -206,6 +208,7 @@ describe('World Office (I51/I52) — preflight', () => {
   const validar = (over: Partial<Parameters<typeof validarExportacionWo>[0]>) =>
     validarExportacionWo({
       config: woConfigPorDefecto(),
+      claveConfig: 'wo.export.IRE',
       empresaNombre: 'IMPORT - REPUESTOS EL ESCARABAJO S A S',
       consecutivoActual: 0,
       claveConsecutivo: 'wo.consecutivo.IRE',
@@ -244,8 +247,11 @@ describe('World Office (I51/I52) — preflight', () => {
     expect(r.errores[0].mensaje).toContain('comercial con identificación');
   });
 
-  it('bloquea sin configuración global o sin consecutivo de la empresa', () => {
-    expect(validar({ config: null }).ok).toBe(false);
+  it('bloquea sin configuración de la empresa o sin su consecutivo', () => {
+    const sinConfig = validar({ config: null });
+    expect(sinConfig.ok).toBe(false);
+    // I62: el mensaje apunta a la clave POR EMPRESA (wo.export.<SIGLAS>)
+    expect(sinConfig.errores[0].mensaje).toContain('wo.export.IRE');
     const r = validar({ consecutivoActual: null });
     expect(r.ok).toBe(false);
     expect(r.errores[0].mensaje).toContain('wo.consecutivo.IRE');
@@ -275,5 +281,56 @@ describe('World Office (I51/I52) — preflight', () => {
     // Los pedidos ya exportados no consumen consecutivo nuevo
     expect(r.resumen.documentoDesde).toBeNull();
     expect(r.resumen.documentoHasta).toBeNull();
+  });
+});
+
+describe('I62: configuración WO por empresa', () => {
+  it('woClaveConfig construye la clave con las siglas', () => {
+    expect(woClaveConfig('IRE')).toBe('wo.export.IRE');
+    expect(woClaveConfig('ICV')).toBe('wo.export.ICV');
+  });
+
+  it('resolverConfigWo prefiere la config de la empresa', () => {
+    const propia = { valor: { ...woConfigPorDefecto(), bodegaDefault: 'Bodega IRE' } };
+    const global = { valor: { ...woConfigPorDefecto(), bodegaDefault: 'Global' } };
+    const r = resolverConfigWo(propia as any, global as any, 'wo.export.IRE');
+    expect(r.config?.bodegaDefault).toBe('Bodega IRE');
+    expect(r.claveUsada).toBe('wo.export.IRE');
+  });
+
+  it('resolverConfigWo usa la global como respaldo si la empresa no tiene', () => {
+    const global = { valor: { ...woConfigPorDefecto(), bodegaDefault: 'Global' } };
+    const r = resolverConfigWo(undefined, global as any, 'wo.export.IRE');
+    expect(r.config?.bodegaDefault).toBe('Global');
+    expect(r.claveUsada).toBe('wo.export');
+  });
+
+  it('resolverConfigWo sin ninguna config devuelve null y la clave propia', () => {
+    const r = resolverConfigWo(undefined, undefined, 'wo.export.ICV');
+    expect(r.config).toBeNull();
+    expect(r.claveUsada).toBe('wo.export.ICV');
+  });
+
+  it('configs distintas por empresa producen líneas distintas', () => {
+    const pedido: WoPedidoInput = {
+      id: 'p1',
+      numero: 'IRE-0001',
+      estado: 'ALISTADO',
+      notas: null,
+      createdAt: new Date('2026-10-09T12:00:00-05:00'),
+      exportadoWo: false,
+      woDocumentoNumero: null,
+      clienteIdentificacion: '901689082',
+      comercialIdentificacion: '4245245',
+      items: [{ codigo: 'X1', descripcion: 'Item', cantidad: 1, valorUnidad: 100 }],
+    };
+    const cfgIre = { ...woConfigPorDefecto(), bodegaDefault: 'Principal', iva: 0.19 };
+    const cfgIcv = { ...woConfigPorDefecto(), bodegaDefault: 'Bodega ICV', iva: 0, formaPagoDefault: 'Contado' };
+    const [lIre] = construirLineasWo({ config: cfgIre, empresaNombre: 'IRE SA', pedidos: [pedido], numerosWo: new Map([['p1', 1]]) });
+    const [lIcv] = construirLineasWo({ config: cfgIcv, empresaNombre: 'ICV SA', pedidos: [pedido], numerosWo: new Map([['p1', 7]]) });
+    expect(lIre).toContain('Principal');
+    expect(lIcv).toContain('Bodega ICV');
+    expect(lIcv).toContain('Contado');
+    expect(lIre).not.toContain('Contado');
   });
 });
