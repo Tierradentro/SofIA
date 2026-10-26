@@ -51,6 +51,62 @@ const TIPOS: { valor: TipoImportacion; etiqueta: string; porEmpresa: boolean }[]
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 
+/**
+ * I58: alias en español de los encabezados típicos de la maestra contable
+ * hacia el campo destino interno (la columna «Correo electrónico» de la
+ * maestra de clientes ahora se pre-mapea sola a «email»).
+ */
+const ALIAS_DESTINO: Record<string, string> = {
+  correoelectronico: 'email',
+  correo: 'email',
+  mail: 'email',
+  telefono: 'telefonos',
+  telefonos: 'telefonos',
+  direccion: 'direccion',
+  ciudad: 'ciudad',
+  identificacion: 'identificacion',
+  nit: 'identificacion',
+  cedula: 'identificacion',
+  nombre: 'nombre',
+  codigo: 'codigo',
+  referencia: 'codigo',
+  descripcion: 'descripcion',
+  cantidad: 'cantidad',
+  precio: 'precio',
+  marca: 'marca',
+  proveedor: 'proveedor',
+  ubicacion: 'ubicacion',
+};
+
+/** Etiquetas legibles de los campos destino (el select muestra español). */
+const ETIQUETA_CAMPO: Record<string, string> = {
+  email: 'Correo electrónico',
+  codigo: 'Código',
+  descripcion: 'Descripción',
+  identificacion: 'Identificación',
+  direccion: 'Dirección',
+  telefonos: 'Teléfonos',
+  ciudad: 'Ciudad',
+  nombre: 'Nombre',
+  cantidad: 'Cantidad',
+  precio: 'Precio',
+  proveedor: 'Proveedor',
+  marca: 'Marca',
+  vehiculo: 'Vehículo',
+  categoria: 'Categoría',
+  subcategoria: 'Subcategoría',
+  observaciones: 'Observaciones',
+  aplicacion: 'Aplicación',
+  codigo_oe: 'Código OE',
+  ref_cruzada_1: 'Ref. cruzada 1',
+  ref_cruzada_2: 'Ref. cruzada 2',
+  unidad_medida: 'Unidad de medida',
+  link_imagen: 'Link imagen',
+  ubicacion: 'Ubicación',
+  grupo_siete: 'Grupo siete',
+  grupo_ocho: 'Grupo ocho',
+};
+
 /** Coincidencia aproximada columna Excel ↔ campo destino para pre-mapeo. */
 function adivinarDestino(columna: string, destinos: string[]): string {
   const norm = (s: string) =>
@@ -62,6 +118,9 @@ function adivinarDestino(columna: string, destinos: string[]): string {
   const col = norm(columna);
   const exacto = destinos.find((d) => norm(d) === col);
   if (exacto) return exacto;
+  // I58: alias de la maestra contable («Correo electrónico» → email, etc.)
+  const alias = ALIAS_DESTINO[col];
+  if (alias && destinos.includes(alias)) return alias;
   const parcial = destinos.find(
     (d) => col.includes(norm(d)) || norm(d).includes(col),
   );
@@ -367,7 +426,7 @@ export default function ImportacionesPage() {
             <h2 className="mb-3 font-semibold">2. Mapeo de columnas</h2>
             <p className="mb-3 text-sm text-slate-600">
               Asigne cada columna del archivo a un campo destino. Requeridos:{' '}
-              <strong>{campos?.[tipo].requeridos.join(', ')}</strong>
+              <strong>{campos?.[tipo].requeridos.map((d) => ETIQUETA_CAMPO[d] ?? d).join(', ')}</strong>
             </p>
             {columnasSinEncabezado > 0 && (
               <p className="mb-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -390,7 +449,7 @@ export default function ImportacionesPage() {
                     <option value="">— Ignorar —</option>
                     {destinos.map((d) => (
                       <option key={d} value={d}>
-                        {d}
+                        {ETIQUETA_CAMPO[d] ?? d}
                         {campos?.[tipo].requeridos.includes(d) ? ' *' : ''}
                       </option>
                     ))}
