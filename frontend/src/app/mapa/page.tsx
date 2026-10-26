@@ -30,6 +30,8 @@ interface MapaZona {
   id: string;
   lado: 'IZQUIERDA' | 'DERECHA' | 'FONDO';
   alias?: string;
+  /** I59: color parametrizado en Administración → Bodega. */
+  color?: string | null;
   /** I40: ocupación del fondo del pasillo (zonas sin estantes). */
   cantidad?: number;
   empresas?: Array<{ empresaId: string; cantidad: number }>;
@@ -39,6 +41,8 @@ interface MapaPasillo {
   id: string;
   numero: number;
   alias: string;
+  /** I59: color parametrizado en Administración → Bodega. */
+  color?: string | null;
   posX: number;
   posY: number;
   anchoM: number;
@@ -49,6 +53,8 @@ interface MapaArea {
   id: string;
   tipo: 'ENTRADA' | 'PATIO_MANIOBRAS' | 'BAHIA_EMPAQUE' | 'BAHIA_TEMPORAL' | 'BAHIA_DEVOLUCIONES';
   alias: string;
+  /** I59: color parametrizado en Administración → Bodega. */
+  color?: string | null;
   posX: number;
   posY: number;
   anchoM: number;
@@ -106,24 +112,50 @@ const ETIQUETA_AREA: Record<string, string> = {
   BAHIA_DEVOLUCIONES: 'Bahía de devoluciones',
 };
 
-/** Escala de ocupación → color del cajón (paleta menta/sofia/slate). */
-function colorOcupacion(ocupacion: number): { relleno: string; borde: string; texto: string } {
-  if (ocupacion <= 0) return { relleno: '#f1f5f9', borde: '#94a3b8', texto: '#475569' };
-  if (ocupacion < 0.34) return { relleno: '#d0faec', borde: '#17b795', texto: '#0b7561' };
-  if (ocupacion < 0.67) return { relleno: '#6ee7c8', borde: '#0d9379', texto: '#0a2547' };
-  return { relleno: '#17b795', borde: '#0b7561', texto: '#ffffff' };
+/**
+ * I59: el mapa conserva los colores parametrizados en Administración → Bodega
+ * (cada área/pasillo puede tener color propio; si no, se usa el color por
+ * defecto de su tipo, igual que en la pantalla de configuración). Se retira
+ * la escala libre/parcial/alta.
+ */
+const COLORES = {
+  pasillo: { relleno: '#d9eaff', borde: '#1e6fd9', texto: '#0d3058' },
+  patio: { relleno: '#f1f5f9', borde: '#94a3b8', texto: '#475569' },
+  empaque: { relleno: '#a5f3da', borde: '#17b795', texto: '#0a2547' },
+  temporal: { relleno: '#d0faec', borde: '#17b795', texto: '#0a2547' },
+  devoluciones: { relleno: '#fde68a', borde: '#d97706', texto: '#7c2d12' },
+  entrada: { relleno: '#3fd9b8', borde: '#0d9379', texto: '#0b7561' },
+};
+
+function coloresArea(tipo: MapaArea['tipo']) {
+  switch (tipo) {
+    case 'ENTRADA':
+      return COLORES.entrada;
+    case 'PATIO_MANIOBRAS':
+      return COLORES.patio;
+    case 'BAHIA_EMPAQUE':
+      return COLORES.empaque;
+    case 'BAHIA_TEMPORAL':
+      return COLORES.temporal;
+    case 'BAHIA_DEVOLUCIONES':
+      return COLORES.devoluciones;
+  }
 }
 
-function ocupacionPasillo(pasillo: MapaPasillo): number {
-  let niveles = 0;
-  let ocupados = 0;
+/** I59: unidades totales de un pasillo (estantes + fondo), con filtro opcional por empresa. */
+function unidadesPasillo(pasillo: MapaPasillo, empresaId?: string): number {
+  let total = 0;
   for (const z of pasillo.zonas) {
+    total += empresaId
+      ? (z.empresas?.find((e) => e.empresaId === empresaId)?.cantidad ?? 0)
+      : (z.cantidad ?? 0);
     for (const e of z.estantes) {
-      niveles += e.niveles;
-      ocupados += e.nivelesOcupados;
+      total += empresaId
+        ? (e.empresas.find((em) => em.empresaId === empresaId)?.cantidad ?? 0)
+        : e.cantidad;
     }
   }
-  return niveles > 0 ? ocupados / niveles : 0;
+  return total;
 }
 
 function MapaPage() {
@@ -213,15 +245,14 @@ function MapaPage() {
 
   const cajonesPiso = useMemo<CajonBodega[]>(() => {
     if (!piso) return [];
-    // I36: con empresa seleccionada, las cantidades y los colores del plano
-    // reflejan solo los productos de esa empresa (antes solo se resaltaba la
-    // zona y los porcentajes quedaban iguales).
+    // I36: con empresa seleccionada, las cantidades del plano reflejan solo
+    // los productos de esa empresa. I59: los colores siempre son los
+    // parametrizados en bodega (la empresa se indica con el resaltado ámbar).
     const cajones: CajonBodega[] = piso.areas.map((a) => {
       const emp = cantidadDeEmpresa(a.empresas);
       const cantidad = emp ?? a.cantidad;
-      const colores = empresaFiltro
-        ? colorOcupacion(a.cantidad > 0 ? cantidad / a.cantidad : 0)
-        : colorOcupacion(a.cantidad > 0 ? 1 : 0);
+      const base = coloresArea(a.tipo);
+      const colores = { relleno: a.color ?? base.relleno, borde: base.borde, texto: base.texto };
       return {
         clave: `area:${a.id}`,
         tipo: 'area' as const,
@@ -238,18 +269,16 @@ function MapaPage() {
     });
     for (const pas of piso.pasillos) {
       const estantes = pas.zonas.reduce((acc, z) => acc + z.estantes.length, 0);
-      let ocup = ocupacionPasillo(pas);
-      let detalle = `${estantes} estantes · ${Math.round(ocup * 100)}%`;
-      if (empresaFiltro) {
-        const total = pas.zonas.reduce((acc, z) => acc + z.estantes.reduce((s, e) => s + e.cantidad, 0), 0);
-        const empCant = pas.zonas.reduce(
-          (acc, z) => acc + z.estantes.reduce((s, e) => s + (e.empresas.find((em) => em.empresaId === empresaFiltro)?.cantidad ?? 0), 0),
-          0,
-        );
-        ocup = total > 0 ? empCant / total : 0;
-        detalle = `${empCant} und de la empresa · ${Math.round(ocup * 100)}% del contenido`;
-      }
-      const colores = colorOcupacion(ocup);
+      // I59: total de unidades en lugar del porcentaje de ocupación.
+      const unidades = unidadesPasillo(pas, empresaFiltro || undefined);
+      const detalle = empresaFiltro
+        ? `${unidades} und de la empresa`
+        : `${estantes} estantes · ${unidades} und`;
+      const colores = {
+        relleno: pas.color ?? COLORES.pasillo.relleno,
+        borde: COLORES.pasillo.borde,
+        texto: COLORES.pasillo.texto,
+      };
       cajones.push({
         clave: `pasillo:${pas.id}`,
         tipo: 'pasillo',
@@ -455,15 +484,6 @@ function MapaPage() {
                 ))}
               </div>
               <div className="flex items-center gap-3 text-xs text-slate-500">
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-full bg-slate-300" /> Libre
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-full bg-menta-300" /> Parcial
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-full bg-menta-500" /> Alta
-                </span>
                 {(resaltadas.length > 0 || empresaFiltro) && (
                   <span className="flex items-center gap-1.5">
                     <span className="h-2.5 w-2.5 rounded-full border-2 border-amber-500 bg-white" /> Resultado
