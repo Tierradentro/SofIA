@@ -139,6 +139,24 @@ export class InvoiceOrderDto {
   ocrDocumentId: string;
 }
 
+/** I61: ajuste de precios del pedido (solo Administrador, en cualquier estado). */
+export class AdjustPricesItemDto {
+  @IsUUID()
+  itemId: string;
+
+  @IsNumber()
+  @Min(0)
+  valorUnidad: number;
+}
+
+export class AdjustPricesDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => AdjustPricesItemDto)
+  items: AdjustPricesItemDto[];
+}
+
 export class CancelOrderDto {
   @IsOptional()
   @IsString()

@@ -127,6 +127,10 @@ function PedidosContenido() {
   const [archivoFactura, setArchivoFactura] = useState<File | null>(null);
   const [editando, setEditando] = useState(false);
 
+  // I61: ajuste de precios por el Administrador (en cualquier estado)
+  const [preciosEdit, setPreciosEdit] = useState<Record<string, string>>({});
+  const [editandoPrecios, setEditandoPrecios] = useState(false);
+
   const [mensaje, setMensaje] = useState('');
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
@@ -146,6 +150,7 @@ function PedidosContenido() {
   const esGenerador = rol === 'GENERADOR' || rol === 'ADMINISTRADOR';
   const esOperador = rol === 'OPERADOR' || rol === 'ADMINISTRADOR';
   const esOperadorPuro = rol === 'OPERADOR';
+  const esAdmin = rol === 'ADMINISTRADOR';
   // I51: la exportación a WO la hace quien alista (Operador) o el Generador/Admin
   const puedeCrear = esGenerador || esOperador || rol === 'COMERCIAL';
 
@@ -214,10 +219,41 @@ function PedidosContenido() {
     if (status === 200) {
       setPedido(body);
       setEditando(false);
+      setEditandoPrecios(false);
+      setPreciosEdit({});
       setMensaje('');
       setError('');
       if (body.estado === 'PENDIENTE_CORRECCION') prepararEdicion(body);
     }
+  }
+
+  /** I61: el Administrador ajusta precios del pedido en cualquier estado. */
+  function iniciarEdicionPrecios(p: Pedido) {
+    setPreciosEdit(
+      Object.fromEntries(p.items.map((i) => [i.id, String(Number(i.valorUnidad))])),
+    );
+    setEditandoPrecios(true);
+  }
+
+  async function guardarPrecios() {
+    if (!pedido) return;
+    const items = pedido.items
+      .filter((i) => Number(preciosEdit[i.id]) !== Number(i.valorUnidad))
+      .map((i) => ({ itemId: i.id, valorUnidad: Number(preciosEdit[i.id]) || 0 }));
+    if (!items.length) {
+      setEditandoPrecios(false);
+      return;
+    }
+    const invalido = items.find((i) => !Number.isFinite(i.valorUnidad) || i.valorUnidad < 0);
+    if (invalido) {
+      setError('Los precios deben ser números mayores o iguales a cero');
+      return;
+    }
+    const exito = await accion(
+      () => api(`/orders/${pedido.id}/precios`, { method: 'PATCH', body: JSON.stringify({ items }) }),
+      'Precios del pedido actualizados.',
+    );
+    if (exito) setEditandoPrecios(false);
   }
 
   function prepararEdicion(p: Pedido) {
@@ -816,8 +852,24 @@ function PedidosContenido() {
                     <td className="w-16 px-2 py-1.5">{i.cantidad}</td>
                     <td className={`w-16 px-2 py-1.5 ${i.cantidadAlistada === i.cantidad ? 'text-green-700' : ''}`}>{i.cantidadAlistada}</td>
                     <td className={`w-16 px-2 py-1.5 ${i.pendiente > 0 ? 'text-lg font-bold text-amber-700' : ''}`}>{i.pendiente}</td>
-                    <td className="w-24 px-2 py-1.5">$ {Number(i.valorUnidad).toLocaleString('es-CO')}</td>
-                    <td className="w-24 px-2 py-1.5">$ {Number(i.valorTotal).toLocaleString('es-CO')}</td>
+                    <td className="w-24 px-2 py-1.5">
+                      {editandoPrecios ? (
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={preciosEdit[i.id] ?? ''}
+                          onChange={(e) => setPreciosEdit({ ...preciosEdit, [i.id]: e.target.value })}
+                          className="w-24 rounded border px-1.5 py-0.5 text-sm"
+                          title="Valor unitario"
+                        />
+                      ) : (
+                        <>$ {Number(i.valorUnidad).toLocaleString('es-CO')}</>
+                      )}
+                    </td>
+                    <td className="w-24 px-2 py-1.5">
+                      $ {(i.cantidad * Number(editandoPrecios ? (preciosEdit[i.id] ?? i.valorUnidad) : i.valorUnidad)).toLocaleString('es-CO')}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -829,6 +881,39 @@ function PedidosContenido() {
                 unidades={pedido.items.reduce((acc, i) => acc + i.cantidad, 0)}
               />
             </div>
+
+            {/* I61: ajuste de precios — solo Administrador, en cualquier estado */}
+            {esAdmin && (
+              <div className="mt-3 rounded bg-slate-50 p-3">
+                {!editandoPrecios ? (
+                  <button
+                    onClick={() => iniciarEdicionPrecios(pedido)}
+                    className="rounded bg-sofia-600 px-4 py-2 text-sm text-white hover:bg-sofia-700"
+                  >
+                    Ajustar precios
+                  </button>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="w-full text-sm text-slate-600">
+                      Edite el valor unitario de las líneas en la tabla y confirme. El ajuste queda en auditoría.
+                    </p>
+                    <button
+                      onClick={guardarPrecios}
+                      disabled={cargando}
+                      className="rounded bg-green-600 px-4 py-2 text-sm text-white hover:bg-green-700 disabled:opacity-50"
+                    >
+                      Guardar precios
+                    </button>
+                    <button
+                      onClick={() => { setEditandoPrecios(false); setPreciosEdit({}); }}
+                      className="rounded border px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
+                    >
+                      Descartar
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Corrección del creador */}
             {pedido.estado === 'PENDIENTE_CORRECCION' && (pedido.createdBy === sesion.usuario.id || esGenerador) && (

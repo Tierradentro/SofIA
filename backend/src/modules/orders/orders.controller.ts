@@ -16,6 +16,7 @@ import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { OrdersService } from './orders.service';
 import {
+  AdjustPricesDto,
   CancelOrderDto,
   CorrectOrderDto,
   CreateOrderDto,
@@ -145,6 +146,19 @@ export class OrdersController {
     return this.orders.loadInvoice(id, dto.ocrDocumentId, user);
   }
 
+  /**
+   * I61: ajuste de precios del pedido — solo Administrador y sin importar el
+   * estado (Alistado, Aprobado, Despachado…). Auditado con antes/después.
+   */
+  @Patch(':id/precios')
+  @Roles(Role.ADMINISTRADOR)
+  adjustPrices(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AdjustPricesDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.orders.adjustPrices(id, dto, user);
+  }
   /** Cancelación (Generador): libera las cantidades bloqueadas. */
   @Post(':id/cancel')
   @Roles(Role.GENERADOR, Role.ADMINISTRADOR)
