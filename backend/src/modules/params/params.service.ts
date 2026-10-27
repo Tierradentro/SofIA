@@ -142,10 +142,9 @@ export class ParamsService {
           bad('zonaHoraria debe ser una zona IANA válida (p. ej. America/Bogota)');
         }
       }
-    } else if (clave === 'wo.export' || clave.startsWith('wo.export.')) {
-      // I52→I62: configuración de exportación a World Office. Desde I62 es
-      // POR EMPRESA (`wo.export.<SIGLAS>`); la clave global `wo.export`
-      // queda como respaldo histórico y se valida igual.
+    } else if (clave.startsWith('wo.export.')) {
+      // I62: configuración de exportación a World Office, POR EMPRESA
+      // (`wo.export.<SIGLAS>`); no existe clave global.
       const {
         tipoDocumento, prefijo, bodegaDefault, unidadMedida,
         formaPagoDefault, diasVencimiento, iva,

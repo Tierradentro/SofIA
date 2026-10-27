@@ -22,11 +22,9 @@ import { AuditModule } from '../audit/audit.module';
 import { Module } from '@nestjs/common';
 import {
   WO_CONSECUTIVO_PREFIX,
-  WO_PARAM_GLOBAL,
   WoConfig,
   WoPedidoInput,
   construirXlsxWo,
-  resolverConfigWo,
   validarExportacionWo,
   woClaveConfig,
 } from './world-office';
@@ -419,20 +417,17 @@ export class ExportsController {
           [empresaIds[0]],
         ))[0] ?? null)
       : null;
-    // I52→I62: la configuración de exportación es POR EMPRESA
-    // (wo.export.<SIGLAS>); la clave global histórica (wo.export) queda solo
-    // como respaldo mientras la migración siembra las de cada empresa.
+    // I62: la configuración de exportación es POR EMPRESA
+    // (wo.export.<SIGLAS>); no existe clave global.
     const claveConsecutivo = `${WO_CONSECUTIVO_PREFIX}${empresa?.siglas ?? '?'}`;
     const claveConfig = woClaveConfig(empresa?.siglas ?? '?');
-    const configRows: any[] = await this.dataSource.query(
-      `SELECT clave, valor FROM system_params WHERE clave = ANY($1::text[])`,
-      [[claveConfig, WO_PARAM_GLOBAL]],
-    );
-    const { config } = resolverConfigWo(
-      configRows.find((r) => r.clave === claveConfig),
-      configRows.find((r) => r.clave === WO_PARAM_GLOBAL),
-      claveConfig,
-    );
+    const configRow = (
+      await this.dataSource.query(
+        `SELECT valor FROM system_params WHERE clave = $1`,
+        [claveConfig],
+      )
+    )[0];
+    const config: WoConfig | null = configRow?.valor ?? null;
     const consecRow = empresa
       ? await this.dataSource.query(
           `SELECT valor FROM system_params WHERE clave = $1`,

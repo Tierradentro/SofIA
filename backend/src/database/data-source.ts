@@ -66,6 +66,7 @@ import { WorldOfficeGlobalI521753000023000 } from './migrations/1753000023000-wo
 import { ComercialIdentificacionDigitosI531753000024000 } from './migrations/1753000024000-comercial-identificacion-i53';
 import { DispositivosI571753000025000 } from './migrations/1753000025000-dispositivos-i57';
 import { WorldOfficePorEmpresaI621753000026000 } from './migrations/1753000026000-world-office-por-empresa-i62';
+import { WorldOfficeSinGlobalI621753000027000 } from './migrations/1753000027000-world-office-sin-global-i62';
 import { runInitialSeed } from './seeds/initial.seed';
 
 export function buildDataSourceOptions(): DataSourceOptions {
@@ -147,6 +148,7 @@ export function buildDataSourceOptions(): DataSourceOptions {
       ComercialIdentificacionDigitosI531753000024000,
       DispositivosI571753000025000,
       WorldOfficePorEmpresaI621753000026000,
+      WorldOfficeSinGlobalI621753000027000,
     ],
     synchronize: false,
     logging: false,

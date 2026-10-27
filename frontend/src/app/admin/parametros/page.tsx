@@ -52,9 +52,8 @@ const CAMPOS_WO_CONSECUTIVO = [
 ];
 
 function configParam(clave: string) {
-  // I62: la configuración WO es por empresa (wo.export.<SIGLAS>); la clave
-  // global histórica (wo.export) también es editable como respaldo.
-  if (clave === 'wo.export' || clave.startsWith('wo.export.')) return { campos: CAMPOS_WO };
+  // I62: la configuración WO es exclusivamente por empresa (wo.export.<SIGLAS>)
+  if (clave.startsWith('wo.export.')) return { campos: CAMPOS_WO };
   if (clave.startsWith('wo.consecutivo.')) return { campos: CAMPOS_WO_CONSECUTIVO };
   return PARAMS_EDITABLES[clave];
 }

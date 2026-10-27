@@ -5,8 +5,7 @@
  * Lógica pura (sin NestJS ni TypeORM) para facilitar las pruebas unitarias:
  * - Configuración POR EMPRESA en system_params clave `wo.export.<SIGLAS>`
  *   (I62: tipo doc, bodega, unidad, forma de pago, vencimiento e IVA se
- *   parametrizan aparte para cada empresa). La clave histórica `wo.export`
- *   (global, I52) queda como respaldo mientras exista.
+ *   parametrizan aparte para cada empresa; no existe clave global).
  * - Consecutivo POR EMPRESA en `wo.consecutivo.<SIGLAS>`.
  * - Datos que ya están en la base y NO son parámetros: nombre de la empresa
  *   emisora (companies), NIT del vendedor (comerciales.identificacion del
@@ -16,8 +15,6 @@
  *   IVA decimal, valores sin separador de miles).
  */
 
-/** Clave del parámetro global histórico (I52) — solo respaldo desde I62. */
-export const WO_PARAM_GLOBAL = 'wo.export';
 /** Prefijo de la clave de configuración WO por empresa (I62). */
 export const WO_CONFIG_PREFIX = 'wo.export.';
 /** Prefijo de la clave del consecutivo WO por empresa. */
@@ -28,18 +25,7 @@ export function woClaveConfig(siglas: string): string {
   return `${WO_CONFIG_PREFIX}${siglas}`;
 }
 
-/** I62: resuelve la config de la empresa con respaldo en la global histórica. */
-export function resolverConfigWo(
-  filaEmpresa: { valor: WoConfig } | undefined,
-  filaGlobal: { valor: WoConfig } | undefined,
-  claveEmpresa: string,
-): { config: WoConfig | null; claveUsada: string } {
-  if (filaEmpresa?.valor) return { config: filaEmpresa.valor, claveUsada: claveEmpresa };
-  if (filaGlobal?.valor) return { config: filaGlobal.valor, claveUsada: WO_PARAM_GLOBAL };
-  return { config: null, claveUsada: claveEmpresa };
-}
-
-/** Configuración WO global (jsonb en system_params, clave `wo.export`). */
+/** Configuración WO de una empresa (jsonb en system_params, `wo.export.<SIGLAS>`). */
 export interface WoConfig {
   /** Abreviatura del documento en WO (COT = cotización, PD = pedido). */
   tipoDocumento: string;

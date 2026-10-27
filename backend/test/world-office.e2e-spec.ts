@@ -148,8 +148,7 @@ describe('Exportación World Office I51 (e2e)', () => {
       [ireId],
     );
 
-    // I62: configuración de WO POR EMPRESA (se actualiza la sembrada por la
-    // migración; la global wo.export queda como respaldo histórico).
+    // I62: configuración de WO exclusivamente POR EMPRESA (sin clave global).
     const put = await t.http
       .put('/api/v1/admin/params/wo.export.IRE')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -167,6 +166,8 @@ describe('Exportación World Office I51 (e2e)', () => {
     expect(claves).toContain('wo.export.ICV');
     expect(claves).toContain('wo.consecutivo.IRE');
     expect(claves).toContain('wo.consecutivo.ICV');
+    // I62: ya no existe el parámetro global histórico
+    expect(claves).not.toContain('wo.export');
   });
 
   it('valida la configuración WO por empresa (iva fuera de rango → 400)', async () => {

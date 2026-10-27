@@ -104,30 +104,8 @@ export async function runInitialSeed(dataSource: DataSource): Promise<void> {
     if (!exists) await paramRepo.save(paramRepo.create(p));
   }
 
-  // ---- I51/I52: exportación a World Office ----
-  // Configuración GLOBAL (aplica a todas las empresas) + consecutivo POR
-  // EMPRESA. La migración I52 la crea en bases existentes; aquí queda para
-  // instalaciones nuevas.
-  const claveGlobalWo = 'wo.export';
-  const existeGlobalWo = await paramRepo.findOne({ where: { clave: claveGlobalWo } });
-  if (!existeGlobalWo) {
-    await paramRepo.save(
-      paramRepo.create({
-        clave: claveGlobalWo,
-        valor: {
-          tipoDocumento: 'COT',
-          prefijo: '',
-          bodegaDefault: 'Principal',
-          unidadMedida: 'Und.',
-          formaPagoDefault: 'Credito 30 DIAS',
-          diasVencimiento: 30,
-          iva: 0.19,
-        },
-        descripcion:
-          'Exportación a World Office: tipo doc, bodega, unidad, forma de pago, vencimiento e IVA (común a todas las empresas)',
-      }),
-    );
-  }
+  // ---- I51/I52/I62: exportación a World Office ----
+  // Configuración y consecutivo POR EMPRESA (no existe clave global desde I62).
   const empresas = await companyRepo.find();
   for (const e of empresas) {
     const clave = `wo.consecutivo.${e.siglas}`;
@@ -145,11 +123,10 @@ export async function runInitialSeed(dataSource: DataSource): Promise<void> {
     const claveConfig = `${WO_CONFIG_PREFIX}${e.siglas}`;
     const existeConfig = await paramRepo.findOne({ where: { clave: claveConfig } });
     if (!existeConfig) {
-      const global = await paramRepo.findOne({ where: { clave: 'wo.export' } });
       await paramRepo.save(
         paramRepo.create({
           clave: claveConfig,
-          valor: global?.valor ?? woConfigPorDefecto(),
+          valor: woConfigPorDefecto(),
           descripcion: `Exportación a World Office de ${e.nombre}: tipo doc, bodega, unidad, forma de pago, vencimiento e IVA`,
         }),
       );

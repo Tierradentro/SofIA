@@ -7,7 +7,6 @@ import {
   fechaWo,
   nitClienteWo,
   numeroWo,
-  resolverConfigWo,
   soloDigitos,
   validarExportacionWo,
   woClaveConfig,
@@ -288,27 +287,6 @@ describe('I62: configuración WO por empresa', () => {
   it('woClaveConfig construye la clave con las siglas', () => {
     expect(woClaveConfig('IRE')).toBe('wo.export.IRE');
     expect(woClaveConfig('ICV')).toBe('wo.export.ICV');
-  });
-
-  it('resolverConfigWo prefiere la config de la empresa', () => {
-    const propia = { valor: { ...woConfigPorDefecto(), bodegaDefault: 'Bodega IRE' } };
-    const global = { valor: { ...woConfigPorDefecto(), bodegaDefault: 'Global' } };
-    const r = resolverConfigWo(propia as any, global as any, 'wo.export.IRE');
-    expect(r.config?.bodegaDefault).toBe('Bodega IRE');
-    expect(r.claveUsada).toBe('wo.export.IRE');
-  });
-
-  it('resolverConfigWo usa la global como respaldo si la empresa no tiene', () => {
-    const global = { valor: { ...woConfigPorDefecto(), bodegaDefault: 'Global' } };
-    const r = resolverConfigWo(undefined, global as any, 'wo.export.IRE');
-    expect(r.config?.bodegaDefault).toBe('Global');
-    expect(r.claveUsada).toBe('wo.export');
-  });
-
-  it('resolverConfigWo sin ninguna config devuelve null y la clave propia', () => {
-    const r = resolverConfigWo(undefined, undefined, 'wo.export.ICV');
-    expect(r.config).toBeNull();
-    expect(r.claveUsada).toBe('wo.export.ICV');
   });
 
   it('configs distintas por empresa producen líneas distintas', () => {
