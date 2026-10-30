@@ -43,6 +43,18 @@ export class WarehousesController {
   }
 
   /**
+   * I63b: limpieza de la bahía de empaque — reubica las unidades que no
+   * corresponden a pedidos vivos (remanentes de pedidos cancelados antes
+   * del ajuste I63) en la ubicación asignada del producto o en tránsito.
+   * Solo Administrador; todo el barrido queda auditado.
+   */
+  @Post('limpiar-bahia-empaque')
+  @Roles(Role.ADMINISTRADOR)
+  limpiarBahiaEmpaque(@CurrentUser() admin: AuthenticatedUser) {
+    return this.warehouses.limpiarBahiaEmpaque(admin);
+  }
+
+  /**
    * I44: agregar un área a un piso ya configurado, SIN reconfigurar la
    * bodega — las ubicaciones de los productos se conservan. Es la vía para
    * sumar áreas opcionales después de la configuración (p. ej. la bahía de

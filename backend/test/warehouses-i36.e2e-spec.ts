@@ -517,6 +517,108 @@ describe('I36 ajustes (e2e)', () => {
     expect(estante[0].esOficial).toBe(true);
   });
 
+  it('I63b: el barrido de limpieza saca remanentes y respeta unidades de pedidos vivos', async () => {
+    // Dos productos con unidades en la bahía:
+    //  - E63-REM: remanente fantasma (como si su pedido se hubiera cancelado
+    //    antes del ajuste I63): tiene ubicación asignada con stock.
+    //  - E63-VIVO: unidades justificadas por un pedido ALISTADO vivo.
+    const mkProducto = async (codigo: string, barcode: string, stock: number) => {
+      const prod = await t.http
+        .post('/api/v1/products')
+        .set('Authorization', `Bearer ${tokenGenerador}`)
+        .send({ empresaId, codigo, descripcion: `Prod ${codigo}`, unidadMedida: 'UND', precio: 1000 });
+      expect(prod.status).toBe(201);
+      await t.dataSource.query(`UPDATE products SET cantidad=$2 WHERE id=$1`, [prod.body.id, stock]);
+      const bc = await t.http
+        .post(`/api/v1/products/${prod.body.id}/barcode`)
+        .set('Authorization', `Bearer ${tokenGenerador}`)
+        .send({ barcode, origen: 'MANUAL' });
+      expect(bc.status).toBe(201);
+      return prod.body.id as string;
+    };
+
+    const [area] = await t.dataSource.query(
+      `SELECT a.id FROM warehouse_areas a
+        JOIN warehouse_floors f ON f.id = a.floor_id
+        JOIN warehouses w ON w.id = f.warehouse_id
+       WHERE a.tipo='BAHIA_EMPAQUE' AND a.activo=true AND w.activo=true
+       ORDER BY f.numero LIMIT 1`,
+    );
+    const [rack] = await t.dataSource.query(
+      `SELECT r.id FROM warehouse_racks r
+        JOIN warehouse_zones z ON z.id = r.zone_id
+        JOIN warehouse_aisles pa ON pa.id = z.aisle_id
+        JOIN warehouse_floors f ON f.id = pa.floor_id
+        JOIN warehouses w ON w.id = f.warehouse_id
+       WHERE w.activo = true ORDER BY r.created_at ASC LIMIT 1`,
+    );
+
+    // Remanente fantasma: 3 unidades en la bahía + 7 en su estante asignado
+    const remId = await mkProducto('E63-REM', '7501036391', 10);
+    await t.dataSource.query(
+      `INSERT INTO warehouse_product_locations (id, product_id, rack_id, nivel, cantidad, es_oficial)
+       VALUES (gen_random_uuid(), $1, $2, 1, 7, true)`,
+      [remId, rack.id],
+    );
+    await t.dataSource.query(
+      `INSERT INTO warehouse_product_locations (id, product_id, area_id, cantidad, es_oficial)
+       VALUES (gen_random_uuid(), $1, $2, 3, false)`,
+      [remId, area.id],
+    );
+
+    // Pedido vivo alistado: 2 unidades legítimas en la bahía
+    const vivoId = await mkProducto('E63-VIVO', '7501036392', 2);
+    const pedido = await t.http
+      .post('/api/v1/orders')
+      .set('Authorization', `Bearer ${tokenGenerador}`)
+      .send({ empresaId, clienteId, comercialId, items: [{ referencia: 'E63-VIVO', cantidad: 2 }] });
+    expect(pedido.status).toBe(201);
+    await t.http
+      .post(`/api/v1/orders/${pedido.body.id}/scan`)
+      .set('Authorization', `Bearer ${tokenOperador}`)
+      .send({ modo: 'COMPLETO', codigo: '7501036392', cantidad: 2 });
+    const fin = await t.http
+      .post(`/api/v1/orders/${pedido.body.id}/finalizar-picking`)
+      .set('Authorization', `Bearer ${tokenOperador}`);
+    expect(fin.status).toBe(201);
+
+    // RBAC: solo Administrador
+    const rb = await t.http
+      .post('/api/v1/warehouses/limpiar-bahia-empaque')
+      .set('Authorization', `Bearer ${tokenGenerador}`);
+    expect(rb.status).toBe(403);
+
+    // Barrido (Administrador)
+    const limpieza = await t.http
+      .post('/api/v1/warehouses/limpiar-bahia-empaque')
+      .set('Authorization', `Bearer ${tokenAdmin}`);
+    expect(limpieza.status).toBe(201);
+    expect(limpieza.body.totalUnidades).toBe(3);
+    const movRem = limpieza.body.movimientos.find((m: any) => m.codigo === 'E63-REM');
+    expect(movRem).toBeDefined();
+    expect(movRem.cantidad).toBe(3);
+
+    // El remanente regresó a su estante asignado (7 + 3 = 10)
+    const ubsRem = await ubicacionesDe(remId);
+    expect(ubsRem.filter((u: any) => u.tipoArea === 'BAHIA_EMPAQUE')).toHaveLength(0);
+    const estante = ubsRem.filter((u: any) => u.rackId === rack.id);
+    expect(estante).toHaveLength(1);
+    expect(estante[0].cantidad).toBe(10);
+
+    // Las unidades del pedido vivo NO se tocaron
+    const ubsVivo = await ubicacionesDe(vivoId);
+    const enBahiaVivo = ubsVivo.filter((u: any) => u.tipoArea === 'BAHIA_EMPAQUE');
+    expect(enBahiaVivo).toHaveLength(1);
+    expect(enBahiaVivo[0].cantidad).toBe(2);
+
+    // Auditoría del barrido
+    const audit = await t.dataSource.query(
+      `SELECT accion, valor_nuevo FROM audit_logs WHERE accion='LIMPIEZA_BAHIA_EMPAQUE' ORDER BY fecha_hora DESC LIMIT 1`,
+    );
+    expect(audit).toHaveLength(1);
+    expect(audit[0].valor_nuevo.totalUnidades).toBe(3);
+  });
+
   it('horario de logística: bloquea al operador fuera del horario; el admin entra siempre', async () => {
     // Franja válida todos los días EXCEPTO hoy (Bogotá) → hoy está bloqueado
     const hoy = hoyEnBogota();

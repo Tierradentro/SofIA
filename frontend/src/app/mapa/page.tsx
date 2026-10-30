@@ -182,6 +182,43 @@ function MapaPage() {
   const [productosFondo, setProductosFondo] = useState<UbicacionProducto[] | null>(null);
   const [rackSelId, setRackSelId] = useState<string | null>(null);
   const [nivelSel, setNivelSel] = useState<number | null>(null);
+  // I63b: limpieza de la bahía de empaque (solo Administrador)
+  const esAdmin = sesion?.usuario.rol === 'ADMINISTRADOR';
+  const [limpiando, setLimpiando] = useState(false);
+  const [resultadoLimpieza, setResultadoLimpieza] = useState<string | null>(null);
+  const [errorLimpieza, setErrorLimpieza] = useState('');
+
+  async function limpiarBahia() {
+    if (!window.confirm(
+      'Se revisará la bahía de empaque y las unidades que no correspondan a ' +
+      'pedidos vivos se reubicarán en su ubicación asignada o en tránsito. ¿Continuar?')) return;
+    setLimpiando(true);
+    setResultadoLimpieza(null);
+    setErrorLimpieza('');
+    try {
+      const { status, body } = await api<{
+        revisados: number;
+        totalUnidades: number;
+        movimientos: { codigo: string; cantidad: number; destino: string }[];
+      }>('/warehouses/limpiar-bahia-empaque', { method: 'POST' });
+      if (status === 201 || status === 200) {
+        const detalle = body.movimientos.length > 0
+          ? ' · ' + body.movimientos.map((m) => `${m.codigo}: ${m.cantidad} und → ${m.destino}`).join(', ')
+          : '';
+        setResultadoLimpieza(
+          body.totalUnidades > 0
+            ? `Limpieza completa: ${body.totalUnidades} unidades reubicadas${detalle}`
+            : 'La bahía de empaque está correcta: no había unidades fuera de lugar.');
+        await cargarMapa();
+      } else {
+        setErrorLimpieza(mensajeError(body, 'No se pudo ejecutar la limpieza'));
+      }
+    } catch {
+      setErrorLimpieza('No hay comunicación con el servidor.');
+    } finally {
+      setLimpiando(false);
+    }
+  }
 
   async function cargarMapa() {
     setErrorCarga('');
@@ -446,9 +483,31 @@ function MapaPage() {
                 Localizar
               </button>
             </form>
+            {esAdmin && (
+              <button
+                type="button"
+                onClick={limpiarBahia}
+                disabled={limpiando}
+                title="Reubica las unidades de la bahía de empaque que no correspondan a pedidos vivos"
+                className="rounded-lg border border-sofia-300 bg-white px-4 py-2 text-sm font-medium text-sofia-700 hover:bg-sofia-50 disabled:opacity-50"
+              >
+                {limpiando ? 'Limpiando…' : 'Limpiar bahía de empaque'}
+              </button>
+            )}
           </div>
         }
       />
+
+      {resultadoLimpieza && (
+        <Tarjeta className="mb-4 p-4">
+          <p className="text-sm text-menta-700">{resultadoLimpieza}</p>
+        </Tarjeta>
+      )}
+      {errorLimpieza && (
+        <Tarjeta className="mb-4 p-4">
+          <p className="text-sm text-red-700">{errorLimpieza}</p>
+        </Tarjeta>
+      )}
 
       {errorCarga && (
         <Tarjeta className="p-5">

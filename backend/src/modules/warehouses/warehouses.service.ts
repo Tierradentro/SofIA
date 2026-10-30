@@ -15,6 +15,7 @@ import { WarehouseProductLocation } from './entities/warehouse-product-location.
 import { Product } from '../products/entities/product.entity';
 import { ProductBarcode } from '../products/entities/product-barcode.entity';
 import { AuditService } from '../audit/audit.service';
+import { sacarDeEmpaque } from './empaque';
 import { ConfigureWarehouseDto } from './dto/configure-warehouse.dto';
 import { AssignLocationDto, CreateAreaDto, MoveCajonDto, UpdateAreaDto } from './dto/warehouse-ops.dto';
 
@@ -1010,5 +1011,114 @@ export class WarehousesService {
       relations: ['rack', 'rack.zone', 'rack.zone.aisle', 'rack.zone.aisle.floor', 'zone', 'zone.aisle', 'zone.aisle.floor', 'area'],
     });
     return { product, ubicaciones };
+  }
+
+  /**
+   * I63b: barrido de la bahía de empaque (solo Administrador).
+   *
+   * Antes del ajuste I63, cancelar un pedido alistado liberaba el bloqueo de
+   * inventario pero NO sacaba las unidades de la bahía de empaque: quedaron
+   * remanentes fantasma en el área. Este barrido revisa, por cada producto
+   * con unidades en la bahía, cuántas están justificadas por pedidos vivos
+   * (alistadas y aún no despachadas/canceladas) y reubica el excedente:
+   * a la ubicación asignada del producto (la de mayor cantidad fuera del
+   * área) o, si no tiene, a la zona de tránsito. También elimina filas en
+   * cero que puedan haber quedado. Todo el barrido es una sola transacción
+   * y queda auditado con el detalle por producto.
+   */
+  async limpiarBahiaEmpaque(user: { id: string; username: string }) {
+    return this.dataSource.transaction(async (em) => {
+      const areas: Array<{ id: string }> = await em.query(
+        `SELECT a.id
+           FROM warehouse_areas a
+           JOIN warehouse_floors f ON f.id = a.floor_id
+           JOIN warehouses w ON w.id = f.warehouse_id
+          WHERE a.tipo = 'BAHIA_EMPAQUE' AND a.activo = true AND w.activo = true`,
+      );
+      if (areas.length === 0) {
+        return { revisados: 0, movimientos: [], totalUnidades: 0 };
+      }
+      const areaIds = areas.map((a) => a.id);
+
+      const enBahia: Array<{ productId: string; codigo: string; cantidad: number }> =
+        await em.query(
+          `SELECT l.product_id AS "productId", p.codigo, SUM(l.cantidad)::int AS cantidad
+             FROM warehouse_product_locations l
+             JOIN products p ON p.id = l.product_id
+            WHERE l.area_id = ANY($1::uuid[])
+            GROUP BY l.product_id, p.codigo`,
+          [areaIds],
+        );
+
+      const movimientos: Array<{
+        productId: string;
+        codigo: string;
+        cantidad: number;
+        destino: string;
+      }> = [];
+      for (const fila of enBahia) {
+        // Unidades justificadas en la bahía: lo alistado de pedidos vivos
+        // (no cancelados/despachados) que aún no se ha despachado.
+        const [jus] = await em.query(
+          `SELECT COALESCE(SUM(oi.cantidad_alistada - oi.cantidad_despachada), 0)::int AS n
+             FROM order_items oi
+             JOIN orders o ON o.id = oi.order_id
+            WHERE oi.product_id = $1
+              AND o.estado NOT IN ('CANCELADO', 'DESPACHADO')`,
+          [fila.productId],
+        );
+        const excedente = fila.cantidad - Number(jus?.n ?? 0);
+        if (excedente <= 0) continue;
+
+        await sacarDeEmpaque(em, fila.productId, excedente);
+
+        // Destino resultante (para la respuesta y la auditoría)
+        const [dest] = await em.query(
+          `SELECT COALESCE(a.alias, z.alias, r.alias, 'TRÁNSITO') AS destino
+             FROM warehouse_product_locations l
+             LEFT JOIN warehouse_areas a ON a.id = l.area_id
+             LEFT JOIN warehouse_zones z ON z.id = l.zone_id
+             LEFT JOIN warehouse_racks r ON r.id = l.rack_id
+            WHERE l.product_id = $1 AND l.es_oficial = true
+            LIMIT 1`,
+          [fila.productId],
+        );
+        movimientos.push({
+          productId: fila.productId,
+          codigo: fila.codigo,
+          cantidad: excedente,
+          destino: dest?.destino ?? 'TRÁNSITO',
+        });
+      }
+
+      // Higiene: filas en cero que puedan haber quedado en la bahía
+      await em.query(
+        `DELETE FROM warehouse_product_locations
+          WHERE area_id = ANY($1::uuid[]) AND cantidad <= 0`,
+        [areaIds],
+      );
+
+      await this.audit.log(
+        {
+          usuarioId: user.id,
+          usuarioUsername: user.username,
+          accion: 'LIMPIEZA_BAHIA_EMPAQUE',
+          tabla: TABLA,
+          registroId: areaIds.join(','),
+          valorNuevo: {
+            productosRevisados: enBahia.length,
+            movimientos,
+            totalUnidades: movimientos.reduce((s, m) => s + m.cantidad, 0),
+          },
+        },
+        em,
+      );
+
+      return {
+        revisados: enBahia.length,
+        movimientos,
+        totalUnidades: movimientos.reduce((s, m) => s + m.cantidad, 0),
+      };
+    });
   }
 }
