@@ -38,7 +38,7 @@ import { InboundMatcher } from '../inbound/inbound-matcher';
 import { compararFacturaConPedido } from './order-compare';
 import { BarcodeOrigin } from '../../common/enums/barcode-origin.enum';
 import { Role } from '../../common/enums/role.enum';
-import { asegurarAreaEmpaque, trasladarAEmpaque } from '../warehouses/empaque';
+import { asegurarAreaEmpaque, sacarDeEmpaque, trasladarAEmpaque } from '../warehouses/empaque';
 
 const TABLA = 'Pedidos';
 
@@ -790,6 +790,12 @@ export class OrdersService {
             },
             em,
           );
+        }
+        // I63: las unidades liberadas salen de la bahía de empaque: si el
+        // producto tiene ubicación asignada, regresan a ella; si no, quedan
+        // en tránsito. No deben quedar visibles en el área de empaque.
+        if (pendienteLiberar > 0) {
+          await sacarDeEmpaque(em, item.productId, pendienteLiberar);
         }
         // Se conserva cantidadAlistada = cantidadDespachada como registro
         // histórico de lo ya entregado (constraint: despachada <= alistada)

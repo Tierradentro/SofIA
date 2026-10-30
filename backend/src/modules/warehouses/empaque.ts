@@ -70,7 +70,7 @@ async function recalcularOficial(em: EntityManager, productId: string): Promise<
     `UPDATE warehouse_product_locations SET es_oficial = true
       WHERE id = (
         SELECT id FROM warehouse_product_locations
-         WHERE product_id = $1
+         WHERE product_id = $1 AND cantidad > 0
          ORDER BY cantidad DESC, created_at ASC
          LIMIT 1
       )`,
@@ -138,6 +138,7 @@ export async function trasladarAEmpaque(
     }
     restante -= take;
   }
+  await recalcularOficial(em, productId);
   await sumarEnEmpaque(em, productId, areaId, cantidad);
 }
 
@@ -168,6 +169,79 @@ export async function descontarDeEmpaque(
       `UPDATE warehouse_product_locations SET cantidad = $2, updated_at = now() WHERE id = $1`,
       [loc[0].id, restante],
     );
+  }
+  await recalcularOficial(em, productId);
+}
+
+/**
+ * I63: reversa del alistamiento al CANCELAR el pedido. Saca las unidades del
+ * área de empaque: si el producto tiene una ubicación oficial fuera del área
+ * (su estante/fondo asignado), regresan a ella; si no, quedan en tránsito.
+ * Nunca dejan remanente en la bahía.
+ */
+export async function sacarDeEmpaque(
+  em: EntityManager,
+  productId: string,
+  cantidad: number,
+): Promise<void> {
+  const areaId = await buscarAreaEmpaque(em);
+  if (!areaId) return;
+  const loc: Array<{ id: string; cantidad: number }> = await em.query(
+    `SELECT id, cantidad FROM warehouse_product_locations
+      WHERE product_id = $1 AND area_id = $2
+      LIMIT 1`,
+    [productId, areaId],
+  );
+  if (loc.length === 0) return;
+  const mover = Math.min(loc[0].cantidad, cantidad);
+  const restante = loc[0].cantidad - mover;
+  if (restante <= 0) {
+    await em.query(`DELETE FROM warehouse_product_locations WHERE id = $1`, [loc[0].id]);
+  } else {
+    await em.query(
+      `UPDATE warehouse_product_locations SET cantidad = $2, updated_at = now() WHERE id = $1`,
+      [loc[0].id, restante],
+    );
+  }
+
+  // Destino: la ubicación asignada del producto fuera de la bahía — la de
+  // mayor cantidad (estante, fondo de pasillo u otra área); si no hay,
+  // tránsito.
+  const destino: Array<{ id: string }> = await em.query(
+    `SELECT l.id
+       FROM warehouse_product_locations l
+       LEFT JOIN warehouse_areas a ON a.id = l.area_id
+      WHERE l.product_id = $1 AND (l.area_id IS NULL OR a.tipo <> 'BAHIA_EMPAQUE')
+        AND l.cantidad > 0
+      ORDER BY l.cantidad DESC, l.created_at ASC
+      LIMIT 1`,
+    [productId],
+  );
+  if (destino.length > 0) {
+    await em.query(
+      `UPDATE warehouse_product_locations SET cantidad = cantidad + $2, updated_at = now() WHERE id = $1`,
+      [destino[0].id, mover],
+    );
+  } else {
+    // Sin ubicación asignada: queda en tránsito (sin estante ni área).
+    const transitoLoc: Array<{ id: string }> = await em.query(
+      `SELECT id FROM warehouse_product_locations
+        WHERE product_id = $1 AND transito = true
+        LIMIT 1`,
+      [productId],
+    );
+    if (transitoLoc.length > 0) {
+      await em.query(
+        `UPDATE warehouse_product_locations SET cantidad = cantidad + $2, updated_at = now() WHERE id = $1`,
+        [transitoLoc[0].id, mover],
+      );
+    } else {
+      await em.query(
+        `INSERT INTO warehouse_product_locations (id, product_id, rack_id, nivel, zone_id, area_id, transito, cantidad, es_oficial)
+         VALUES (gen_random_uuid(), $1, NULL, NULL, NULL, NULL, true, $2, false)`,
+        [productId, mover],
+      );
+    }
   }
   await recalcularOficial(em, productId);
 }

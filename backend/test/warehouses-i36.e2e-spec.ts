@@ -327,6 +327,196 @@ describe('I36 ajustes (e2e)', () => {
     expect(stockFinal.cantidad).toBe(20);
   });
 
+  it('I63: cancelar un pedido ALISTADO saca la mercancía de la bahía de empaque', async () => {
+    // Producto SIN ubicación asignada: al alistar va a la bahía; al cancelar
+    // debe salir del área (queda en tránsito, nunca remanente en la bahía).
+    const prod = await t.http
+      .post('/api/v1/products')
+      .set('Authorization', `Bearer ${tokenGenerador}`)
+      .send({
+        empresaId,
+        codigo: 'E63-001',
+        descripcion: 'Producto cancelación empaque I63',
+        unidadMedida: 'UND',
+        precio: 5000,
+      });
+    expect(prod.status).toBe(201);
+    const productoId = prod.body.id;
+    await t.dataSource.query(`UPDATE products SET cantidad = 10 WHERE id = $1`, [productoId]);
+    const bc = await t.http
+      .post(`/api/v1/products/${productoId}/barcode`)
+      .set('Authorization', `Bearer ${tokenGenerador}`)
+      .send({ barcode: '7501036301', origen: 'MANUAL' });
+    expect(bc.status).toBe(201);
+
+    const pedido = await t.http
+      .post('/api/v1/orders')
+      .set('Authorization', `Bearer ${tokenGenerador}`)
+      .send({
+        empresaId,
+        clienteId,
+        comercialId,
+        items: [{ referencia: 'E63-001', cantidad: 4 }],
+      });
+    expect(pedido.status).toBe(201);
+    const orderId = pedido.body.id;
+
+    const scan = await t.http
+      .post(`/api/v1/orders/${orderId}/scan`)
+      .set('Authorization', `Bearer ${tokenOperador}`)
+      .send({ modo: 'COMPLETO', codigo: '7501036301', cantidad: 4 });
+    expect(scan.status).toBe(201);
+    const fin = await t.http
+      .post(`/api/v1/orders/${orderId}/finalizar-picking`)
+      .set('Authorization', `Bearer ${tokenOperador}`);
+    expect(fin.status).toBe(201);
+    expect(fin.body.estado).toBe('ALISTADO');
+
+    // Alistado: las 4 unidades están en la bahía de empaque
+    const trasAlistar = await ubicacionesDe(productoId);
+    expect(trasAlistar).toHaveLength(1);
+    expect(trasAlistar[0].tipoArea).toBe('BAHIA_EMPAQUE');
+    expect(trasAlistar[0].cantidad).toBe(4);
+
+    // Cancelar el pedido (Generador): las unidades SALEN de la bahía
+    const cancel = await t.http
+      .post(`/api/v1/orders/${orderId}/cancel`)
+      .set('Authorization', `Bearer ${tokenGenerador}`)
+      .send({ motivo: 'Cliente desistió del pedido' });
+    expect(cancel.status).toBe(201);
+    expect(cancel.body.estado).toBe('CANCELADO');
+
+    const trasCancelar = await ubicacionesDe(productoId);
+    // Ninguna unidad puede quedar en la bahía de empaque
+    expect(trasCancelar.filter((u: any) => u.tipoArea === 'BAHIA_EMPAQUE')).toHaveLength(0);
+    // Sin ubicación asignada previa: quedan en tránsito (fuera de áreas)
+    expect(trasCancelar).toHaveLength(1);
+    expect(trasCancelar[0].tipoArea).toBeNull();
+    expect(trasCancelar[0].cantidad).toBe(4);
+    // El bloqueo también quedó liberado
+    const [prod2] = await t.dataSource.query(
+      `SELECT cantidad, cantidad_bloqueada AS bloqueada FROM products WHERE id=$1`,
+      [productoId],
+    );
+    expect(prod2.cantidad).toBe(10);
+    expect(prod2.bloqueada).toBe(0);
+  });
+
+  it('I63: al cancelar, las unidades regresan a la ubicación oficial asignada', async () => {
+    // Producto CON ubicación asignada (estante de un pasillo): al alistar se
+    // mueve a la bahía y al cancelar debe REGRESAR a su ubicación asignada.
+    const prod = await t.http
+      .post('/api/v1/products')
+      .set('Authorization', `Bearer ${tokenGenerador}`)
+      .send({
+        empresaId,
+        codigo: 'E63-002',
+        descripcion: 'Producto con estante I63',
+        unidadMedida: 'UND',
+        precio: 7000,
+      });
+    expect(prod.status).toBe(201);
+    const productoId = prod.body.id;
+    await t.dataSource.query(`UPDATE products SET cantidad = 8 WHERE id = $1`, [productoId]);
+    const bc = await t.http
+      .post(`/api/v1/products/${productoId}/barcode`)
+      .set('Authorization', `Bearer ${tokenGenerador}`)
+      .send({ barcode: '7501036302', origen: 'MANUAL' });
+    expect(bc.status).toBe(201);
+
+    // Ubicación asignada: se configura la bodega con un pasillo y un estante
+    // (si ya existe configuración de otra prueba, se reemplaza) y se asigna
+    // el producto al primer estante.
+    await t.http
+      .post('/api/v1/warehouses/configure')
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({
+        nombre: 'Bodega I63',
+        forma: 'RECTANGULO',
+        anchoM: 30,
+        altoM: 20,
+        pisos: [
+          {
+            numero: 1,
+            tieneAreasFijas: true,
+            pasillos: [
+              {
+                numero: 1,
+                posX: 10,
+                posY: 2,
+                anchoM: 4,
+                altoM: 16,
+                zonas: [
+                  { lado: 'IZQUIERDA', estantes: [{ numero: 1, niveles: 3 }] },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+    const [rack] = await t.dataSource.query(
+      `SELECT r.id FROM warehouse_racks r
+        JOIN warehouse_zones z ON z.id = r.zone_id
+        JOIN warehouse_aisles pa ON pa.id = z.aisle_id
+        JOIN warehouse_floors f ON f.id = pa.floor_id
+        JOIN warehouses w ON w.id = f.warehouse_id
+       WHERE w.activo = true
+       ORDER BY r.created_at ASC LIMIT 1`,
+    );
+    expect(rack).toBeDefined();
+    await t.dataSource.query(
+      `INSERT INTO warehouse_product_locations (id, product_id, rack_id, nivel, cantidad, es_oficial)
+       VALUES (gen_random_uuid(), $1, $2, 1, 8, true)`,
+      [productoId, rack.id],
+    );
+
+    const pedido = await t.http
+      .post('/api/v1/orders')
+      .set('Authorization', `Bearer ${tokenGenerador}`)
+      .send({
+        empresaId,
+        clienteId,
+        comercialId,
+        items: [{ referencia: 'E63-002', cantidad: 5 }],
+      });
+    expect(pedido.status).toBe(201);
+    const orderId = pedido.body.id;
+
+    const scan = await t.http
+      .post(`/api/v1/orders/${orderId}/scan`)
+      .set('Authorization', `Bearer ${tokenOperador}`)
+      .send({ modo: 'COMPLETO', codigo: '7501036302', cantidad: 5 });
+    expect(scan.status).toBe(201);
+    const fin = await t.http
+      .post(`/api/v1/orders/${orderId}/finalizar-picking`)
+      .set('Authorization', `Bearer ${tokenOperador}`);
+    expect(fin.status).toBe(201);
+
+    // Tras alistar: 5 en la bahía + 3 que quedaron en el estante
+    const trasAlistar = await ubicacionesDe(productoId);
+    const enBahia = trasAlistar.filter((u: any) => u.tipoArea === 'BAHIA_EMPAQUE');
+    const enEstante = trasAlistar.filter((u: any) => u.rackId === rack.id);
+    expect(enBahia).toHaveLength(1);
+    expect(enBahia[0].cantidad).toBe(5);
+    expect(enEstante).toHaveLength(1);
+    expect(enEstante[0].cantidad).toBe(3);
+
+    const cancel = await t.http
+      .post(`/api/v1/orders/${orderId}/cancel`)
+      .set('Authorization', `Bearer ${tokenGenerador}`)
+      .send({ motivo: 'Error de digitación del pedido' });
+    expect(cancel.status).toBe(201);
+
+    // Las 5 unidades regresaron al estante asignado (3 + 5 = 8) y la bahía
+    // quedó sin unidades del producto
+    const trasCancelar = await ubicacionesDe(productoId);
+    expect(trasCancelar.filter((u: any) => u.tipoArea === 'BAHIA_EMPAQUE')).toHaveLength(0);
+    const estante = trasCancelar.filter((u: any) => u.rackId === rack.id);
+    expect(estante).toHaveLength(1);
+    expect(estante[0].cantidad).toBe(8);
+    expect(estante[0].esOficial).toBe(true);
+  });
+
   it('horario de logística: bloquea al operador fuera del horario; el admin entra siempre', async () => {
     // Franja válida todos los días EXCEPTO hoy (Bogotá) → hoy está bloqueado
     const hoy = hoyEnBogota();
