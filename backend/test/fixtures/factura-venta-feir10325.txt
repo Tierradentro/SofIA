@@ -1,0 +1,58 @@
+                                                           FACTURA ELECTRÓNICA FEIR 10325
+                                                                    DE VENTA No
+                                             Documento Oficial de Autorización de Numeración Facturación Electrónica No. 18764113720312
+                                             que habilita desde FEIR 10001 hasta FEIR 20000. vence 06/08/2028
+
+                                              NIT 900.349.362-5 Resposables de IVA. Act Econ. 4530. Tarifa 5*1000. Esta factura se
+                                                asimila en todos sus efectos a una letra de cambio. (Art 774 del c.c.) Régimen de
+                                                                          Tributación Simple Código 47
+                                                                      Fecha y Hora de Generación: 03/11/2026 14:43:06
+
+
+CLIENTE         NEW REPUESTOS S.A.S
+                                                                       FECHA FACTURA                                      03-nov-26
+NIT             901922026 6
+                                                                       FECHA VENCIMIENTO                                  03-dic-26
+DIRECCION       CR 25 13 27
+                3128199879                                             VENDEDOR                               HERNAN DARIO RESTREP
+TELEFONO
+CIUDAD          Manizales                                              FORMA DE PAGO                          Credito 30 DIAS
+
+Item      Referencia                                    Descripción                                              Cant     Valor Unitario     Total
+ 1     560277/315910:0 AMORTIGUADOR DEL VW GOLF MK7 350389 SACHS                                                   2,00        325.000       650.000
+ 2     BMM0630AY       BOMBA AGUA FOX CROSSFOX GOLF4 1.6 FABIA MAGNETI                                             2,00         65.000       130.000
+ 3     20134           BOMBA AGUA JETTA4 SCHADEK                                                                   2,00         75.000       150.000
+ 4     032GE/E8424     BOMBA GASOLINA JETTA Y GOLF 4 HERKO                                                         1,00        175.000       175.000
+ 5     PK100180          BRIDA TERMOSTATICA COMPLETA GOL FOX VALCLEI BRASIL                                        3,00        169.000       507.000
+ 6     5U0121407         DEPOSITO AGUA GOL FOX CROSSFOX (11416) FLORIO BRASIL                                      3,00         38.000       114.000
+ 7     CVMV2502          INSTALACION ALTA FOX POLO SEDAN 2002 MAGNETI                                              4,00         69.000       276.000
+ 8     EMM2021           MOTOVENTILADOR VW NUEVO GOL CROSSFOX MAGNETI                                              2,00        178.000       356.000
+ 9     N1075             ROTULA DER GOL 5 SAVEIRO VOYAGE CROSSFOX NAKATA                                           5,00          30.000      150.000
+ 10    N1074             ROTULA IZQ GOL 5 SAVEIRO VOYAGE CROSSFOX NAKATA                                           5,00          30.000      150.000
+ 11    N97001            TERMINAL DIR DER JETTA4 NUEVO GOL 5 VOYAGE NAKATA                                         4,00          18.000       72.000
+ 12    N97000            TERMINAL DIR IZQ JETTA4 NUEVO GOL 5 VOYAGE NAKATA                                         4,00          18.000       72.000
+ 13    NBJ1011DP         TIJERA DER NVO GOL C/BUJES C/ROTULA NAKATA                                                2,00          92.000      184.000
+ 14    NBJ1011EP         TIJERA IZQ NVO GOL C/BUJES C/ROTULA NAKATA                                                1,00          92.000       92.000
+ 15    NBJ1009           TIJERA JETTA4 00>14 NAKATA                                                                2,00          92.000      184.000
+
+
+
+
+Valor en Letras                                                             SUBTOTAL                                                        3.262.000
+TRES MILLONES DOSCIENTOS NOVENTA Y NUEVE MIL QUINIENTOS TRECE DESCUENTO                                                                       489.300
+PESOS M/CTE                                                                 IVA                                                               526.813
+FAVOR GIRAR CHEQUE CRUZADO A NOMBRE DE IMPORT REPUESTOS EL RETEFUENTE                                                                               0
+ESCARABAJO SAS. EN CASO DE TRANSFERENCIA O CONSIGNACION                     RETEIVA                                                                 0
+    DAVIVIENDA CTA CTE No. 000969998277 - AV VILLAS CTA CTE No. 370-00288-3 RETEICA                                                                 0
+                                                                            TOTAL FACTURA                                                   3.299.513
+                                                                            TOTAL ITEM                                                 15
+
+                 Recibido Por_____________________                                               Firma Responsable________________
+
+
+
+                                 CC PORTO SABANA 80 BG 55 Teléfono 601 0242407
+                                                   Cel 3162280287 Correo Electrónico:
+                facturacion@importrepuestos.com.co/pedidos@importrepuestos.com.co                           Cota-Cundinamarca
+ Documento de Contingencia
+

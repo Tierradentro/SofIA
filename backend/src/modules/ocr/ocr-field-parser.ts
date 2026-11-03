@@ -134,7 +134,8 @@ function normalizarFolio(bruto: string): string {
 }
 
 /** Referencia de producto válida (I26: admite '/' — p. ej. "10086/10094"). */
-const REF_RE = /^[A-Z0-9][A-Z0-9\-_./]{2,24}$/i;
+// I64b: las referencias de WO pueden traer separador ':' (p. ej. 560277/315910:0 truncado de 560277/315910:009).
+const REF_RE = /^[A-Z0-9][A-Z0-9\-_./:]{2,24}$/i;
 
 /** Rótulos de cabecera/tabla que NUNCA son referencias de producto. */
 const ROTULOS_RE =

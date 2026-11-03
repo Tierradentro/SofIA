@@ -147,6 +147,28 @@ describe('OcrFieldParser', () => {
     });
   });
 
+
+  it('I64b: referencia con dos puntos de WO ("560277/315910:0") no se pierde (FEIR10325)', () => {
+    // Texto tal como lo devuelve `pdftotext -layout` de la factura real FEIR
+    // 10325. El primer ítem tiene referencia con ':' (código truncado de
+    // 560277/315910:009) y antes del ajuste se descartaba la línea completa.
+    const texto = readFileSync(
+      join(__dirname, '../../../test/fixtures/factura-venta-feir10325.txt'),
+      'utf8',
+    );
+    const r = parser.parse(texto, DocumentType.FACTURA_VENTA);
+    expect(r.numeroFactura).toBe('FEIR10325');
+    expect(r.items).toHaveLength(15);
+    expect(r.items[0]).toEqual({
+      referencia: '560277/315910:0',
+      descripcion: 'AMORTIGUADOR DEL VW GOLF MK7 350389 SACHS',
+      cantidad: 2,
+      unidad: 'UND',
+      valorUnitario: 325000,
+      valorTotal: 650000,
+    });
+  });
+
   it('I26: factura IRE con 16 ítems en columnas anchas (FE9832)', () => {
     const texto = readFileSync(
       join(__dirname, '../../../test/fixtures/factura-venta-fe9832.txt'),
