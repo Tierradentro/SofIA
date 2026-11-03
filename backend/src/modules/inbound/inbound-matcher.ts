@@ -127,6 +127,22 @@ export class InboundMatcher {
     }
     return { producto: null, criterio: null };
   }
+
+  /**
+   * I64: ¿la referencia del documento corresponde a `codigo`? Igualdad o
+   * truncamiento (≥4 caracteres útiles compartidos como prefijo, en
+   * cualquier dirección — World Office recorta el campo del código).
+   */
+  esReferenciaDe(referencia: string, codigo: string): boolean {
+    const ref = normalizarCodigo(referencia);
+    const val = normalizarCodigo(codigo);
+    if (!ref || !val) return false;
+    if (ref === val) return true;
+    if (ref.length >= 4 && val.length >= 4) {
+      return val.startsWith(ref) || ref.startsWith(val);
+    }
+    return false;
+  }
 }
 
 /** I39: normalización de descripciones para el cruce exacto tolerante. */

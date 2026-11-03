@@ -201,6 +201,32 @@ describe('Pedidos — factura con códigos truncados (I60) y ajuste de precios (
     expect(rechazo.body.code).toBe('FACTURA_CON_DIFERENCIAS');
   });
 
+  it('I64: el código truncado con separadores de WO aprueba el pedido', async () => {
+    // Caso real reportado: WO trunca '560277/315910:009' a '560277/315910:0'
+    // en la factura PDF. Debe cruzar y aprobar.
+    await crearProducto('560277/315910:009', 10, 'EMPACADURA CULATA MOTOR', '7560277');
+    const pedido = await crearPedido([{ referencia: '560277/315910:009', cantidad: 2 }]);
+    await alistarCompleto(pedido.id, '7560277', 2);
+
+    const ocrId = await ocrFacturaWo([
+      { referencia: '560277/315910:0', descripcion: 'EMPACADURA CULATA MOTOR', cantidad: 2 },
+    ]);
+    const aprob = await t.http
+      .post(`/api/v1/orders/${pedido.id}/invoice`)
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ ocrDocumentId: ocrId });
+    expect(aprob.status).toBe(201);
+    expect(aprob.body.estado).toBe('APROBADO');
+
+    const aud = await t.dataSource.query(
+      `SELECT valor_nuevo FROM audit_logs WHERE tabla='Pedidos' AND registro_id=$1 AND accion='PEDIDO_APROBADO'`,
+      [pedido.id],
+    );
+    expect(aud[0].valor_nuevo.crucesParciales).toEqual([
+      { referencia: '560277/315910:0', codigo: '560277/315910:009', criterio: 'CODIGO_PARCIAL' },
+    ]);
+  });
+
   it('I61: el Administrador ajusta precios en cualquier estado; otros roles no', async () => {
     const pedido = await crearPedido([
       { referencia: 'WOTRUNCADO-001', cantidad: 3, valorUnidad: 5000 },

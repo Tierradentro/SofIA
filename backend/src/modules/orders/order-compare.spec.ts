@@ -36,4 +36,61 @@ describe('compararFacturaConPedido', () => {
     );
     expect(d).toHaveLength(0);
   });
+
+  describe('I64: comparación tolerante a códigos truncados (World Office)', () => {
+    // Comparador con la misma regla del matcher: igualdad o prefijo ≥4 útiles
+    const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, '');
+    const esMismo = (a: string, b: string) => {
+      const x = norm(a); const y = norm(b);
+      if (!x || !y) return false;
+      if (x === y) return true;
+      return x.length >= 4 && y.length >= 4 && (y.startsWith(x) || x.startsWith(y));
+    };
+
+    it('código truncado en la factura equivale al código del pedido', () => {
+      const d = compararFacturaConPedido(
+        [{ codigo: '560277/315910:009', cantidad: 2 }],
+        [{ codigo: '560277/315910:0', cantidad: 2 }],
+        esMismo,
+      );
+      expect(d).toHaveLength(0);
+    });
+
+    it('líneas duplicadas con referencia completa y truncada suman una sola vez', () => {
+      const d = compararFacturaConPedido(
+        [{ codigo: '560277/315910:009', cantidad: 3 }],
+        [
+          { codigo: '560277/315910:009', cantidad: 2 },
+          { codigo: '560277/315910:0', cantidad: 1 },
+        ],
+        esMismo,
+      );
+      expect(d).toHaveLength(0);
+    });
+
+    it('cantidad distinta aun con código truncado sigue detectándose', () => {
+      const d = compararFacturaConPedido(
+        [{ codigo: '560277/315910:009', cantidad: 5 }],
+        [{ codigo: '560277/315910:0', cantidad: 2 }],
+        esMismo,
+      );
+      expect(d).toEqual([
+        { codigo: '560277/315910:009', cantidadPedida: 5, cantidadFacturada: 2, tipo: 'CANTIDAD_DIFERENTE' },
+      ]);
+    });
+
+    it('un extra real (sin relación con el pedido) sigue detectándose', () => {
+      const d = compararFacturaConPedido(
+        [{ codigo: '560277/315910:009', cantidad: 2 }],
+        [
+          { codigo: '560277/315910:0', cantidad: 2 },
+          { codigo: 'OTRO-CODIGO-99', cantidad: 1 },
+        ],
+        esMismo,
+      );
+      expect(d).toEqual([
+        { codigo: 'OTRO-CODIGO-99', cantidadPedida: 0, cantidadFacturada: 1, tipo: 'EXTRA_EN_FACTURA' },
+      ]);
+    });
+  });
 });

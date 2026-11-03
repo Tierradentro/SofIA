@@ -1,3 +1,8 @@
+export type InvoiceComparator = (
+  codigoPedido: string,
+  codigoFactura: string,
+) => boolean;
+
 /** Resultado de comparar la factura de venta contra el pedido (HU-032). */
 export interface InvoiceDifference {
   codigo: string;
@@ -15,20 +20,37 @@ export interface InvoiceDifference {
 export function compararFacturaConPedido(
   itemsPedido: { codigo: string; cantidad: number }[],
   itemsFactura: { codigo: string; cantidad: number }[],
+  esMismoCodigo: InvoiceComparator = (a, b) =>
+    a.trim().toUpperCase() === b.trim().toUpperCase(),
 ): InvoiceDifference[] {
   const diferencias: InvoiceDifference[] = [];
+  // I64: la cantidad facturada se acumula por EQUIVALENCIA de código — un
+  // producto que aparezca dos veces en la factura con referencias distintas
+  // (p. ej. una completa y otra truncada por World Office) suma una sola vez
+  // contra el pedido. Con el comparador por defecto (igualdad) el
+  // comportamiento es el de siempre.
   const facturaPorCodigo = new Map<string, number>();
   for (const f of itemsFactura) {
     const clave = f.codigo.trim().toUpperCase();
-    facturaPorCodigo.set(clave, (facturaPorCodigo.get(clave) ?? 0) + f.cantidad);
+    const existente = [...facturaPorCodigo.keys()].find((k) => esMismoCodigo(k, clave));
+    if (existente !== undefined) {
+      facturaPorCodigo.set(existente, facturaPorCodigo.get(existente)! + f.cantidad);
+    } else {
+      facturaPorCodigo.set(clave, f.cantidad);
+    }
   }
   const pedidoPorCodigo = new Map<string, number>();
   for (const p of itemsPedido) {
     const clave = p.codigo.trim().toUpperCase();
     pedidoPorCodigo.set(clave, (pedidoPorCodigo.get(clave) ?? 0) + p.cantidad);
   }
+  const encontrarFacturada = (codigo: string): number | undefined => {
+    if (facturaPorCodigo.has(codigo)) return facturaPorCodigo.get(codigo);
+    const eq = [...facturaPorCodigo.keys()].find((k) => esMismoCodigo(k, codigo));
+    return eq === undefined ? undefined : facturaPorCodigo.get(eq);
+  };
   for (const [codigo, pedida] of pedidoPorCodigo) {
-    const facturada = facturaPorCodigo.get(codigo);
+    const facturada = encontrarFacturada(codigo);
     if (facturada === undefined) {
       diferencias.push({ codigo, cantidadPedida: pedida, cantidadFacturada: 0, tipo: 'FALTANTE_EN_FACTURA' });
     } else if (facturada !== pedida) {
@@ -36,7 +58,10 @@ export function compararFacturaConPedido(
     }
   }
   for (const [codigo, facturada] of facturaPorCodigo) {
-    if (!pedidoPorCodigo.has(codigo)) {
+    const enPedido =
+      pedidoPorCodigo.has(codigo) ||
+      [...pedidoPorCodigo.keys()].some((k) => esMismoCodigo(k, codigo));
+    if (!enPedido) {
       diferencias.push({ codigo, cantidadPedida: 0, cantidadFacturada: facturada, tipo: 'EXTRA_EN_FACTURA' });
     }
   }
