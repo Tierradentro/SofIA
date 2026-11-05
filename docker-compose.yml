@@ -53,19 +53,13 @@ services:
       # no hay RUN_MIGRATIONS/SEED_ON_BOOT que las desactive por error.
     volumes:
       - files:/data
-    # AJ-006/I50: healthcheck con Node (mismo patrón del frontend; registra
-    # el error en State.Health.Log). /api/v1/health responde 200 apenas el
-    # puerto abre — la BD se conecta en segundo plano — y reporta "degradado"
-    # en el cuerpo mientras corren migraciones (readiness disponible sin
-    # tumbar el contenedor). Márgenes amplios para el arranque en frío.
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - "node -e \"http.get('http://127.0.0.1:3001/api/v1/health',r=>{console.log('health',r.statusCode);process.exit(r.statusCode<500?0:1)}).on('error',e=>{console.log('health-error',e.code||e.message);process.exit(1)})\""
-      interval: 10s
-      timeout: 8s
-      retries: 12
-      start_period: 30s
+    # I66: SIN healthcheck — se deshabilita el monitoreo continuo de
+    # /api/v1/health (Docker lo consultaba cada 10 s de forma permanente).
+    # El endpoint sigue disponible para diagnóstico manual puntual
+    # (`curl /api/v1/health` tras un redeploy), pero ya no hay sondeo
+    # automático. El arranque del backend abre el puerto de inmediato y la
+    # BD se conecta en segundo plano con reintentos (I37), por lo que los
+    # dependientes arrancan con service_started sin riesgo de bloqueo.
     depends_on:
       postgres:
         condition: service_healthy
@@ -110,9 +104,14 @@ services:
       timeout: 8s
       retries: 12
       start_period: 45s
+    # I66: el backend ya no tiene healthcheck (monitoreo de /api/v1/health
+    # deshabilitado), así que el orden de arranque vuelve a service_started.
+    # Es seguro: el frontend no consume API desde el servidor Next.js (todas
+    # las llamadas salen del navegador, AJ-002), y el backend abre su puerto
+    # apenas inicia con la BD conectándose en segundo plano (I37).
     depends_on:
       backend:
-        condition: service_healthy
+        condition: service_started
 
   nginx:
     restart: unless-stopped
@@ -144,16 +143,16 @@ services:
       timeout: 8s
       retries: 6
       start_period: 20s
-    # Esperar a que el backend esté SANO antes de enrutar tráfico (su health
-    # responde apenas abre el puerto). I50: el frontend vuelve a
-    # service_started — nginx NO debe bloquearse por él: con el resolver
-    # dinámico (I37c) re-resuelve y reintenta en cada petición, así el
-    # despliegue nunca se cae por un falso unhealthy del frontend (fue la
-    # causa del fracaso de I47/I48/I49) y el AJ-006 queda cumplido: EasyPanel
-    # vigila al proxy por /healthz, que no depende de backend ni frontend.
+    # I66: el backend ya no expone healthcheck (monitoreo deshabilitado), así
+    # que nginx arranca con service_started. El resolver dinámico (I37c)
+    # re-resuelve la IP del backend y reintenta en CADA petición, por lo que
+    # los segundos que tarda NestJS en abrir el puerto tras un redespliegue se
+    # cubren solos al reintentar desde el navegador. El healthcheck propio de
+    # nginx (/healthz) se mantiene: es el que evita los 502 de EasyPanel
+    # (I37b) y no depende de backend ni frontend (I50).
     depends_on:
       backend:
-        condition: service_healthy
+        condition: service_started
       frontend:
         condition: service_started
 
