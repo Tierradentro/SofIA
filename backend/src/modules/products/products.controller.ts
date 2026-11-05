@@ -100,10 +100,11 @@ export class ProductsController {
   /**
    * QA Func. 2.3: corregir un código mal asociado. Reemplazo transaccional
    * (desasocia el actual y asocia el nuevo en una sola operación), con
-   * auditoría del valor anterior/nuevo. Solo Generador/Administrador.
+   * auditoría del valor anterior/nuevo. I65e: también el Operador puede
+   * corregir los códigos de barras asociados.
    */
   @Put(':id/barcode')
-  @Roles(Role.GENERADOR, Role.ADMINISTRADOR)
+  @Roles(Role.OPERADOR, Role.GENERADOR, Role.ADMINISTRADOR)
   replaceBarcode(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: AssignBarcodeDto,

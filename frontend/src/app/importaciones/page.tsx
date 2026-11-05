@@ -35,6 +35,8 @@ interface ImportJob {
     actualizados?: number;
     direccionesAAgregar?: number;
     descartados?: number;
+    correosActualizados?: number;
+    incompletas?: number;
     conDiferencia?: number;
     productosNoExistentes?: string[];
     diferencias?: { codigo: string; actual: number; nueva: number; diferencia: number }[];
@@ -425,8 +427,19 @@ export default function ImportacionesPage() {
           <section className="mb-4 rounded-lg bg-white p-5 shadow">
             <h2 className="mb-3 font-semibold">2. Mapeo de columnas</h2>
             <p className="mb-3 text-sm text-slate-600">
-              Asigne cada columna del archivo a un campo destino. Requeridos:{' '}
-              <strong>{campos?.[tipo].requeridos.map((d) => ETIQUETA_CAMPO[d] ?? d).join(', ')}</strong>
+              Asigne cada columna del archivo a un campo destino.{' '}
+              {tipo === 'CLIENTES' ? (
+                <span>
+                  Llave: <strong>identificación</strong> (o nombre si no hay identificación).
+                  Puede importar un archivo con solo <strong>identificación + correo electrónico</strong>{' '}
+                  para actualizar el correo de los clientes existentes.
+                </span>
+              ) : (
+                <span>
+                  Requeridos:{' '}
+                  <strong>{campos?.[tipo].requeridos.map((d) => ETIQUETA_CAMPO[d] ?? d).join(', ')}</strong>
+                </span>
+              )}
             </p>
             {columnasSinEncabezado > 0 && (
               <p className="mb-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -500,6 +513,14 @@ export default function ImportacionesPage() {
                 <>
                   <li>Clientes nuevos: {job.resumen?.nuevos}</li>
                   <li>Direcciones a agregar: {job.resumen?.direccionesAAgregar}</li>
+                  {'correosActualizados' in (job.resumen ?? {}) && (
+                    <li>Correos actualizados: {job.resumen?.correosActualizados}</li>
+                  )}
+                  {'incompletas' in (job.resumen ?? {}) && (
+                    <li className="text-amber-700">
+                      Incompletas (cliente nuevo sin nombre): {job.resumen?.incompletas}
+                    </li>
+                  )}
                   <li className="text-amber-700">
                     Descartados (cliente y dirección ya existen): {job.resumen?.descartados}
                   </li>

@@ -86,6 +86,8 @@ interface UbicacionProducto {
   empresa?: string;
   cantidad: number;
   esOficial: boolean;
+  /** I65f: pedidos en proceso de packing asociados (bahía de empaque). */
+  pedidos?: { numero: string; estado: string; cantidad: number }[];
 }
 interface RackDetalle {
   rack: { id: string; numero: number; alias: string; niveles: number };
@@ -754,6 +756,11 @@ function MapaPage() {
                           <span className="text-slate-700">
                             <span className="font-medium">{p.codigo}</span> · {p.descripcion}
                             {p.empresa && <span className="ml-1 text-xs text-slate-400">({p.empresa})</span>}
+                            {p.pedidos && p.pedidos.length > 0 && (
+                              <span className="mt-0.5 block text-xs text-sofia-700">
+                                {p.pedidos.map((pd) => `Pedido ${pd.numero} (${pd.cantidad} und)`).join(' · ')}
+                              </span>
+                            )}
                           </span>
                           <Insignia tono="azul">{p.cantidad} und</Insignia>
                         </li>

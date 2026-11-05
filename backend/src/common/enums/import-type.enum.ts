@@ -29,9 +29,12 @@ export const IMPORT_FIELDS: Record<
     opcionales: [],
   },
   [ImportType.CLIENTES]: {
-    requeridos: ['nombre'],
+    // I65g: ya no hay requeridos fijos — cada fila debe tener identificación
+    // o nombre (lo valida el validador). Así se puede importar SOLO
+    // identificación + email para actualizar el correo de clientes existentes.
+    requeridos: [],
     // I41: + email (correo electrónico del cliente, opcional)
-    opcionales: ['identificacion', 'direccion', 'telefonos', 'ciudad', 'email'],
+    opcionales: ['identificacion', 'nombre', 'direccion', 'telefonos', 'ciudad', 'email'],
   },
   [ImportType.COMERCIALES]: {
     requeridos: ['nombre'],

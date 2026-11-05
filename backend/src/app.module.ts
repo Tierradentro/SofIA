@@ -31,6 +31,7 @@ import { PqrsModule } from './modules/pqrs/pqrs.module';
 import { InventoriesModule } from './modules/inventories/inventories.module';
 import { ExternalApiModule } from './modules/external-api/external-api.module';
 import { WarehousesModule } from './modules/warehouses/warehouses.module';
+import { ConciliacionesModule } from './modules/conciliaciones/conciliaciones.module';
 
 
 /**
@@ -86,6 +87,7 @@ import { WarehousesModule } from './modules/warehouses/warehouses.module';
     InventoriesModule,
     ExternalApiModule,
     WarehousesModule,
+    ConciliacionesModule,
   ],
   controllers: [AppController],
 })

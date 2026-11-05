@@ -117,6 +117,20 @@ export class OrdersController {
     return this.orders.finalizarPicking(id, user);
   }
 
+  /**
+   * I65b: devuelve un pedido ALISTADO a ABIERTO para correcciones.
+   * Disponible para todos los perfiles. Las unidades alistadas salen de la
+   * bahía de empaque de regreso a su ubicación y se liberan los bloqueos.
+   */
+  @Post(':id/revertir-alistamiento')
+  @Roles(Role.GENERADOR, Role.OPERADOR, Role.COMERCIAL, Role.ADMINISTRADOR)
+  revertirAlistamiento(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.orders.revertirAlistamiento(id, user);
+  }
+
   /** Producto no encontrado o cantidades inferiores → Pendiente_Corrección. */
   @Post(':id/reportar')
   @Roles(Role.OPERADOR, Role.ADMINISTRADOR)

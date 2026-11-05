@@ -357,6 +357,21 @@ function DespachosContenido() {
     } else setError(mensajeError(body, 'No se pudo cerrar la caja'));
   }
 
+  /** I65c: eliminar una caja creada por error (despacho no despachado). */
+  async function eliminarCaja(c: { id: string; boxId: string; estado: string; numeroEnDespacho: number }) {
+    if (!despacho) return;
+    const aviso = c.estado === 'CERRADA'
+      ? 'La caja está CERRADA: al eliminarla las unidades regresan a la bahía de empaque y quedan libres para una nueva caja. ¿Continuar?'
+      : '¿Eliminar la caja? Los elementos registrados quedan libres para una nueva caja.';
+    if (!window.confirm(`Eliminar la caja ${c.boxId} (Caja ${c.numeroEnDespacho}). ${aviso}`)) return;
+    const { status, body } = await api<any>(`/dispatches/${despacho.id}/boxes/${c.id}`, { method: 'DELETE' });
+    if (status === 200) {
+      setMensaje(`Caja ${body.eliminada} eliminada (${body.elementosLiberados} elementos libres).`);
+      if (cajaSel === c.id) setCajaSel('');
+      cargarDetalle(despacho.id);
+    } else setError(mensajeError(body, 'No se pudo eliminar la caja'));
+  }
+
   async function verEtiqueta(boxPk: string) {
     limpiarAvisos();
     if (!despacho) return;
@@ -567,6 +582,7 @@ function DespachosContenido() {
                     ) : (
                       <button onClick={() => verEtiqueta(c.id)} className="rounded bg-slate-600 px-2 py-1 text-xs text-white">Etiqueta</button>
                     )}
+                    <button onClick={() => eliminarCaja(c)} title="Eliminar la caja creada por error; los elementos quedan libres" className="rounded bg-red-100 px-2 py-1 text-xs text-red-700 hover:bg-red-200">Eliminar</button>
                   </span>
                 </li>
               ))}
@@ -606,9 +622,14 @@ function DespachosContenido() {
                       <span className="text-slate-500"> · {c.items.map((i) => `${i.codigo}×${i.cantidad}`).join(', ')}</span>
                     )}
                   </span>
-                  {c.estado === 'CERRADA' && (
-                    <button onClick={() => verEtiqueta(c.id)} className="rounded bg-slate-600 px-2 py-1 text-xs text-white">Etiqueta</button>
-                  )}
+                  <span className="flex gap-2">
+                    {c.estado === 'CERRADA' && (
+                      <button onClick={() => verEtiqueta(c.id)} className="rounded bg-slate-600 px-2 py-1 text-xs text-white">Etiqueta</button>
+                    )}
+                    {despacho.estado !== 'DESPACHADO' && despacho.estado !== 'CANCELADO' && (esGenerador || esOperador) && (
+                      <button onClick={() => eliminarCaja(c)} title="Eliminar la caja creada por error; los elementos quedan libres" className="rounded bg-red-100 px-2 py-1 text-xs text-red-700 hover:bg-red-200">Eliminar</button>
+                    )}
+                  </span>
                 </li>
               ))}
             </ul>

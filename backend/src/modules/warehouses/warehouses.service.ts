@@ -217,6 +217,34 @@ export class WarehousesService {
       where: { areaId },
       relations: ['product', 'product.empresa'],
     });
+
+    // I65f: en la bahía de empaque cada producto indica a qué pedido(s) en
+    // proceso de packing pertenece (unidades alistadas pendientes de despachar).
+    let pedidosPorProducto = new Map<string, any[]>();
+    if (area.tipo === 'BAHIA_EMPAQUE' && ubicaciones.length > 0) {
+      const filas: { productId: string; numero: string; estado: string; cantidad: number }[] =
+        await this.dataSource.query(
+          `SELECT oi.product_id AS "productId",
+                  o.numero AS numero,
+                  o.estado AS estado,
+                  SUM(oi.cantidad_alistada - oi.cantidad_despachada)::int AS cantidad
+             FROM order_items oi
+             JOIN orders o ON o.id = oi.order_id
+            WHERE oi.product_id = ANY($1)
+              AND o.estado NOT IN ('CANCELADO', 'DESPACHADO')
+              AND oi.cantidad_alistada - oi.cantidad_despachada > 0
+            GROUP BY oi.product_id, o.numero, o.estado
+            ORDER BY o.numero`,
+          [ubicaciones.map((u) => u.productId)],
+        );
+      pedidosPorProducto = filas.reduce((map, f) => {
+        const lista = map.get(f.productId) ?? [];
+        lista.push({ numero: f.numero, estado: f.estado, cantidad: f.cantidad });
+        map.set(f.productId, lista);
+        return map;
+      }, new Map<string, any[]>());
+    }
+
     return {
       area,
       productos: ubicaciones.map((u) => ({
@@ -227,6 +255,7 @@ export class WarehousesService {
         empresa: u.product?.empresa?.nombre,
         cantidad: u.cantidad,
         esOficial: u.esOficial,
+        pedidos: pedidosPorProducto.get(u.productId) ?? [],
       })),
     };
   }

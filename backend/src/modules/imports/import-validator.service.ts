@@ -53,6 +53,23 @@ export class ImportValidatorService {
       }
     }
 
+    // I65g: clientes se identifican por identificación (llave) o por nombre;
+    // al menos uno de los dos debe estar mapeado (p. ej. un archivo solo con
+    // identificación + email para actualizar correos).
+    if (tipo === ImportType.CLIENTES) {
+      const destinos = Object.values(mapeo);
+      if (!destinos.includes('identificacion') && !destinos.includes('nombre')) {
+        throw new BadRequestException({
+          statusCode: 400,
+          code: 'COLUMNAS_FALTANTES',
+          message:
+            'Faltan columnas obligatorias sin mapear: identificacion o nombre (se requiere al menos una como llave)',
+          columnasFaltantes: ['identificacion|nombre'],
+          columnasDisponibles: columnas,
+        });
+      }
+    }
+
     // Columnas faltantes: requeridos sin mapear
     const faltantes = campos.requeridos.filter(
       (req) => !Object.values(mapeo).includes(req),
@@ -82,6 +99,10 @@ export class ImportValidatorService {
 
       for (const req of campos.requeridos) {
         if (!datos[req]) errores.push(`Campo obligatorio '${req}' vacío`);
+      }
+      // I65g: en clientes la fila debe traer identificación o nombre.
+      if (tipo === ImportType.CLIENTES && !datos['identificacion'] && !datos['nombre']) {
+        errores.push(`La fila debe tener identificación o nombre del cliente`);
       }
       if (tipo === ImportType.CANTIDADES && datos['cantidad']) {
         const n = Number(datos['cantidad']);

@@ -19,6 +19,7 @@ describe('Productos (e2e)', () => {
   let t: TestApp;
   let generadorToken: string;
   let operadorToken: string;
+  let comercialToken: string;
   let adminToken: string;
   let ireId: string;
   let icvId: string;
@@ -64,6 +65,7 @@ describe('Productos (e2e)', () => {
     icvId = companies.find((c: any) => c.nombre === 'ICV').id;
     generadorToken = await crearUsuario('generador.i3', 'GENERADOR');
     operadorToken = await crearUsuario('operador.i3', 'OPERADOR');
+    comercialToken = await crearUsuario('comercial.i3', 'COMERCIAL');
   });
 
   afterAll(async () => {
@@ -237,10 +239,17 @@ describe('Productos (e2e)', () => {
     expect(logs[0].valor_anterior.barcode).toBe('770MAL000001');
     expect(logs[0].valor_nuevo.barcode).toBe('770BIEN00002');
 
-    // RBAC negativo: Operador no puede corregir
-    const prohibido = await t.http
+    // I65e: el Operador SÍ puede corregir; el Comercial sigue sin poder
+    const porOperador = await t.http
       .put(`/api/v1/products/${p.id}/barcode`)
       .set('Authorization', `Bearer ${operadorToken}`)
+      .send({ barcode: '770OPER00003', origen: 'MANUAL' });
+    expect(porOperador.status).toBe(200);
+    expect(porOperador.body.codigoBarras.barcode).toBe('770OPER00003');
+
+    const prohibido = await t.http
+      .put(`/api/v1/products/${p.id}/barcode`)
+      .set('Authorization', `Bearer ${comercialToken}`)
       .send({ barcode: 'OTRO', origen: 'MANUAL' });
     expect(prohibido.status).toBe(403);
   });

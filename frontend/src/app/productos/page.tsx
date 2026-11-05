@@ -129,7 +129,8 @@ export default function ProductosPage() {
   const esAdmin = sesion?.usuario.rol === 'ADMINISTRADOR';
   // I35: el Operador no ve las existencias en la vista de productos.
   const esOperador = sesion?.usuario.rol === 'OPERADOR';
-  const puedeEditar = esGenerador || esAdmin;
+  // I65e: el Operador también corrige códigos de barras asociados
+  const puedeEditar = esGenerador || esAdmin || esOperador;
   const puedeBarcode = ['OPERADOR', 'GENERADOR'].includes(sesion?.usuario.rol || '');
   // I35: al abrir la ficha se desplaza la vista hasta el cuadro.
   const fichaRef = useRef<HTMLDivElement>(null);

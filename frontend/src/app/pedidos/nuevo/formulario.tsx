@@ -122,8 +122,34 @@ export function NuevoPedido({
   const [mensaje, setMensaje] = useState('');
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
+  // I65d: la empresa se muestra como botón; el cambio se hace desde un
+  // despliegue con botones por empresa (antes era una lista desplegable y
+  // quedaba seleccionada una empresa sin que el usuario lo notara).
+  const [mostrarEmpresas, setMostrarEmpresas] = useState(false);
 
   const cliente = clientes.find((c) => c.id === clienteId) ?? null;
+  const empresaActual = empresas.find((e) => e.id === empresaId) ?? null;
+
+  // I65d: cambiar de empresa desde el despliegue. Si ya hay productos
+  // digitados se pide confirmación (se buscaron con la empresa anterior).
+  function elegirEmpresa(id: string) {
+    if (id === empresaId) {
+      setMostrarEmpresas(false);
+      return;
+    }
+    const hayItems = items.some((i) => i.referencia.trim() || i.descripcion.trim());
+    if (
+      hayItems &&
+      !window.confirm(
+        'Cambiar de empresa reinicia los productos digitados (se buscaron con la empresa actual). ¿Continuar?',
+      )
+    ) {
+      return;
+    }
+    if (hayItems) setItems([{ ...ITEM_VACIO }]);
+    onCambiarEmpresa(id);
+    setMostrarEmpresas(false);
+  }
 
   // QA Func. 4.1: cargar las direcciones del cliente y preseleccionar la principal
   useEffect(() => {
@@ -355,14 +381,54 @@ export function NuevoPedido({
           numero="Nueva"
           estado="DIGITACION"
           empresa={
-            <select value={empresaId} onChange={(e) => onCambiarEmpresa(e.target.value)}
-              className={docInput} required>
-              {empresas.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.nombre}{e.identificacion ? ` (NIT: ${e.identificacion})` : ''}
-                </option>
-              ))}
-            </select>
+            // I65d: botón bien visible con la empresa del pedido; al hacer
+            // clic se despliega la visual de botones para cambiarla.
+            <div>
+              <button
+                type="button"
+                onClick={() => setMostrarEmpresas((v) => !v)}
+                className="flex w-full items-center justify-between gap-3 rounded-lg border-2 border-sofia-700 bg-sofia-50 px-4 py-2.5 text-left shadow-sm hover:bg-sofia-100"
+              >
+                <span>
+                  <span className="block text-sm font-bold text-sofia-900">
+                    {empresaActual?.nombre ?? 'Seleccione la empresa del pedido'}
+                  </span>
+                  {empresaActual?.identificacion && (
+                    <span className="text-xs text-slate-500">NIT: {empresaActual.identificacion}</span>
+                  )}
+                </span>
+                <span className="shrink-0 rounded bg-sofia-700 px-2.5 py-1 text-xs font-semibold text-white">
+                  {mostrarEmpresas ? 'Cerrar ▲' : 'Cambiar empresa ▼'}
+                </span>
+              </button>
+              {mostrarEmpresas && (
+                <div className="mt-2 grid gap-2 rounded-lg border-2 border-sofia-200 bg-white p-3 sm:grid-cols-2">
+                  {empresas.map((e) => {
+                    const activa = e.id === empresaId;
+                    return (
+                      <button
+                        key={e.id}
+                        type="button"
+                        onClick={() => elegirEmpresa(e.id)}
+                        className={`rounded-lg border-2 px-3 py-2 text-left text-sm transition-colors ${
+                          activa
+                            ? 'border-sofia-700 bg-sofia-700 font-semibold text-white'
+                            : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-sofia-400 hover:bg-sofia-50'
+                        }`}
+                      >
+                        <span className="block font-semibold">{e.nombre}</span>
+                        {e.identificacion && (
+                          <span className={`text-xs ${activa ? 'text-sofia-100' : 'text-slate-400'}`}>
+                            NIT: {e.identificacion}
+                          </span>
+                        )}
+                        {activa && <span className="mt-0.5 block text-xs">✓ Empresa del pedido</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           }
         />
 

@@ -571,12 +571,18 @@ export class DispatchesService {
     }
     return this.dataSource.transaction(async (em) => {
       const boxId = await this.siguienteBoxId(em);
-      const count = await em.count(Box, { where: { dispatchId } });
+      // I65c: ordinal = máximo + 1 (con count+1, eliminar una caja intermedia
+      // duplicaba el número visible "Caja N"; con max+1 solo se recicla el
+      // ordinal de la última caja, que es el caso de reciclaje acordado).
+      const [{ max: maxOrdinal }] = await em.query(
+        `SELECT COALESCE(MAX(numero_en_despacho), 0) AS max FROM boxes WHERE dispatch_id = $1`,
+        [dispatchId],
+      );
       const box = await em.save(
         em.create(Box, {
           boxId,
           dispatchId,
-          numeroEnDespacho: count + 1,
+          numeroEnDespacho: Number(maxOrdinal) + 1,
           estado: BoxStatus.ABIERTA,
           createdBy: user.id,
         }),
@@ -1051,6 +1057,89 @@ export class DispatchesService {
     const d = await this.dataSource.getRepository(Dispatch).findOne({ where: { id } });
     if (!d) throw new NotFoundException('Despacho no encontrado');
     return d;
+  }
+
+  /**
+   * I65c: eliminar una caja creada por error.
+   *  - Solo si el despacho no fue despachado ni cancelado.
+   *  - Caja ABIERTA: los elementos solo acumulaban conteo; se liberan.
+   *  - Caja CERRADA: se revierte el cierre (entrada de Cantidad y bloqueada,
+   *    regreso a la bahía de empaque y decremento de cantidad_despachada),
+   *    igual que la cancelación del despacho pero por caja.
+   *  - El consecutivo global CJA-###### se recicla cuando la caja eliminada
+   *    era la última asignada; el ordinal "Caja N" se recicla por max+1.
+   */
+  async deleteBox(dispatchId: string, boxPk: string, user: Usuario) {
+    const dispatch = await this.findDispatch(dispatchId);
+    if (
+      dispatch.estado === DispatchStatus.DESPACHADO ||
+      dispatch.estado === DispatchStatus.CANCELADO
+    ) {
+      throw new BadRequestException(
+        `No se puede eliminar una caja de un despacho ${dispatch.estado}`,
+      );
+    }
+    const box = await this.findBox(dispatchId, boxPk);
+    const items = await this.dataSource.getRepository(BoxItem).find({ where: { boxId: box.id } });
+
+    await this.dataSource.transaction(async (em) => {
+      if (box.estado === BoxStatus.CERRADA && items.length > 0) {
+        const areaEmpaqueId = await asegurarAreaEmpaque(em);
+        for (const it of items) {
+          await this.movements.apply(
+            {
+              productId: it.productId,
+              tipo: MovementType.DESPACHO_CIERRE_CAJA,
+              cantidadDelta: it.cantidad,
+              cantidadBloqueadaDelta: it.cantidad,
+              docTipo: 'DESPACHO',
+              docId: dispatch.id,
+              usuarioId: user.id,
+            },
+            em,
+          );
+          if (areaEmpaqueId) {
+            await sumarEnEmpaque(em, it.productId, areaEmpaqueId, it.cantidad);
+          }
+          await em.query(
+            `UPDATE order_items SET cantidad_despachada = cantidad_despachada - $2 WHERE id = $1`,
+            [it.orderItemId, it.cantidad],
+          );
+        }
+      }
+      await em.delete(BoxItem, { boxId: box.id });
+      await em.delete(Box, { id: box.id });
+
+      // Reciclaje del consecutivo global: solo si la caja eliminada era la
+      // última (evita reusar un boxId que aún existe en otra etiqueta).
+      const numeroCaja = Number(box.boxId.replace(/^CJA-/, ''));
+      if (Number.isInteger(numeroCaja)) {
+        await em.query(
+          `UPDATE box_counter SET ultimo = (
+             SELECT COALESCE(MAX(CAST(SUBSTRING(b.box_id FROM 5) AS INTEGER)), 0)
+             FROM boxes b
+           ) WHERE id = 1 AND ultimo = $1`,
+          [numeroCaja],
+        );
+      }
+
+      await this.audit.log(
+        {
+          usuarioId: user.id,
+          usuarioUsername: user.username,
+          accion: 'DESPACHO_CAJA_ELIMINADA',
+          tabla: TABLA,
+          registroId: dispatch.id,
+          valorAnterior: {
+            caja: box.boxId,
+            estado: box.estado,
+            items: items.map((i) => ({ codigo: i.codigo, cantidad: i.cantidad })),
+          },
+        },
+        em,
+      );
+    });
+    return { eliminada: box.boxId, elementosLiberados: items.reduce((a, i) => a + i.cantidad, 0) };
   }
 
   private async findBox(dispatchId: string, boxPk: string): Promise<Box> {

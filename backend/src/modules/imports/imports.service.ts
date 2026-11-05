@@ -521,6 +521,10 @@ export class ImportsService {
     let direccionesAgregadas = 0;
     let descartados = 0;
     let omitidasMaximo = 0;
+    // I65g: filas que solo actualizan correo de un cliente existente y
+    // filas incompletas (cliente nuevo sin nombre no se puede crear).
+    let correosActualizados = 0;
+    let incompletas = 0;
 
     await this.dataSource.transaction(async (em) => {
       const repoClientes = em.getRepository(Client);
@@ -558,6 +562,13 @@ export class ImportsService {
           : await repoClientes.findOne({ where: { nombre: limpio.nombre } });
 
         if (!cliente) {
+          // I65g: un cliente nuevo necesita al menos el nombre (la columna es
+          // NOT NULL). Una fila con solo identificación + email de un cliente
+          // que no existe se reporta como incompleta, no revienta el lote.
+          if (!limpio.nombre) {
+            incompletas++;
+            continue;
+          }
           cliente = await repoClientes.save(repoClientes.create({ ...limpio, email }));
           nuevos++;
           if (direccion) {
@@ -580,6 +591,7 @@ export class ImportsService {
         if (email && cliente.email !== email) {
           cliente.email = email;
           await repoClientes.save(cliente);
+          correosActualizados++;
         }
 
         // Cliente existente: la fila solo puede aportar una dirección nueva.
@@ -609,7 +621,7 @@ export class ImportsService {
         direccionesAgregadas++;
       }
     });
-    return { nuevos, direccionesAgregadas, descartados, omitidasMaximo };
+    return { nuevos, direccionesAgregadas, descartados, omitidasMaximo, correosActualizados, incompletas };
   }
 
   private async findJob(id: string): Promise<ImportJob> {

@@ -71,6 +71,8 @@ const NAV_ADMIN: ItemNav[] = [
   { href: '/admin/dispositivos', etiqueta: 'Dispositivos', icono: MonitorSmartphone, roles: ['ADMINISTRADOR'] },
   { href: '/empresas', etiqueta: 'Empresas', icono: Building2, roles: ['ADMINISTRADOR'] },
   { href: '/importaciones', etiqueta: 'Importaciones', icono: FileUp, roles: ['ADMINISTRADOR'] },
+  // I65h: conciliación WO vs. SofIA (existencias, precios y campos asociados)
+  { href: '/admin/conciliaciones', etiqueta: 'Conciliaciones', icono: ArrowLeftRight, roles: ['ADMINISTRADOR'] },
   { href: '/ocr', etiqueta: 'Procesar OCR', icono: ScanText, roles: ['ADMINISTRADOR'] },
   { href: '/admin/auditoria', etiqueta: 'Auditoría', icono: ClipboardList, roles: ['ADMINISTRADOR'] },
   { href: '/admin/transportadoras', etiqueta: 'Transportadoras', icono: Container, roles: ['ADMINISTRADOR'] },

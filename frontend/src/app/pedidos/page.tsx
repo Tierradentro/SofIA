@@ -1011,6 +1011,20 @@ function PedidosContenido() {
               </div>
             )}
 
+            {/* I65b: devolver Alistado → Abierto para correcciones (todos los perfiles) */}
+            {pedido.estado === 'ALISTADO' && (
+              <button
+                onClick={() => {
+                  if (!window.confirm('¿Devolver el pedido a Abierto? Los productos alistados saldrán de la bahía de empaque y regresarán a su ubicación para poder corregir el pedido.')) return;
+                  accion(() => api(`/orders/${pedido.id}/revertir-alistamiento`, { method: 'POST' }), 'Pedido devuelto a Abierto: puede corregirlo y alistar de nuevo.');
+                }}
+                disabled={cargando}
+                className="mt-4 mr-3 rounded bg-amber-500 px-4 py-2 text-white hover:bg-amber-600 disabled:opacity-50"
+              >
+                Devolver a Abierto
+              </button>
+            )}
+
             {esGenerador && !['CANCELADO', 'APROBADO'].includes(pedido.estado) && (
               <button
                 onClick={() => {

@@ -494,6 +494,74 @@ export class OrdersService {
     return this.getDetalle(id);
   }
 
+  /**
+   * I65b: reversión Alistado → Abierto (todos los perfiles), para corregir
+   * el pedido. Espejo de la cancelación (I63) sin cancelar:
+   *  - libera el bloqueo de cada unidad alistada,
+   *  - las saca de la bahía de empaque de regreso a su ubicación (o tránsito),
+   *  - reinicia cantidad_alistada para que el operador vuelva a alistar.
+   * No procede si el pedido ya tiene unidades empacadas en cajas (despacho).
+   */
+  async revertirAlistamiento(id: string, user: Usuario) {
+    const order = await this.findOne(id);
+    if (order.estado !== OrderStatus.ALISTADO) {
+      throw new BadRequestException(
+        `Solo se puede devolver a Abierto un pedido Alistado (actual: ${order.estado})`,
+      );
+    }
+    const empacadas = await this.dataSource.query(
+      `SELECT 1 FROM box_items bi
+         JOIN order_items oi ON oi.id = bi.order_item_id
+        WHERE oi.order_id = $1 LIMIT 1`,
+      [id],
+    );
+    if (empacadas.length > 0) {
+      throw new BadRequestException(
+        'El pedido ya tiene unidades empacadas en cajas de un despacho; no se puede devolver a Abierto',
+      );
+    }
+    const items = await this.items.find({ where: { orderId: id } });
+    await this.dataSource.transaction(async (em) => {
+      for (const item of items) {
+        const alistadas = item.cantidadAlistada - item.cantidadDespachada;
+        if (alistadas > 0) {
+          await this.movements.apply(
+            {
+              productId: item.productId,
+              tipo: MovementType.LIBERACION_BLOQUEO,
+              cantidadBloqueadaDelta: -alistadas,
+              docTipo: 'PEDIDO',
+              docId: order.id,
+              usuarioId: user.id,
+            },
+            em,
+          );
+          await sacarDeEmpaque(em, item.productId, alistadas);
+          item.cantidadAlistada = item.cantidadDespachada;
+          await em.save(item);
+        }
+      }
+      const estadoAnterior = order.estado;
+      order.estado = OrderStatus.ABIERTO;
+      order.alistadoPor = null;
+      order.alistadoAt = null;
+      await em.save(order);
+      await this.audit.log(
+        {
+          usuarioId: user.id,
+          usuarioUsername: user.username,
+          accion: 'PEDIDO_REVERTIDO_A_ABIERTO',
+          tabla: TABLA,
+          registroId: id,
+          valorAnterior: { estado: estadoAnterior },
+          valorNuevo: { estado: OrderStatus.ABIERTO },
+        },
+        em,
+      );
+    });
+    return this.getDetalle(id);
+  }
+
   /** Producto no encontrado o cantidades inferiores → Pendiente_Corrección. */
   async reportar(id: string, user: Usuario) {
     const order = await this.findOne(id);

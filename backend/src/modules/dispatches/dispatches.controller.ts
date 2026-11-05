@@ -113,6 +113,23 @@ export class DispatchesController {
     return this.dispatches.closeBox(id, boxId, user);
   }
 
+  /**
+   * I65c: elimina una caja creada por error. Solo si el despacho no ha sido
+   * despachado ni cancelado. Si la caja estaba CERRADA, revierte el descuento
+   * (las unidades regresan a la bahía de empaque y al bloqueo del pedido);
+   * los elementos quedan libres para una nueva caja y el consecutivo CJA se
+   * recicla cuando era el último asignado.
+   */
+  @Delete(':id/boxes/:boxId')
+  @Roles(Role.OPERADOR, Role.GENERADOR, Role.ADMINISTRADOR)
+  deleteBox(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('boxId', ParseUUIDPipe) boxId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.dispatches.deleteBox(id, boxId, user);
+  }
+
   /** HU-038: etiqueta con QR (solo box_id) — impresión y reimpresión. */
   @Get(':id/boxes/:boxId/etiqueta')
   @Roles(Role.OPERADOR, Role.GENERADOR, Role.ADMINISTRADOR)
