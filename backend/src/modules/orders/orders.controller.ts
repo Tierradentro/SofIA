@@ -2,11 +2,13 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   Res,
   UploadedFile,
@@ -21,6 +23,7 @@ import {
   CorrectOrderDto,
   CreateOrderDto,
   InvoiceOrderDto,
+  SaveOrderDraftDto,
   ScanPickDto,
 } from './dto/order.dto';
 import { OrderStatus } from './entities/order.entity';
@@ -90,6 +93,48 @@ export class OrdersController {
     );
     res?.setHeader('X-Total-Count', String(total));
     return items;
+  }
+
+  /** I67: mis borradores de digitación (el pedido aún no existe ni tiene número). */
+  @Get('drafts')
+  @Roles(Role.GENERADOR, Role.OPERADOR, Role.COMERCIAL, Role.ADMINISTRADOR)
+  listarBorradores(@CurrentUser() user: AuthenticatedUser) {
+    return this.orders.listarBorradores(user);
+  }
+
+  /** I67: guardado automático — crea el borrador del formulario. */
+  @Post('drafts')
+  @Roles(Role.GENERADOR, Role.OPERADOR, Role.COMERCIAL, Role.ADMINISTRADOR)
+  guardarBorrador(@Body() dto: SaveOrderDraftDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.orders.guardarBorrador(dto, user);
+  }
+
+  /** I67: guardado automático — actualiza el contenido del borrador. */
+  @Put('drafts/:id')
+  @Roles(Role.GENERADOR, Role.OPERADOR, Role.COMERCIAL, Role.ADMINISTRADOR)
+  actualizarBorrador(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SaveOrderDraftDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.orders.actualizarBorrador(id, dto, user);
+  }
+
+  /** I67: descarta el borrador (empezar de cero). */
+  @Delete('drafts/:id')
+  @Roles(Role.GENERADOR, Role.OPERADOR, Role.COMERCIAL, Role.ADMINISTRADOR)
+  eliminarBorrador(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.orders.eliminarBorrador(id, user);
+  }
+
+  /**
+   * I67: crea el pedido desde el borrador — AQUÍ se asigna el consecutivo
+   * SIGLAS-#### (el borrador nunca lo tuvo) y el borrador se elimina.
+   */
+  @Post('drafts/:id/confirmar')
+  @Roles(Role.GENERADOR, Role.OPERADOR, Role.COMERCIAL, Role.ADMINISTRADOR)
+  confirmarBorrador(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.orders.confirmarBorrador(id, user);
   }
 
   /** HU-029: pedido con productos y cantidades a alistar. */

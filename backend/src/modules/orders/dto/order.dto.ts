@@ -2,10 +2,12 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
+  IsDefined,
   IsEnum,
   IsInt,
   IsNotEmpty,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -76,8 +78,23 @@ export class CreateOrderDto {
   items: OrderItemDto[];
 }
 
-/** Corrección del creador en Pendiente_Corrección (respuesta 4.2). */
-export class CorrectOrderDto {
+/**
+ * I67: guardado automático del borrador de «Nuevo pedido». El payload es el
+ * contenido del formulario tal cual (admite datos parciales: ítems a medio
+ * digitar, cliente aún sin elegir); la validación estricta ocurre al
+ * confirmar, que es cuando se crea el pedido y se asigna el consecutivo.
+ */
+export class SaveOrderDraftDto {
+  @IsOptional()
+  @IsUUID()
+  empresaId?: string;
+
+  @IsDefined()
+  @IsObject()
+  payload: Record<string, unknown>;
+}
+
+/** Corrección del creador en Pendiente_Corrección (respuesta 4.2). */export class CorrectOrderDto {
   @IsOptional()
   @IsUUID()
   comercialId?: string;

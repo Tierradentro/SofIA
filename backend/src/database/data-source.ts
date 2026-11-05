@@ -22,6 +22,7 @@ import { InboundItem } from '../modules/inbound/entities/inbound-item.entity';
 import { Order } from '../modules/orders/entities/order.entity';
 import { OrderItem } from '../modules/orders/entities/order-item.entity';
 import { OrderCounter } from '../modules/orders/entities/order-counter.entity';
+import { OrderDraft } from '../modules/orders/entities/order-draft.entity';
 import { InitI0I11753000000000 } from './migrations/1753000000000-init-i0-i1';
 import { AdminI21753000001000 } from './migrations/1753000001000-admin-i2';
 import { CatalogosI31753000002000 } from './migrations/1753000002000-catalogos-i3';
@@ -67,6 +68,7 @@ import { ComercialIdentificacionDigitosI531753000024000 } from './migrations/175
 import { DispositivosI571753000025000 } from './migrations/1753000025000-dispositivos-i57';
 import { WorldOfficePorEmpresaI621753000026000 } from './migrations/1753000026000-world-office-por-empresa-i62';
 import { WorldOfficeSinGlobalI621753000027000 } from './migrations/1753000027000-world-office-sin-global-i62';
+import { BorradoresPedidoI671753000028000 } from './migrations/1753000028000-borradores-pedido-i67';
 import { runInitialSeed } from './seeds/initial.seed';
 
 export function buildDataSourceOptions(): DataSourceOptions {
@@ -101,6 +103,7 @@ export function buildDataSourceOptions(): DataSourceOptions {
       Order,
       OrderItem,
       OrderCounter,
+      OrderDraft,
       Dispatch,
       DispatchOrder,
       Box,
@@ -149,6 +152,7 @@ export function buildDataSourceOptions(): DataSourceOptions {
       DispositivosI571753000025000,
       WorldOfficePorEmpresaI621753000026000,
       WorldOfficeSinGlobalI621753000027000,
+      BorradoresPedidoI671753000028000,
     ],
     synchronize: false,
     logging: false,

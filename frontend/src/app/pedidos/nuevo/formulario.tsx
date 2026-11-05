@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, obtenerSesion, mensajeError } from '@/lib/api';
 import {
   ConteoItems,
@@ -24,6 +24,10 @@ import {
  * Vías de captura unificadas: manual, OCR (con revisión previa a crear) y
  * Excel. La vía OCR prellena este mismo panel con la extracción editable y
  * solo crea el pedido cuando el humano confirma.
+ * I67: el contenido se guarda automáticamente como BORRADOR (sin número de
+ * pedido) cada pocos segundos — si se cierra la aplicación o se va la luz,
+ * el trabajo se recupera al volver a entrar. El consecutivo del pedido se
+ * asigna únicamente al confirmar.
  */
 
 interface Cliente {
@@ -56,6 +60,22 @@ export interface ItemForm {
   valorUnidad: string;
 }
 
+/** I67: borrador guardado que se retoma al abrir el formulario. */
+export interface BorradorPedido {
+  id: string;
+  empresaId: string | null;
+  payload?: {
+    via?: string;
+    clienteId?: string;
+    comercialId?: string;
+    ciudad?: string;
+    direccionId?: string;
+    notas?: string;
+    ocrDocumentId?: string | null;
+    items?: Partial<ItemForm>[];
+  };
+}
+
 interface ProductoLite {
   id: string;
   codigo: string;
@@ -83,6 +103,7 @@ export function NuevoPedido({
   comerciales,
   productos,
   rol,
+  borrador,
   onCambiarEmpresa,
   onCreado,
   onCancelar,
@@ -93,15 +114,30 @@ export function NuevoPedido({
   comerciales: Comercial[];
   productos: ProductoLite[];
   rol: string;
+  /** I67: borrador a retomar (viene del aviso de recuperación). */
+  borrador?: BorradorPedido | null;
   onCambiarEmpresa: (id: string) => void;
   onCreado: (id: string, numero: string, origen: string) => void;
   onCancelar: () => void;
 }) {
-  const [clienteId, setClienteId] = useState(clientes[0]?.id ?? '');
+  // I67: contenido inicial — del borrador si se está retomando uno
+  const bp = borrador?.payload ?? {};
+  const itemsIniciales: ItemForm[] =
+    Array.isArray(bp.items) && bp.items.length
+      ? bp.items.map((i) => ({
+          referencia: String(i?.referencia ?? ''),
+          marca: String(i?.marca ?? ''),
+          descripcion: String(i?.descripcion ?? ''),
+          cantidad: String(i?.cantidad ?? '1'),
+          valorUnidad: i?.valorUnidad != null ? String(i.valorUnidad) : '',
+        }))
+      : [{ ...ITEM_VACIO }];
+
+  const [clienteId, setClienteId] = useState(bp.clienteId ?? clientes[0]?.id ?? '');
   // QA Func. 4.1: dirección a la que va el despacho (se escoge en el Pedido)
   const [direcciones, setDirecciones] = useState<DireccionCliente[]>([]);
-  const [direccionId, setDireccionId] = useState('');
-  const [comercialId, setComercialId] = useState(comerciales[0]?.id ?? '');
+  const [direccionId, setDireccionId] = useState(bp.direccionId ?? '');
+  const [comercialId, setComercialId] = useState(bp.comercialId ?? comerciales[0]?.id ?? '');
   // El primer comercial queda seleccionado por defecto; como la lista llega
   // de forma asíncrona, se preselecciona cuando carga si el campo está vacío
   // (sin comercial el backend rechaza el pedido: "El campo 'comercialId' no
@@ -109,16 +145,16 @@ export function NuevoPedido({
   useEffect(() => {
     if (!comercialId && comerciales.length) setComercialId(comerciales[0].id);
   }, [comerciales, comercialId]);
-  const [ciudad, setCiudad] = useState('');
+  const [ciudad, setCiudad] = useState(bp.ciudad ?? '');
   // I18: búsqueda del cliente por nombre o identificación (lista completa)
   const [busquedaCliente, setBusquedaCliente] = useState('');
-  const [notas, setNotas] = useState('');
-  const [items, setItems] = useState<ItemForm[]>([{ ...ITEM_VACIO }]);
-  const [via, setVia] = useState<'MANUAL' | 'OCR' | 'EXCEL'>('MANUAL');
+  const [notas, setNotas] = useState(bp.notas ?? '');
+  const [items, setItems] = useState<ItemForm[]>(itemsIniciales);
+  const [via, setVia] = useState<'MANUAL' | 'OCR' | 'EXCEL'>(bp.via === 'OCR' ? 'OCR' : 'MANUAL');
   const [archivoOcr, setArchivoOcr] = useState<File | null>(null);
   const [archivoExcel, setArchivoExcel] = useState<File | null>(null);
   // QA Func. 3.3: documento OCR pendiente de revisión (aún no se crea pedido)
-  const [ocrDocId, setOcrDocId] = useState<string | null>(null);
+  const [ocrDocId, setOcrDocId] = useState<string | null>(bp.ocrDocumentId ?? null);
   const [mensaje, setMensaje] = useState('');
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
@@ -126,6 +162,12 @@ export function NuevoPedido({
   // despliegue con botones por empresa (antes era una lista desplegable y
   // quedaba seleccionada una empresa sin que el usuario lo notara).
   const [mostrarEmpresas, setMostrarEmpresas] = useState(false);
+  // I67: borrador automático — id del borrador en BD y hora del último guardado
+  const [borradorId, setBorradorId] = useState<string | null>(borrador?.id ?? null);
+  const [guardadoAt, setGuardadoAt] = useState<Date | null>(null);
+  // I67: mientras se restaura un borrador, los efectos de cliente/dirección
+  // NO deben pisar la ciudad ni la dirección que venían guardadas
+  const restaurandoRef = useRef(!!borrador);
 
   const cliente = clientes.find((c) => c.id === clienteId) ?? null;
   const empresaActual = empresas.find((e) => e.id === empresaId) ?? null;
@@ -153,25 +195,139 @@ export function NuevoPedido({
 
   // QA Func. 4.1: cargar las direcciones del cliente y preseleccionar la principal
   useEffect(() => {
-    setDireccionId('');
-    setDirecciones([]);
-    if (!clienteId) return;
-    // I18: la ciudad arranca con la que trae el cliente
-    setCiudad(clientes.find((c) => c.id === clienteId)?.ciudad ?? '');
-    api<DireccionCliente[]>(`/clients/${clienteId}/direcciones`).then(({ status, body }) => {
-      if (status === 200) {
+    const restaurando = restaurandoRef.current;
+    if (!restaurando) {
+      setDireccionId('');
+      setDirecciones([]);
+      // I18: la ciudad arranca con la que trae el cliente
+      setCiudad(clientes.find((c) => c.id === clienteId)?.ciudad ?? '');
+    }
+    if (!clienteId) {
+      restaurandoRef.current = false;
+      return;
+    }
+    api<DireccionCliente[]>(`/clients/${clienteId}/direcciones`)
+      .then(({ status, body }) => {
+        if (status !== 200) return;
         setDirecciones(body);
-        const principal = body.find((d) => d.esPrincipal) ?? body[0];
-        if (principal) setDireccionId(principal.id);
-      }
-    });
+        // I67: al retomar un borrador se conserva la dirección guardada
+        const guardada = restaurando && bp.direccionId
+          ? body.find((d) => d.id === bp.direccionId)
+          : undefined;
+        const elegida = guardada ?? body.find((d) => d.esPrincipal) ?? body[0];
+        if (elegida) setDireccionId(elegida.id);
+      })
+      .finally(() => {
+        restaurandoRef.current = false;
+      });
   }, [clienteId]);
 
   // I18: al elegir otra dirección (cliente con varias), su ciudad prevalece
   useEffect(() => {
+    if (restaurandoRef.current) return; // I67: no pisar la ciudad del borrador
     const d = direcciones.find((x) => x.id === direccionId);
     if (d?.ciudad) setCiudad(d.ciudad);
   }, [direccionId, direcciones]);
+
+  // ------------------------------------------------------------------
+  // I67: guardado automático del borrador (anti desconexión / apagón)
+  // ------------------------------------------------------------------
+  // El estado más reciente vive en un ref para que el guardado diferido
+  // siempre envíe lo último digitado (sin cierres de estado viejos).
+  const estadoRef = useRef({ via, clienteId, comercialId, ciudad, direccionId, notas, ocrDocId, items, empresaId, borradorId });
+  estadoRef.current = { via, clienteId, comercialId, ciudad, direccionId, notas, ocrDocId, items, empresaId, borradorId };
+  // Cadena de guardados: uno a la vez, sin cruces entre el temporizador y
+  // el guardado final que precede a «Crear pedido».
+  const cadenaRef = useRef<Promise<void>>(Promise.resolve());
+  // Al confirmar se detiene el guardado: el borrador se elimina en el
+  // servidor y un guardado tardío lo recrearía como borrador huérfano.
+  const confirmandoRef = useRef(false);
+
+  /** Hay trabajo que proteger: productos digitados, notas u OCR procesado. */
+  function tieneContenido(e = estadoRef.current): boolean {
+    return (
+      e.items.some((i) => i.referencia.trim() || i.descripcion.trim()) ||
+      e.notas.trim() !== '' ||
+      !!e.ocrDocId
+    );
+  }
+
+  const guardarBorrador = useCallback((): Promise<void> => {
+    const tarea = cadenaRef.current.then(async () => {
+      const e = estadoRef.current;
+      if (confirmandoRef.current || !tieneContenido(e)) return;
+      const cuerpo = JSON.stringify({
+        empresaId: e.empresaId,
+        payload: {
+          via: e.via === 'OCR' ? 'OCR' : 'MANUAL',
+          clienteId: e.clienteId,
+          comercialId: e.comercialId,
+          ciudad: e.ciudad,
+          direccionId: e.direccionId,
+          notas: e.notas,
+          ocrDocumentId: e.ocrDocId,
+          items: e.items,
+        },
+      });
+      if (e.borradorId) {
+        const { status } = await api(`/orders/drafts/${e.borradorId}`, {
+          method: 'PUT',
+          body: cuerpo,
+        });
+        if (status === 200) {
+          setGuardadoAt(new Date());
+        } else if (status === 404) {
+          // El borrador fue descartado en otra pestaña: se crea de nuevo
+          const { status: s2, body: b2 } = await api<{ id: string }>('/orders/drafts', {
+            method: 'POST',
+            body: cuerpo,
+          });
+          if (s2 === 201 && b2?.id) {
+            setBorradorId(b2.id);
+            estadoRef.current = { ...estadoRef.current, borradorId: b2.id };
+            setGuardadoAt(new Date());
+          } else {
+            setBorradorId(null);
+            estadoRef.current = { ...estadoRef.current, borradorId: null };
+          }
+        }
+      } else {
+        const { status, body } = await api<{ id: string }>('/orders/drafts', {
+          method: 'POST',
+          body: cuerpo,
+        });
+        if (status === 201 && body?.id) {
+          setBorradorId(body.id);
+          estadoRef.current = { ...estadoRef.current, borradorId: body.id };
+          setGuardadoAt(new Date());
+        }
+      }
+    });
+    cadenaRef.current = tarea.catch(() => {});
+    return tarea;
+  }, []);
+
+  // Guardado diferido: 2 segundos después del último cambio
+  useEffect(() => {
+    if (!tieneContenido()) return;
+    const t = setTimeout(() => {
+      void guardarBorrador();
+    }, 2000);
+    return () => clearTimeout(t);
+  }, [via, clienteId, comercialId, ciudad, direccionId, notas, ocrDocId, items, empresaId, guardarBorrador]);
+
+  // Al cambiar de aplicación o cerrar la pestaña, guardar de inmediato
+  useEffect(() => {
+    const alOcultar = () => {
+      if (document.visibilityState === 'hidden') void guardarBorrador();
+    };
+    document.addEventListener('visibilitychange', alOcultar);
+    window.addEventListener('pagehide', alOcultar);
+    return () => {
+      document.removeEventListener('visibilitychange', alOcultar);
+      window.removeEventListener('pagehide', alOcultar);
+    };
+  }, [guardarBorrador]);
 
   // I18: filtro del selector por nombre o identificación
   const termino = busquedaCliente.trim().toLowerCase();
@@ -302,6 +458,11 @@ export function NuevoPedido({
         });
         const body = await res.json();
         if (res.status !== 201) throw new Error(mensajeError(body, 'Error al crear desde Excel'));
+        // I67: el borrador de la sesión ya no hace falta — el pedido nació
+        confirmandoRef.current = true;
+        if (estadoRef.current.borradorId) {
+          void api(`/orders/drafts/${estadoRef.current.borradorId}`, { method: 'DELETE' });
+        }
         onCreado(body.id, body.numero, 'Excel');
         return;
       }
@@ -319,6 +480,27 @@ export function NuevoPedido({
       }
       if (via === 'OCR' && !ocrDocId) {
         throw new Error('Procese primero el documento con OCR');
+      }
+
+      // I67: si hay borrador (casi siempre, por el guardado automático), el
+      // pedido nace de él — el servidor le asigna el consecutivo AHORA y
+      // elimina el borrador. Primero se deja el borrador con lo último.
+      if (estadoRef.current.borradorId) {
+        confirmandoRef.current = true;
+        try {
+          await guardarBorrador();
+          const { status, body } = await api<{ id: string; numero: string }>(
+            `/orders/drafts/${estadoRef.current.borradorId}/confirmar`,
+            { method: 'POST' },
+          );
+          if (status !== 201 && status !== 200) {
+            throw new Error(mensajeError(body, 'Error al crear el pedido'));
+          }
+          onCreado(body.id, body.numero, via === 'OCR' ? 'OCR' : 'manual');
+          return;
+        } finally {
+          confirmandoRef.current = false;
+        }
       }
 
       const payload: Record<string, unknown> = {
@@ -637,8 +819,15 @@ export function NuevoPedido({
           <TotalDocumento valor={totalPie()} />
         </div>
 
-        {/* I39: sin "Guardar borrador" — el pedido solo se crea con este botón */}
-        <div className="mt-4 flex justify-end">
+        {/* I39: el pedido solo se crea con este botón. I67: el borrador se
+            guarda SOLO (sin número de pedido) ante cada cambio. */}
+        <div className="mt-4 flex flex-wrap items-center justify-end gap-4">
+          {guardadoAt && (
+            <span className="text-xs text-slate-400" title="El contenido se guarda automáticamente como borrador; si se cierra la aplicación se recupera al volver a entrar">
+              ✓ Borrador guardado a las{' '}
+              {guardadoAt.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </span>
+          )}
           <button
             type="button"
             onClick={crear}

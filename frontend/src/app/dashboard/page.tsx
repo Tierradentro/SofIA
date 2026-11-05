@@ -71,9 +71,10 @@ const PESTANAS: { valor: PedidoCola['estado']; etiqueta: string }[] = [
   { valor: 'PENDIENTE_CORRECCION', etiqueta: 'Pendiente corrección' },
 ];
 
-/** I40: pestañas de la Cola de Despachos (misma forma que la de pedidos). */
+/** I40: pestañas de la Cola de Despachos (misma forma que la de pedidos).
+ *  I67b: el estado «Creado» se retira de la cola — un despacho recién creado
+ *  aún no tiene trabajo de empaque; la cola arranca en «Abierto». */
 const PESTANAS_DESPACHO: { valor: string; etiqueta: string }[] = [
-  { valor: 'CREADO', etiqueta: 'Creado' },
   { valor: 'ABIERTO', etiqueta: 'Abierto' },
   { valor: 'PARCIAL', etiqueta: 'Parcial' },
   { valor: 'DESPACHADO', etiqueta: 'Despachado' },
@@ -275,7 +276,8 @@ export default function DashboardPage() {
   const [nombreClientes, setNombreClientes] = useState<Record<string, string>>({});
   const [pestana, setPestana] = useState<PedidoCola['estado']>('ABIERTO');
   // I40: pestaña activa de la Cola de Despachos.
-  const [pestanaDespacho, setPestanaDespacho] = useState<string>('CREADO');
+  // I67b: arranca en «Abierto» — «Creado» ya no hace parte de la cola.
+  const [pestanaDespacho, setPestanaDespacho] = useState<string>('ABIERTO');
 
   useEffect(() => {
     const s = obtenerSesion();

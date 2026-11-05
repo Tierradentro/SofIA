@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Order } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { OrderCounter } from './entities/order-counter.entity';
+import { OrderDraft } from './entities/order-draft.entity';
 import { OrdersService } from './orders.service';
 import { OrdersController } from './orders.controller';
 import { AuditModule } from '../audit/audit.module';
@@ -13,7 +14,7 @@ import { InventoriesModule } from '../inventories/inventories.module';
 /** EP-07/M08: pedidos y alistamiento. */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Order, OrderItem, OrderCounter]),
+    TypeOrmModule.forFeature([Order, OrderItem, OrderCounter, OrderDraft]),
     AuditModule,
     MovementsModule,
     ProductsModule,

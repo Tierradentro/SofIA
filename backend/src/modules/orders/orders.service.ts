@@ -11,6 +11,7 @@ import * as XLSX from 'xlsx';
 import { Order, OrderStatus } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { OrderCounter } from './entities/order-counter.entity';
+import { OrderDraft } from './entities/order-draft.entity';
 import {
   AdjustPricesDto,
   CancelOrderDto,
@@ -18,6 +19,7 @@ import {
   CreateOrderDto,
   OrderItemDto,
   PickMode,
+  SaveOrderDraftDto,
   ScanPickDto,
 } from './dto/order.dto';
 import { Product } from '../products/entities/product.entity';
@@ -71,6 +73,8 @@ export class OrdersService {
     private readonly orders: Repository<Order>,
     @InjectRepository(OrderItem)
     private readonly items: Repository<OrderItem>,
+    @InjectRepository(OrderDraft)
+    private readonly drafts: Repository<OrderDraft>,
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly products: ProductsService,
     private readonly movements: MovementsService,
@@ -893,6 +897,124 @@ export class OrdersService {
     return this.getDetalle(id);
   }
 
+  // ---------------------------------------------------------------
+  // I67: borradores de digitación (sin número y sin bloqueo de stock)
+  // ---------------------------------------------------------------
+
+  /**
+   * Mis borradores, el más reciente primero. El borrador es personal: solo
+   * su creador lo ve y lo retoma (cada operario recupera SU trabajo).
+   */
+  async listarBorradores(user: Usuario) {
+    const drafts = await this.drafts.find({
+      where: { userId: user.id },
+      order: { updatedAt: 'DESC' },
+    });
+    return drafts.map((d) => {
+      const p = (d.payload ?? {}) as Record<string, any>;
+      const items = Array.isArray(p.items) ? p.items : [];
+      return {
+        id: d.id,
+        empresaId: d.empresaId,
+        clienteId: typeof p.clienteId === 'string' ? p.clienteId : null,
+        productos: items.filter(
+          (i: any) =>
+            String(i?.referencia ?? '').trim() || String(i?.descripcion ?? '').trim(),
+        ).length,
+        via: p.via === 'OCR' ? 'OCR' : 'MANUAL',
+        payload: d.payload,
+        createdAt: d.createdAt,
+        updatedAt: d.updatedAt,
+      };
+    });
+  }
+
+  /** Crea el borrador del formulario (primera vez que hay contenido). */
+  async guardarBorrador(dto: SaveOrderDraftDto, user: Usuario) {
+    const draft = await this.drafts.save(
+      this.drafts.create({
+        userId: user.id,
+        empresaId: dto.empresaId ?? null,
+        payload: dto.payload,
+      }),
+    );
+    return { id: draft.id, updatedAt: draft.updatedAt };
+  }
+
+  /** Reemplaza el contenido del borrador (guardado automático sucesivo). */
+  async actualizarBorrador(id: string, dto: SaveOrderDraftDto, user: Usuario) {
+    const draft = await this.borradorPropio(id, user);
+    draft.empresaId = dto.empresaId ?? draft.empresaId;
+    draft.payload = dto.payload;
+    const saved = await this.drafts.save(draft);
+    return { id: saved.id, updatedAt: saved.updatedAt };
+  }
+
+  /** Descarta el borrador (el usuario decide empezar de cero). */
+  async eliminarBorrador(id: string, user: Usuario) {
+    const draft = await this.borradorPropio(id, user);
+    await this.drafts.delete(draft.id);
+    return { eliminado: true };
+  }
+
+  /**
+   * Convierte el borrador en pedido real: mapea el formulario guardado al
+   * DTO de creación y pasa por create() (mismas validaciones de catálogos,
+   * existencias y OCR de siempre); el consecutivo SIGLAS-#### se asigna en
+   * ese momento — nunca antes. Si la creación falla, el borrador se
+   * conserva intacto para corregir y reintentar.
+   */
+  async confirmarBorrador(id: string, user: Usuario) {
+    const draft = await this.borradorPropio(id, user);
+    const p = (draft.payload ?? {}) as Record<string, any>;
+    if (!draft.empresaId) {
+      throw new BadRequestException('El borrador no tiene empresa asociada');
+    }
+    if (typeof p.clienteId !== 'string' || !p.clienteId) {
+      throw new BadRequestException('El borrador no tiene cliente seleccionado');
+    }
+    const items = (Array.isArray(p.items) ? p.items : [])
+      .filter((i: any) => String(i?.referencia ?? '').trim())
+      .map((i: any) => ({
+        referencia: String(i.referencia).trim(),
+        cantidad: Number(i.cantidad) || 0,
+        ...(i.valorUnidad !== '' && i.valorUnidad != null
+          ? { valorUnidad: Number(i.valorUnidad) }
+          : {}),
+      }));
+    const via = p.via === 'OCR' ? 'OCR' : 'MANUAL';
+    const dto: CreateOrderDto = {
+      empresaId: draft.empresaId,
+      clienteId: String(p.clienteId),
+      ...(typeof p.comercialId === 'string' && p.comercialId
+        ? { comercialId: p.comercialId }
+        : {}),
+      ...(typeof p.ciudad === 'string' && p.ciudad.trim() ? { ciudad: p.ciudad } : {}),
+      ...(typeof p.direccionId === 'string' && p.direccionId
+        ? { direccionId: p.direccionId }
+        : {}),
+      ...(typeof p.notas === 'string' && p.notas.trim() ? { notas: p.notas } : {}),
+      ...(typeof p.ocrDocumentId === 'string' && p.ocrDocumentId
+        ? { ocrDocumentId: p.ocrDocumentId }
+        : {}),
+      items,
+    };
+    const pedido = await this.create(dto, user, via);
+    await this.drafts.delete(draft.id);
+    return pedido;
+  }
+
+  /** El borrador es personal: otro usuario no lo encuentra (404). */
+  private async borradorPropio(id: string, user: Usuario): Promise<OrderDraft> {
+    const draft = await this.drafts.findOne({ where: { id } });
+    if (!draft || draft.userId !== user.id) {
+      throw new NotFoundException('Borrador no encontrado');
+    }
+    return draft;
+  }
+
+  // ---------------------------------------------------------------
+  // Listado y detalle
   // ---------------------------------------------------------------
 
   async findAll(
