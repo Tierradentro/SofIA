@@ -1,0 +1,409 @@
+                                                                         Factura Electrónica De Venta No
+                                                                    .           FECV           No. 3584
+                                                                           Documento Oficial de Autorización de Numeración
+                                                                        Facturación Electrónica No. 18764105865627 que habilita
+                                                                          desde FECV 3127 hasta FECV 5000. Vence 2027-02-13
+                                                                                Responsable de IVA- No somos Agentes de
+IMPORTADORA CASA VOLSKWAGEN SAS                                                             Retención de IVA
+
+Nit        830135446 2                                                              No somos Grandes Contribuyentes
+                                                                                Actividad Económica ICA 5030 4.00 X 1000
+
+    CLIENTE SURTIVOLKSWAGEN RISARALDA SAS                                   POR CONCEPTO DE
+    NIT       901472212 8                                                   FACTURA DE VENTA SEGÚN COTIZACIÓN No 1713
+           DIRECCIÓN      CIUDAD        TELÉFONO
+           CL 29 12 24    Pereira       3165213507
+           FECHA FACTURA                  FECHA VENCIMIENTO                             VENDEDOR
+              05/11/2026                      05/12/2026                           ORLANDO LAGOS SUAREZ
+Item    Código                   Descripción            Cantidad U Medida Valor Unitario IVA                Valor IVA      Total
+1    TC-363-15     EMPAQUE CULATA VENTO 2.0 EN             2       Und.          30.000 19%                     4.845           60.000
+                   ALBESTO ILLINOIS
+2       RB3158A    BOMBA AGUA COMPLETA VW 1.4              1       Und.        225.000 19%                     36.338         225.000
+                   VIRTUS NIVUS TCROSS RANALLE
+3       2E0713491 AXIAL CRAFTER BBR                        2       Und.          60.000 19%                     9.690         120.000
+4       22292      INTERRUPTOR LUZ PARQUEO GOLF4           5       Und.          47.000 19%                     7.591         235.000
+                   FEBI
+5       JVS-266-43 EMPAQUE TAPA VALVULAS GOL 1.6           2       Und.          23.000 19%                     3.715          46.000
+                   1.8 (1997-2006) GOLF3 VENTO ILLINOIS
+6       TC-784-15  EMPAQUE CULATA EN ASBESTO FOX           5       Und.          22.000 19%                     3.553         110.000
+                   CROSS FOX POLO 1.6 8 VALVULAS
+                   ILLINOIS
+7       27905207   TAPA DISTRIBUIDOR GOL GOLF3             5       Und.          13.500 19%                     2.180          67.500
+                   VENTO BBR
+8       1J0919506G MODULO AIRE ACONDICIONADO VW            1       Und.          55.000 19%                     8.883          55.000
+                   JETTA COOLXPERT
+9       23113      BOMBA AGUA LIMPIABRISAS S/P VW          5       Und.          26.000 19%                     4.199         130.000
+                   CRAFTER AMAROK FEBI
+
+
+Valor en Letras
+
+SEIS MILLONES DOS MIL SETECIENTOS CUARENTA Y SIETE PESOS M/CTE                       SUBTOTAL                               5.934.500
+                                                                                     DESCUENTO                                890.175
+                                                                                     IVA                                      958.422
+    FAVOR GIRAR CHEQUE CRUZADO A NOMBRE DE IMPORTADORA CASA                          RETEFUENTE                                     0
+    VOLKSWAGEN S.A.S. EN CASO DE TRANSFERENCIA O CONSIGNACION                        RETEIVA                                        0
+                                                                                     RETEICA                                        0
+     DAVIVIENDA CTA CTE No. 000969998343
+                                                                                     TOTAL MENOS RETENCIONES                6.002.747
+.
+
+
+
+
+                                           Representación Gráfica de la Factura de Venta Electrónica
+                                 Fecha y Hora de Generación: 05/11/2026 11:59:58
+                                 Medios de Pago: Acuerdo mutuo
+
+
+                                   km 2,5 via Cota Parcelas Portos Sabana 80 bdga 55 Teléfono 601 0242407
+     Documento de Contingencia                   Correo Electrónico gerencia@importrepuestos.com.co
+                                                                         Factura Electrónica De Venta No
+                                                                    .           FECV           No. 3584
+                                                                           Documento Oficial de Autorización de Numeración
+                                                                        Facturación Electrónica No. 18764105865627 que habilita
+                                                                          desde FECV 3127 hasta FECV 5000. Vence 2027-02-13
+                                                                                Responsable de IVA- No somos Agentes de
+IMPORTADORA CASA VOLSKWAGEN SAS                                                             Retención de IVA
+
+Nit        830135446 2                                                              No somos Grandes Contribuyentes
+                                                                                Actividad Económica ICA 5030 4.00 X 1000
+
+    CLIENTE SURTIVOLKSWAGEN RISARALDA SAS                                   POR CONCEPTO DE
+    NIT       901472212 8                                                   FACTURA DE VENTA SEGÚN COTIZACIÓN No 1713
+           DIRECCIÓN      CIUDAD        TELÉFONO
+           CL 29 12 24    Pereira       3165213507
+           FECHA FACTURA                  FECHA VENCIMIENTO                             VENDEDOR
+              05/11/2026                      05/12/2026                           ORLANDO LAGOS SUAREZ
+Item  Código              Descripción       Cantidad U Medida Valor Unitario IVA                            Valor IVA      Total
+10 06H103495A VALVULA DESFOGUE AMAROK          1       Und.          98.000 19%                                15.827           98.000
+              TIGUAN ARCHER
+11 1J0121321B TAPA DEPOSITO REFRIGERANTE       3       Und.          11.000 19%                                 1.777          33.000
+              JETTA4 COOLXPERT
+12 280156399 INYECTOR NUEVO GOL FOX ARCHER     4       Und.          58.000 19%                                 9.367         232.000
+13 WHT003856/ SENSOR DEL DER ABS VW AMAROK     2       Und.          20.000 19%                                 3.230          40.000
+              ARCHER
+14 16994      PASTILLAS FRENO DEL NUEVA        1       Und.        136.000 19%                                 21.964         136.000
+              TIGUAN GOLF MK7 FEBI
+15 056121113D TERMOSTATO GOL GOLF3 BBR         2       Und.          25.000 19%                                 4.038          50.000
+16 23336      ROTULA TRANSPORTER T5 FEBI       2       Und.          55.000 19%                                 8.883         110.000
+17 48549      FILTRO COMBUSTIBLE AMAROK 2.0    3       Und.          65.000 19%                                10.498         195.000
+              FEBI
+18 WHT003857/ SENSOR DEL IZQ ABS VW AMAROK     2       Und.          20.000 19%                                 3.230          40.000
+              ARCHER
+19 02T311206E RODAMIENTOS CAJA CAMBIOS         1       Und.        172.000 19%                                 27.778         172.000
+              GEMELOS CROSSFOX BBR
+
+
+
+Valor en Letras
+
+SEIS MILLONES DOS MIL SETECIENTOS CUARENTA Y SIETE PESOS M/CTE                       SUBTOTAL                               5.934.500
+                                                                                     DESCUENTO                                890.175
+                                                                                     IVA                                      958.422
+    FAVOR GIRAR CHEQUE CRUZADO A NOMBRE DE IMPORTADORA CASA                          RETEFUENTE                                     0
+    VOLKSWAGEN S.A.S. EN CASO DE TRANSFERENCIA O CONSIGNACION                        RETEIVA                                        0
+                                                                                     RETEICA                                        0
+     DAVIVIENDA CTA CTE No. 000969998343
+                                                                                     TOTAL MENOS RETENCIONES                6.002.747
+.
+
+
+
+
+                                           Representación Gráfica de la Factura de Venta Electrónica
+                                 Fecha y Hora de Generación: 05/11/2026 11:59:58
+                                 Medios de Pago: Acuerdo mutuo
+
+
+                                   km 2,5 via Cota Parcelas Portos Sabana 80 bdga 55 Teléfono 601 0242407
+     Documento de Contingencia                   Correo Electrónico gerencia@importrepuestos.com.co
+                                                                         Factura Electrónica De Venta No
+                                                                    .           FECV           No. 3584
+                                                                           Documento Oficial de Autorización de Numeración
+                                                                        Facturación Electrónica No. 18764105865627 que habilita
+                                                                          desde FECV 3127 hasta FECV 5000. Vence 2027-02-13
+                                                                                Responsable de IVA- No somos Agentes de
+IMPORTADORA CASA VOLSKWAGEN SAS                                                             Retención de IVA
+
+Nit        830135446 2                                                              No somos Grandes Contribuyentes
+                                                                                Actividad Económica ICA 5030 4.00 X 1000
+
+    CLIENTE SURTIVOLKSWAGEN RISARALDA SAS                                   POR CONCEPTO DE
+    NIT       901472212 8                                                   FACTURA DE VENTA SEGÚN COTIZACIÓN No 1713
+           DIRECCIÓN      CIUDAD        TELÉFONO
+           CL 29 12 24    Pereira       3165213507
+           FECHA FACTURA                  FECHA VENCIMIENTO                             VENDEDOR
+              05/11/2026                      05/12/2026                           ORLANDO LAGOS SUAREZ
+Item    Código              Descripción            Cantidad U Medida Valor Unitario IVA                     Valor IVA      Total
+20 1J6955651/1TBOMBA AGUA LIMPIABRISAS GOLF           5       Und.          25.000 19%                          4.038         125.000
+                JETTA4 CRAFTER AMAROK AUDI AL
+                BBR
+21 36752        BUJE TIJERA VW JETTA5 2.5 FEBI        2       Und.          25.000 19%                          4.038          50.000
+22 5Q0199855A SOPORTE MOTOR TRASERO MK7 2012-         1       Und.          55.000 19%                          8.883          55.000
+                2021 ARCHER
+23 056919081C PERA PRESION ACEITE GOLF A3 0.15 -      2       Und.          15.000 19%                          2.423          30.000
+                0.45 BAR CAFE AL BBR
+24 TC-697-15    EMPAQUE CULATA JETTA4 2.0 ILLINOIS    1       Und.          25.000 19%                          4.038          25.000
+25   04C905606A BUJIAS AUDI 1.2 TURBO JETTA  GOLF    10       Und.          29.000 19%                          4.684         290.000
+                MK7 1.4 TURBO TSI (Y7LER02) BOSCH
+26 23548        EMPAQUE TAPA VALVULAS AUDI 1.8        1       Und.          57.000 19%                          9.206          57.000
+                TURBO FEBI
+27 1H0119137/2 CORREA MOTOVENTILADOR GOLF3            1       Und.          25.000 19%                          4.038          25.000
+                VENTO CONTITECH
+28 2113         TAPA ACEITE JETTA4 FEBI               3       Und.           8.000 19%                          1.292          24.000
+29 3B0121321 TAPA DEPOSITO REFRIGERANTE               5       Und.          12.000 19%                          1.938          60.000
+                AMAROK COOLXPERT
+
+
+Valor en Letras
+
+SEIS MILLONES DOS MIL SETECIENTOS CUARENTA Y SIETE PESOS M/CTE                       SUBTOTAL                               5.934.500
+                                                                                     DESCUENTO                                890.175
+                                                                                     IVA                                      958.422
+    FAVOR GIRAR CHEQUE CRUZADO A NOMBRE DE IMPORTADORA CASA                          RETEFUENTE                                     0
+    VOLKSWAGEN S.A.S. EN CASO DE TRANSFERENCIA O CONSIGNACION                        RETEIVA                                        0
+                                                                                     RETEICA                                        0
+     DAVIVIENDA CTA CTE No. 000969998343
+                                                                                     TOTAL MENOS RETENCIONES                6.002.747
+.
+
+
+
+
+                                           Representación Gráfica de la Factura de Venta Electrónica
+                                 Fecha y Hora de Generación: 05/11/2026 11:59:58
+                                 Medios de Pago: Acuerdo mutuo
+
+
+                                   km 2,5 via Cota Parcelas Portos Sabana 80 bdga 55 Teléfono 601 0242407
+     Documento de Contingencia                   Correo Electrónico gerencia@importrepuestos.com.co
+                                                                         Factura Electrónica De Venta No
+                                                                    .           FECV           No. 3584
+                                                                           Documento Oficial de Autorización de Numeración
+                                                                        Facturación Electrónica No. 18764105865627 que habilita
+                                                                          desde FECV 3127 hasta FECV 5000. Vence 2027-02-13
+                                                                                Responsable de IVA- No somos Agentes de
+IMPORTADORA CASA VOLSKWAGEN SAS                                                             Retención de IVA
+
+Nit        830135446 2                                                              No somos Grandes Contribuyentes
+                                                                                Actividad Económica ICA 5030 4.00 X 1000
+
+    CLIENTE SURTIVOLKSWAGEN RISARALDA SAS                                   POR CONCEPTO DE
+    NIT       901472212 8                                                   FACTURA DE VENTA SEGÚN COTIZACIÓN No 1713
+           DIRECCIÓN      CIUDAD        TELÉFONO
+           CL 29 12 24    Pereira       3165213507
+           FECHA FACTURA                  FECHA VENCIMIENTO                             VENDEDOR
+              05/11/2026                      05/12/2026                           ORLANDO LAGOS SUAREZ
+Item  Código                       Descripción      Cantidad U Medida Valor Unitario IVA                    Valor IVA      Total
+30 JAE-337-E        JGO MULTIPLE ESCAPE GOL - GOLF     4       Und.           9.000 19%                         1.454           36.000
+                    1.6 1.8 ILLINOIS
+31      3X0407625-A KIT RODAMIENTO RUEDA DEL GOL 39    2       Und.          45.000 19%                         7.268          90.000
+                    MM ARCHER
+32      1J0129684CGMANGUERA DE ADMINISION DE AIRE      2       Und.          85.000 19%                        13.728         170.000
+                    JETTA 4 COOLXPERT
+33      5Z0121253D RADIADOR AGUA VW NUEVO GOL          1       Und.        189.000 19%                         30.524         189.000
+                    CROSSFOX SAVEIRO COOLXPERT
+34      1J0411315C MUÑECO ESTABILIZADORA GOLF4         2       Und.          26.000 19%                         4.199          52.000
+                    JETTA4 BBR
+35      TC-355-11-2MEMPAQUE CULATA METALICO            2       Und.          78.000 19%                        12.597         156.000
+                    AMAROK 2 ILLINOIS
+36      06A103383A EMPAQUE CULATA JETTA4 2.0 BBR       1       Und.          70.000 19%                        11.305          70.000
+37      TC-784-MG EMPAQUE CULATA METALGRAF FOX         3       Und.          30.000 19%                         4.845          90.000
+                    CROSS FOX POLO 1.6 8 VALVULAS
+                    ILLINOIS
+38      2H0927808A SENSOR TRAS DER ABS VW AMAROK       2       Und.          25.000 19%                         4.038          50.000
+                    ARCHER
+
+
+Valor en Letras
+
+SEIS MILLONES DOS MIL SETECIENTOS CUARENTA Y SIETE PESOS M/CTE                       SUBTOTAL                               5.934.500
+                                                                                     DESCUENTO                                890.175
+                                                                                     IVA                                      958.422
+    FAVOR GIRAR CHEQUE CRUZADO A NOMBRE DE IMPORTADORA CASA                          RETEFUENTE                                     0
+    VOLKSWAGEN S.A.S. EN CASO DE TRANSFERENCIA O CONSIGNACION                        RETEIVA                                        0
+                                                                                     RETEICA                                        0
+     DAVIVIENDA CTA CTE No. 000969998343
+                                                                                     TOTAL MENOS RETENCIONES                6.002.747
+.
+
+
+
+
+                                           Representación Gráfica de la Factura de Venta Electrónica
+                                 Fecha y Hora de Generación: 05/11/2026 11:59:58
+                                 Medios de Pago: Acuerdo mutuo
+
+
+                                   km 2,5 via Cota Parcelas Portos Sabana 80 bdga 55 Teléfono 601 0242407
+     Documento de Contingencia                   Correo Electrónico gerencia@importrepuestos.com.co
+                                                                         Factura Electrónica De Venta No
+                                                                    .           FECV           No. 3584
+                                                                           Documento Oficial de Autorización de Numeración
+                                                                        Facturación Electrónica No. 18764105865627 que habilita
+                                                                          desde FECV 3127 hasta FECV 5000. Vence 2027-02-13
+                                                                                Responsable de IVA- No somos Agentes de
+IMPORTADORA CASA VOLSKWAGEN SAS                                                             Retención de IVA
+
+Nit        830135446 2                                                              No somos Grandes Contribuyentes
+                                                                                Actividad Económica ICA 5030 4.00 X 1000
+
+    CLIENTE SURTIVOLKSWAGEN RISARALDA SAS                                   POR CONCEPTO DE
+    NIT       901472212 8                                                   FACTURA DE VENTA SEGÚN COTIZACIÓN No 1713
+           DIRECCIÓN      CIUDAD        TELÉFONO
+           CL 29 12 24    Pereira       3165213507
+           FECHA FACTURA                  FECHA VENCIMIENTO                             VENDEDOR
+              05/11/2026                      05/12/2026                           ORLANDO LAGOS SUAREZ
+Item  Código                    Descripción         Cantidad U Medida Valor Unitario IVA                    Valor IVA      Total
+39 39869            SENSOR POSICION ARBOL LEVAS        1       Und.          87.000 19%                        14.051           87.000
+                    AMAROK FEBI
+40      06A121132 BRIDA AGUA JETTA 4 COOLXPERT         3       Und.          15.000 19%                         2.423          45.000
+41      5N0199262G SOPORTE MOTOR DER TIGUAN            1       Und.        129.000 19%                         20.834         129.000
+                    ARCHER
+42      32510       SENSOR TEMPERATURA GOL 1.0         3       Und.          21.000 19%                         3.392          63.000
+                    NUEVO GOL GOLF4 JETTA POLO FEBI
+43      38238       RETEN EJE LEVAS AMAROK T5 2.0      3       Und.          28.000 19%                         4.522          84.000
+                    BITURBO 32*47*10 FEBI
+44      5U0927753/6 SENSOR ABS TRAS GOL ARCHER        30       Und.          20.000 19%                         3.230         600.000
+45      32471       RETEN CIGÜEÑAL AMAROK T5 2.0       3       Und.          22.000 19%                         3.553          66.000
+                    BITURBO 35*48*10 FEBI
+46      191598625 KIT RODAMIENTO RUEDA TRAS GOL        4       Und.          31.000 19%                         5.007         124.000
+                    GOLF VENTO SKODA AL BBR
+47      CT637-43L TENSOR Y CORREA VW GOL 1.6 1.8       1       Und.          28.000 19%                         4.522          28.000
+                    GOLFA3 1.8 VENTO 2.0 CONTITECH
+48      037103383N EMPAQUE CULATA VENTO 2.0 BBR        1       Und.          78.000 19%                        12.597          78.000
+
+
+
+Valor en Letras
+
+SEIS MILLONES DOS MIL SETECIENTOS CUARENTA Y SIETE PESOS M/CTE                       SUBTOTAL                               5.934.500
+                                                                                     DESCUENTO                                890.175
+                                                                                     IVA                                      958.422
+    FAVOR GIRAR CHEQUE CRUZADO A NOMBRE DE IMPORTADORA CASA                          RETEFUENTE                                     0
+    VOLKSWAGEN S.A.S. EN CASO DE TRANSFERENCIA O CONSIGNACION                        RETEIVA                                        0
+                                                                                     RETEICA                                        0
+     DAVIVIENDA CTA CTE No. 000969998343
+                                                                                     TOTAL MENOS RETENCIONES                6.002.747
+.
+
+
+
+
+                                           Representación Gráfica de la Factura de Venta Electrónica
+                                 Fecha y Hora de Generación: 05/11/2026 11:59:58
+                                 Medios de Pago: Acuerdo mutuo
+
+
+                                   km 2,5 via Cota Parcelas Portos Sabana 80 bdga 55 Teléfono 601 0242407
+     Documento de Contingencia                   Correo Electrónico gerencia@importrepuestos.com.co
+                                                                         Factura Electrónica De Venta No
+                                                                    .           FECV           No. 3584
+                                                                           Documento Oficial de Autorización de Numeración
+                                                                        Facturación Electrónica No. 18764105865627 que habilita
+                                                                          desde FECV 3127 hasta FECV 5000. Vence 2027-02-13
+                                                                                Responsable de IVA- No somos Agentes de
+IMPORTADORA CASA VOLSKWAGEN SAS                                                             Retención de IVA
+
+Nit        830135446 2                                                              No somos Grandes Contribuyentes
+                                                                                Actividad Económica ICA 5030 4.00 X 1000
+
+    CLIENTE SURTIVOLKSWAGEN RISARALDA SAS                                   POR CONCEPTO DE
+    NIT       901472212 8                                                   FACTURA DE VENTA SEGÚN COTIZACIÓN No 1713
+           DIRECCIÓN      CIUDAD        TELÉFONO
+           CL 29 12 24    Pereira       3165213507
+           FECHA FACTURA                  FECHA VENCIMIENTO                             VENDEDOR
+              05/11/2026                      05/12/2026                           ORLANDO LAGOS SUAREZ
+Item  Código                    Descripción          Cantidad U Medida Valor Unitario IVA                   Valor IVA      Total
+49 45353            BIELETA DEL OJOXOJO PLASTICA VW     4       Und.          36.000 19%                        5.814         144.000
+                    AMAROK FEBI
+50      2H0927807A SENSOR TRAS IZQ ABS VW AMAROK        2       Und.          25.000 19%                        4.038          50.000
+                    ARCHER
+51      056919081E PERA PRESION ACEITE GOLF A3 1.6 -    2       Und.          15.000 19%                        2.423          30.000
+                    2.0 BAR BLANCA AL BBR
+52      TC-928-15   EMPAQUE CULATA VW VIRTUS 2018       1       Und.          30.000 19%                        4.845          30.000
+                    ILLINOIS
+53      TC-497-15   EMPAQUE CULATA GOL - GOLF 1.8       2       Und.          19.000 19%                        3.069          38.000
+                    ILLINOIS
+54      191598625ARKIT RODAMIENTO RUEDA TRAS GOL        4       Und.          26.000 19%                        4.199         104.000
+                    GOLF VENTO SKODA ARCHER
+55      058198025A EMPAQUE JUEGO JUNTAS CULATA          1       Und.          35.000 19%                        5.653          35.000
+                    AUDI BBR
+56      RT-3008     RETEN CIGÜEÑAL TRAS AMAROK          1       Und.        108.000 19%                        17.442         108.000
+                    ILLINOIS
+57      16995/27797 PASTILLAS FRENO TRAS NUEVA          1       Und.          95.000 19%                       15.343          95.000
+                    TIGUAN GOLF MK7 FEBI
+
+
+Valor en Letras
+
+SEIS MILLONES DOS MIL SETECIENTOS CUARENTA Y SIETE PESOS M/CTE                       SUBTOTAL                               5.934.500
+                                                                                     DESCUENTO                                890.175
+                                                                                     IVA                                      958.422
+    FAVOR GIRAR CHEQUE CRUZADO A NOMBRE DE IMPORTADORA CASA                          RETEFUENTE                                     0
+    VOLKSWAGEN S.A.S. EN CASO DE TRANSFERENCIA O CONSIGNACION                        RETEIVA                                        0
+                                                                                     RETEICA                                        0
+     DAVIVIENDA CTA CTE No. 000969998343
+                                                                                     TOTAL MENOS RETENCIONES                6.002.747
+.
+
+
+
+
+                                           Representación Gráfica de la Factura de Venta Electrónica
+                                 Fecha y Hora de Generación: 05/11/2026 11:59:58
+                                 Medios de Pago: Acuerdo mutuo
+
+
+                                   km 2,5 via Cota Parcelas Portos Sabana 80 bdga 55 Teléfono 601 0242407
+     Documento de Contingencia                   Correo Electrónico gerencia@importrepuestos.com.co
+                                                                         Factura Electrónica De Venta No
+                                                                    .           FECV           No. 3584
+                                                                           Documento Oficial de Autorización de Numeración
+                                                                        Facturación Electrónica No. 18764105865627 que habilita
+                                                                          desde FECV 3127 hasta FECV 5000. Vence 2027-02-13
+                                                                                Responsable de IVA- No somos Agentes de
+IMPORTADORA CASA VOLSKWAGEN SAS                                                             Retención de IVA
+
+Nit        830135446 2                                                              No somos Grandes Contribuyentes
+                                                                                Actividad Económica ICA 5030 4.00 X 1000
+
+    CLIENTE SURTIVOLKSWAGEN RISARALDA SAS                                   POR CONCEPTO DE
+    NIT       901472212 8                                                   FACTURA DE VENTA SEGÚN COTIZACIÓN No 1713
+           DIRECCIÓN      CIUDAD        TELÉFONO
+           CL 29 12 24    Pereira       3165213507
+           FECHA FACTURA                  FECHA VENCIMIENTO                              VENDEDOR
+              05/11/2026                      05/12/2026                            ORLANDO LAGOS SUAREZ
+Item  Código             Descripción                           Cantidad U Medida Valor Unitario IVA         Valor IVA      Total
+58 1H0959481B PERA RADIADOR CON AIRE GOLF A3                      2       Und.          24.000 19%              3.876           48.000
+              COOLXPERT
+59 46718      BASE AMORTIGUADOR DEL AMAROK                         2         Und.            75.000 19%        12.113         150.000
+              FEBI
+
+
+
+
+Valor en Letras
+
+SEIS MILLONES DOS MIL SETECIENTOS CUARENTA Y SIETE PESOS M/CTE                       SUBTOTAL                               5.934.500
+                                                                                     DESCUENTO                                890.175
+                                                                                     IVA                                      958.422
+    FAVOR GIRAR CHEQUE CRUZADO A NOMBRE DE IMPORTADORA CASA                          RETEFUENTE                                     0
+    VOLKSWAGEN S.A.S. EN CASO DE TRANSFERENCIA O CONSIGNACION                        RETEIVA                                        0
+                                                                                     RETEICA                                        0
+     DAVIVIENDA CTA CTE No. 000969998343
+                                                                                     TOTAL MENOS RETENCIONES                6.002.747
+.
+
+
+
+
+                                           Representación Gráfica de la Factura de Venta Electrónica
+                                 Fecha y Hora de Generación: 05/11/2026 11:59:58
+                                 Medios de Pago: Acuerdo mutuo
+
+
+                                   km 2,5 via Cota Parcelas Portos Sabana 80 bdga 55 Teléfono 601 0242407
+     Documento de Contingencia                   Correo Electrónico gerencia@importrepuestos.com.co
+

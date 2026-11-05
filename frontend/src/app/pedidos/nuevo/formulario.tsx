@@ -168,6 +168,9 @@ export function NuevoPedido({
   // I67: mientras se restaura un borrador, los efectos de cliente/dirección
   // NO deben pisar la ciudad ni la dirección que venían guardadas
   const restaurandoRef = useRef(!!borrador);
+  // I68: casillas de referencia por fila — Enter en la cantidad agrega otra
+  // fila y deja el foco en la casilla de referencia de la fila nueva
+  const refsReferencia = useRef<(HTMLInputElement | null)[]>([]);
 
   const cliente = clientes.find((c) => c.id === clienteId) ?? null;
   const empresaActual = empresas.find((e) => e.id === empresaId) ?? null;
@@ -379,6 +382,20 @@ export function NuevoPedido({
       }
     }
     setItems(copia);
+  }
+
+  /**
+   * I68: Enter en la casilla de cantidades — si es la última fila agrega una
+   * fila nueva para el siguiente producto; el foco queda en la casilla de
+   * referencia de esa fila (si no es la última, baja a la siguiente).
+   */
+  function enterEnCantidad(idx: number) {
+    const destino = idx + 1;
+    if (idx === items.length - 1) {
+      setItems([...items, { ...ITEM_VACIO }]);
+    }
+    // La fila nueva aún no existe en este render: enfocar tras el repintado
+    requestAnimationFrame(() => refsReferencia.current[destino]?.focus());
   }
 
   /** QA Func. 3.3: subir a OCR y prellenar el panel con la extracción. */
@@ -745,6 +762,7 @@ export function NuevoPedido({
                     <td className="px-2 py-1 text-center text-slate-400">{idx + 1}</td>
                     <td className="px-1 py-1">
                       <input value={item.referencia} onChange={(e) => setItem(idx, 'referencia', e.target.value)}
+                        ref={(el) => { refsReferencia.current[idx] = el; }}
                         list="productos-ref" className="w-full rounded border px-2 py-1" placeholder="Ingresar ref..." />
                     </td>
                     <td className="px-1 py-1">
@@ -757,6 +775,8 @@ export function NuevoPedido({
                     </td>
                     <td className="w-20 px-1 py-1">
                       <input type="number" min={1} value={item.cantidad} onChange={(e) => setItem(idx, 'cantidad', e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); enterEnCantidad(idx); } }}
+                        title="Enter: agregar otra fila de producto"
                         className="w-full rounded border px-2 py-1" />
                     </td>
                     <td className="w-28 px-1 py-1">

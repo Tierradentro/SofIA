@@ -94,7 +94,14 @@ export class SaveOrderDraftDto {
   payload: Record<string, unknown>;
 }
 
-/** Corrección del creador en Pendiente_Corrección (respuesta 4.2). */export class CorrectOrderDto {
+/** Corrección del creador en Pendiente_Corrección (respuesta 4.2). */
+export class CorrectOrderDto {
+  /** I68: el cliente solo lo cambian Generador/Administrador (validado en servicio). */
+  @IsOptional()
+  @IsUUID()
+  clienteId?: string;
+
+  /** I68: el vendedor (comercial) solo lo cambian Generador/Administrador. */
   @IsOptional()
   @IsUUID()
   comercialId?: string;

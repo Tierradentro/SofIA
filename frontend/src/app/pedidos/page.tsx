@@ -117,6 +117,10 @@ function PedidosContenido() {
   const [productosEdit, setProductosEdit] = useState<
     { id: string; codigo: string; descripcion: string; marca: string | null; precio: string | number; cantidad: number }[]
   >([]);
+  // I68: en corrección, Generador/Administrador también cambian cliente y vendedor
+  const [clientesEdit, setClientesEdit] = useState<{ id: string; nombre: string; identificacion?: string | null }[]>([]);
+  const [editClienteId, setEditClienteId] = useState('');
+  const [editComercialId, setEditComercialId] = useState('');
 
   // Alistamiento
   const [modo, setModo] = useState<'COMPLETO' | 'INICIAL'>('COMPLETO');
@@ -265,6 +269,14 @@ function PedidosContenido() {
       })),
     );
     setEditando(true);
+    // I68: prellenar cliente/vendedor; Generador/Admin los pueden cambiar
+    setEditClienteId(p.clienteId);
+    setEditComercialId(p.comercialId ?? '');
+    api<{ id: string; nombre: string; identificacion?: string | null }[]>('/clients').then(
+      ({ status, body }) => {
+        if (status === 200) setClientesEdit(body);
+      },
+    );
     // I26: lista de códigos con existencias para escoger (como al crear).
     // Se usa la empresa del propio pedido: al abrir por ?abrir= el estado
     // empresaId del selector aún puede estar vacío.
@@ -449,8 +461,16 @@ function PedidosContenido() {
       );
       return;
     }
+    // I68: Generador/Administrador también envían cliente y vendedor (el
+    // backend los valida y recalcula la dirección de despacho si el cliente
+    // cambia); el operador solo envía los productos.
+    const payload: Record<string, unknown> = { items };
+    if (esGenerador) {
+      payload.clienteId = editClienteId || undefined;
+      payload.comercialId = editComercialId || null;
+    }
     const exito = await accion(
-      () => api(`/orders/${pedido.id}`, { method: 'PATCH', body: JSON.stringify({ items }) }),
+      () => api(`/orders/${pedido.id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
       'Pedido corregido: vuelve a estado Abierto.',
     );
     if (exito) setEditando(false);
@@ -924,6 +944,44 @@ function PedidosContenido() {
                   </button>
                 ) : (
                   <>
+                    {/* I68: cliente y vendedor solo los cambian Generador/Administrador;
+                        el operador (creador) solo edita los productos */}
+                    {esGenerador && (
+                      <div className="mb-3 flex flex-wrap items-center gap-3 rounded border bg-white p-3">
+                        <label className="text-sm">
+                          <span className="mr-1 font-medium">Cliente:</span>
+                          <select
+                            value={editClienteId}
+                            onChange={(e) => setEditClienteId(e.target.value)}
+                            className="rounded border px-2 py-1.5 text-sm"
+                          >
+                            {clientesEdit.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.nombre}{c.identificacion ? ` — ${c.identificacion}` : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="text-sm">
+                          <span className="mr-1 font-medium">Vendedor:</span>
+                          <select
+                            value={editComercialId}
+                            onChange={(e) => setEditComercialId(e.target.value)}
+                            className="rounded border px-2 py-1.5 text-sm"
+                          >
+                            <option value="">— Sin vendedor —</option>
+                            {comerciales.map((c) => (
+                              <option key={c.id} value={c.id}>{c.nombre}</option>
+                            ))}
+                          </select>
+                        </label>
+                        {editClienteId !== pedido.clienteId && (
+                          <span className="text-xs text-amber-700">
+                            Al guardar, la dirección de despacho se recalcula con la principal del nuevo cliente.
+                          </span>
+                        )}
+                      </div>
+                    )}
                     <p className="mb-2 text-sm font-medium">
                       Edite las líneas: escoja el producto de la lista de códigos (solo con existencias), ajuste cantidades o elimine:
                     </p>

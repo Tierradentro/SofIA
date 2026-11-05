@@ -608,6 +608,69 @@ export class OrdersService {
       );
     }
 
+    // I68: cliente y vendedor solo los cambian Generador/Administrador; el
+    // operador (o el comercial creador) solo puede cambiar los productos.
+    // Enviar el mismo valor que ya tiene el pedido no cuenta como cambio,
+    // así el frontend puede reenviar la cabecera completa sin restricción.
+    const cambiaCliente =
+      dto.clienteId !== undefined && dto.clienteId !== order.clienteId;
+    const cambiaComercial =
+      dto.comercialId !== undefined &&
+      (dto.comercialId ?? null) !== (order.comercialId ?? null);
+    if ((cambiaCliente || cambiaComercial) && !esGenerador) {
+      throw new ForbiddenException(
+        'Solo el Generador o el Administrador pueden cambiar el cliente o el vendedor del pedido; el operador solo puede cambiar los productos',
+      );
+    }
+
+    // I68: validar catálogos de la nueva cabecera
+    let nuevoCliente: Client | null = null;
+    if (cambiaCliente) {
+      nuevoCliente = await this.dataSource
+        .getRepository(Client)
+        .findOne({ where: { id: dto.clienteId } });
+      if (!nuevoCliente) {
+        throw new NotFoundException(`Cliente no encontrado (${dto.clienteId})`);
+      }
+    }
+    if (cambiaComercial && dto.comercialId) {
+      const comercial = await this.dataSource
+        .getRepository(Comercial)
+        .findOne({ where: { id: dto.comercialId } });
+      if (!comercial) {
+        throw new NotFoundException(`Comercial no encontrado (${dto.comercialId})`);
+      }
+    }
+
+    // I68: al cambiar el cliente la dirección anterior ya no aplica — se
+    // toma la elegida (validada contra el NUEVO cliente) o la principal del
+    // nuevo cliente. También permite corregir solo la dirección.
+    const clienteEfectivo = cambiaCliente ? dto.clienteId! : order.clienteId;
+    const cabeceraAnterior = {
+      clienteId: order.clienteId,
+      comercialId: order.comercialId ?? null,
+      direccionDespacho: order.direccionDespacho ?? null,
+    };
+    let direccionDespacho = order.direccionDespacho;
+    if (dto.direccionId !== undefined || cambiaCliente) {
+      direccionDespacho = null;
+      if (dto.direccionId) {
+        const direccion = await this.dataSource
+          .getRepository(ClientAddress)
+          .findOne({ where: { id: dto.direccionId, activo: true } });
+        if (!direccion) throw new NotFoundException('Dirección no encontrada');
+        if (direccion.clientId !== clienteEfectivo) {
+          throw new BadRequestException('La dirección no pertenece al cliente del pedido');
+        }
+        direccionDespacho = direccion.direccion;
+      } else {
+        const principal = await this.dataSource
+          .getRepository(ClientAddress)
+          .findOne({ where: { clientId: clienteEfectivo, esPrincipal: true, activo: true } });
+        direccionDespacho = principal?.direccion ?? null;
+      }
+    }
+
     const actuales = await this.items.find({ where: { orderId: id } });
     const resueltos = await this.resolverItems(
       order.empresaId,
@@ -680,7 +743,11 @@ export class OrdersService {
           }),
         );
       }
-      if (dto.comercialId !== undefined) order.comercialId = dto.comercialId;
+      if (dto.clienteId !== undefined) order.clienteId = dto.clienteId;
+      if (dto.comercialId !== undefined) order.comercialId = dto.comercialId ?? null;
+      if (dto.direccionId !== undefined || cambiaCliente) {
+        order.direccionDespacho = direccionDespacho;
+      }
       if (dto.ciudad !== undefined) order.ciudad = dto.ciudad?.trim() || null;
       if (dto.notas !== undefined) order.notas = dto.notas?.trim() || null;
       order.estado = OrderStatus.ABIERTO;
@@ -692,10 +759,27 @@ export class OrdersService {
           accion: 'PEDIDO_CORREGIDO',
           tabla: TABLA,
           registroId: id,
-          valorAnterior: { estado: OrderStatus.PENDIENTE_CORRECCION, items: anterior },
+          valorAnterior: {
+            estado: OrderStatus.PENDIENTE_CORRECCION,
+            items: anterior,
+            ...(cambiaCliente || cambiaComercial
+              ? {
+                  clienteId: cabeceraAnterior.clienteId,
+                  comercialId: cabeceraAnterior.comercialId,
+                  direccionDespacho: cabeceraAnterior.direccionDespacho,
+                }
+              : {}),
+          },
           valorNuevo: {
             estado: OrderStatus.ABIERTO,
             items: resueltos.map((r) => ({ codigo: r.producto.codigo, cantidad: r.cantidad })),
+            ...(cambiaCliente || cambiaComercial
+              ? {
+                  clienteId: order.clienteId,
+                  comercialId: order.comercialId ?? null,
+                  direccionDespacho: order.direccionDespacho ?? null,
+                }
+              : {}),
           },
         },
         em,

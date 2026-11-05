@@ -319,4 +319,59 @@ describe('OcrFieldParser', () => {
     });
     expect(r.items[1].cantidad).toBe(20);
   });
+
+  it('I68: factura FECV 3584 (ICV) — 59 ítems completos, sin referencias perdidas ni pegadas', () => {
+    // Texto tal como lo devuelve `pdftotext -layout` de la factura real FECV
+    // 3584. Dos problemas hacían fallar la aprobación del pedido:
+    //  1) número de ítem pegado a la referencia con UN solo espacio
+    //     ("39 39869  SENSOR…") → el ítem salía sin referencia y la
+    //     comparación reportaba FALTANTE_EN_FACTURA / EXTRA_EN_FACTURA;
+    //  2) descripción pegada a la referencia sin espacio
+    //     ("1J0129684CGMANGUERA") → la ref no cruzaba con el catálogo.
+    const texto = readFileSync(
+      join(__dirname, '../../../test/fixtures/factura-venta-fecv3584.txt'),
+      'utf8',
+    );
+    const r = parser.parse(texto, DocumentType.FACTURA_VENTA);
+    expect(r.numeroFactura).toBe('FECV3584');
+    expect(r.cliente).toBe('SURTIVOLKSWAGEN RISARALDA SAS');
+    expect(r.fecha).toBe('2026-11-05');
+    // Los 59 ítems de la factura, todos con referencia (antes 24 salían con '')
+    expect(r.items).toHaveLength(59);
+    expect(r.items.every((i) => i.referencia !== '')).toBe(true);
+    // Los ítems del caso reportado por el usuario
+    const sensor = r.items.find((i) => i.referencia === '39869');
+    expect(sensor).toMatchObject({ cantidad: 1, valorUnitario: 87000 });
+    const pera = r.items.find((i) => i.referencia === '056919081C');
+    expect(pera).toMatchObject({
+      cantidad: 2,
+      descripcion: 'PERA PRESION ACEITE GOLF A3 0.15 -',
+      valorTotal: 30000,
+    });
+    // Referencias con descripción pegada: se separan correctamente
+    expect(r.items.find((i) => i.referencia === '1J0129684CG')).toMatchObject({
+      descripcion: 'MANGUERA DE ADMINISION DE AIRE JETTA 4 COOLXPERT',
+      cantidad: 2,
+    });
+    expect(r.items.find((i) => i.referencia === '191598625AR')).toMatchObject({
+      cantidad: 4,
+      valorTotal: 104000,
+    });
+    expect(r.items.find((i) => i.referencia === 'TC-355-11-2M')).toMatchObject({
+      descripcion: 'EMPAQUE CULATA METALICO AMAROK 2 ILLINOIS',
+      cantidad: 2,
+    });
+    expect(r.items.find((i) => i.referencia === '1J6955651/1T')).toMatchObject({
+      cantidad: 5,
+      valorUnitario: 25000,
+    });
+    // Cantidad alta con slash en la ref y continuación de descripción
+    expect(r.items.find((i) => i.referencia === '5U0927753/6')).toMatchObject({
+      cantidad: 30,
+      valorTotal: 600000,
+    });
+    // La suma de los totales cuadra con el SUBTOTAL del documento
+    const suma = r.items.reduce((a, i) => a + (i.valorTotal ?? 0), 0);
+    expect(suma).toBe(5934500);
+  });
 });

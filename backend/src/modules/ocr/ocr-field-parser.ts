@@ -145,6 +145,49 @@ function capturarRef(token: string): string | null {
   return REF_RE.test(token) && !ROTULOS_RE.test(token) ? token : null;
 }
 
+/**
+ * I68 (facturas ICV/FECV): en la tabla de ítems la descripción queda PEGADA
+ * a la referencia sin espacio — "1J0129684CGMANGUERA", "191598625ARKIT",
+ * "TC-355-11-2MEMPAQUE". Si el token termina en un nombre de repuesto y el
+ * prefijo sigue siendo una referencia válida (con dígitos, largo razonable),
+ * se separa: ref = prefijo, y la palabra inicia la descripción.
+ * Solo aplica a tokens largos (≥ 11): las referencias reales cortas nunca
+ * se tocan.
+ */
+const PALABRAS_REPUESTO = [
+  'AMORTIGUADOR', 'RODAMIENTOS', 'RODAMIENTO', 'INTERRUPTOR', 'TERMOSTATO',
+  'MANGUERA', 'EMPAQUE', 'PASTILLAS', 'SOPORTE', 'VALVULA', 'RADIADOR',
+  'INYECTOR', 'SENSOR', 'BOMBA', 'RETEN', 'BUJE', 'TENSOR', 'CORREA',
+  'FILTRO', 'TAPA', 'BIELETA', 'PERA', 'AXIAL', 'MODULO', 'JUEGO',
+  'BRIDA', 'BASE', 'MUÑECO', 'MUNECO', 'KIT',
+];
+
+function separarRefPegada(token: string): { ref: string; descInicial: string } | null {
+  if (token.length < 11) return null;
+  const upper = token.toUpperCase();
+  for (const palabra of PALABRAS_REPUESTO) {
+    if (!upper.endsWith(palabra)) continue;
+    const prefijo = token.slice(0, token.length - palabra.length);
+    if (prefijo.length >= 6 && /\d/.test(prefijo) && capturarRef(prefijo)) {
+      return { ref: prefijo, descInicial: palabra };
+    }
+  }
+  return null;
+}
+
+/** Referencia + posible descripción pegada (I68), o null si no es ref. */
+function capturarRefConDescripcion(
+  token: string,
+): { ref: string; descInicial: string } | null {
+  // Primero el recorte de descripción pegada: el token largo completo puede
+  // pasar REF_RE y quedarse con la descripción dentro — p. ej. ítem 32 de
+  // FECV 3584: "1J0129684CGMANGUERA" debe quedar "1J0129684CG".
+  const pegada = separarRefPegada(token);
+  if (pegada) return pegada;
+  const ref = capturarRef(token);
+  return ref ? { ref, descInicial: '' } : null;
+}
+
 function empty(): OcrExtractedData {
   return {
     numeroFactura: null,
@@ -429,24 +472,47 @@ export class OcrFieldParser {
       if (/^\d{1,3}$/.test(ref) && resto.length >= 1) {
         if (resto[0].includes(' ')) {
           const [ref2, ...desc] = resto[0].split(/\s+/);
-          const ok = capturarRef(ref2);
-          if (ok) {
-            ref = ok;
-            resto = [desc.join(' '), ...resto.slice(1)];
+          // I68: el token puede traer la descripción pegada a la ref
+          // ("1J0129684CGMANGUERA DE ADMINISION…")
+          const sep = capturarRefConDescripcion(ref2);
+          if (sep) {
+            ref = sep.ref;
+            resto = [[sep.descInicial, ...desc].filter(Boolean).join(' '), ...resto.slice(1)];
           }
         } else if (resto.length >= 2) {
           // I26: layout de columnas anchas — referencia y descripción quedan
           // en columnas separadas ("1   N1063   AXIAL R/L …   3,00  24.000  72.000")
-          const ok = capturarRef(resto[0]);
-          if (ok) {
-            ref = ok;
+          const sep = capturarRefConDescripcion(resto[0]);
+          if (sep) {
+            ref = sep.ref;
             resto = resto.slice(1);
+            if (sep.descInicial) resto = [sep.descInicial, ...resto];
+          }
+        }
+      } else if (partes.length >= 2) {
+        // I68 (FECV de ICV): el número de ítem queda pegado a la referencia
+        // con UN solo espacio ("39 39869  SENSOR…" o "23 056919081C PERA…"),
+        // así que la división por columnas los deja en el mismo campo y el
+        // ítem completo se perdía (salía como EXTRA sin referencia).
+        const pegado = /^(\d{1,3})\s+(\S+)(?:\s+(.*))?$/.exec(partes[0]);
+        if (pegado) {
+          const sep = capturarRefConDescripcion(pegado[2]);
+          if (sep) {
+            ref = sep.ref;
+            const cabeza = [sep.descInicial, pegado[3] ?? '']
+              .filter(Boolean)
+              .join(' ');
+            resto = cabeza ? [cabeza, ...partes.slice(1)] : partes.slice(1);
           }
         }
       }
-      // I39: la línea no arranca con referencia — puede ser un ítem
-      // "solo descripción" (facturas de importación sin columna de ref.)
-      if (!capturarRef(ref)) return this.parseLineaSinRef(linea);
+      // I68: la referencia directa también puede traer descripción pegada
+      const sepRef = capturarRefConDescripcion(ref);
+      if (!sepRef) return this.parseLineaSinRef(linea);
+      if (sepRef.descInicial) {
+        ref = sepRef.ref;
+        resto = [sepRef.descInicial, ...resto];
+      }
       // I22: en documentos de venta las columnas son …cantidad, valorUnitario,
       // valorTotal. La cantidad puede tener decimales ("4,00") y el patrón
       // monetario se la traga; por eso se extraen los números del FINAL de la
@@ -464,7 +530,10 @@ export class OcrFieldParser {
         );
         if (idxUnidad > 0) {
           const antes = resto.slice(0, idxUnidad).join(' ');
-          const mCant = /^(.*?)\s+(\d{1,6}(?:[.,]\d{1,2})?)$/.exec(antes);
+          // I68: la descripción puede faltar por completo (quedó en la
+          // columna del ítem); entonces lo que precede a la unidad es SOLO
+          // la cantidad ("1" en "… | 1 | Und. | 87.000 19% | …").
+          const mCant = /^(?:(.*?)\s+)?(\d{1,6}(?:[.,]\d{1,2})?)$/.exec(antes);
           if (mCant) {
             const despues = resto.slice(idxUnidad + 1).join(' ');
             const nums = [
@@ -476,7 +545,7 @@ export class OcrFieldParser {
             if (cantidad > 0) {
               return {
                 referencia: ref.toUpperCase(),
-                descripcion: mCant[1].trim() || null,
+                descripcion: (mCant[1] ?? '').trim() || null,
                 cantidad,
                 unidad: 'UND',
                 valorUnitario: nums.length >= 2 ? nums[0] : null,
