@@ -889,6 +889,13 @@ export class OrdersService {
    * inventario (salen de las cajas del despacho —incluidas las cerradas—
    * o se desbloquean del alistamiento) y la línea se elimina si queda en
    * cero. El pedido conserva su estado (Aprobado/Despachado).
+   *
+   * La factura corregida NUNCA agrega unidades ni productos nuevos: Sofía
+   * no puede alistar/empacar a posteriori lo que ya se despachó por fuera;
+   * si la factura trae ítems nuevos o cantidades superiores a lo alistado,
+   * el excedente se muestra en la revisión como «no ajustable» para
+   * gestionarlo en WO (la cantidad de Sofía queda como está y NO retorna
+   * nada).
    */
   private assertAjustableFactura(order: Order) {
     if (
@@ -954,8 +961,13 @@ export class OrdersService {
       estado: order.estado,
       numeroFactura: d.numeroFactura ?? null,
       ocrDocumentId,
+      // I69: la factura corregida solo reduce. Si trae MÁS unidades que lo
+      // alistado, el excedente no se puede reflejar (Sofía no alista ni
+      // empaca a posteriori un despacho ya corregido en directo): se muestra
+      // en la revisión para gestionarlo aparte en WO y NO se ajusta.
       items: items.map((i) => {
-        const cantidadFacturada = facturadaPorProducto.get(i.productId) ?? 0;
+        const facturada = facturadaPorProducto.get(i.productId) ?? 0;
+        const cantidadFacturada = Math.min(facturada, i.cantidadAlistada);
         return {
           itemId: i.id,
           codigo: i.codigo,
@@ -966,9 +978,12 @@ export class OrdersService {
           cantidadFacturada,
           // El ajuste solo reduce: retorna lo alistado por encima de la factura
           retornar: Math.max(0, i.cantidadAlistada - cantidadFacturada),
+          excedenteNoAjustable: Math.max(0, facturada - i.cantidadAlistada),
           valorUnidad: Number(i.valorUnidad),
         };
       }),
+      // Ítems de la factura sin cruce con el catálogo: productos nuevos que
+      // WO facturó pero Sofía no puede agregar al pedido/despacho ya corregidos
       sinCruce,
     };
   }

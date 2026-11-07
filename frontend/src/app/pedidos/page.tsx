@@ -152,6 +152,7 @@ function PedidosContenido() {
       cantidadDespachada: number;
       cantidadFacturada: number;
       retornar: number;
+      excedenteNoAjustable: number;
       valorUnidad: number;
     }[];
     sinCruce: { referencia: string; descripcion: string | null; cantidad: number }[];
@@ -1195,7 +1196,14 @@ function PedidosContenido() {
                               <td className="px-2 py-1.5">{i.descripcion}</td>
                               <td className="px-2 py-1.5 text-center">{i.cantidadAlistada}</td>
                               <td className="px-2 py-1.5 text-center">{i.cantidadDespachada}</td>
-                              <td className="px-2 py-1.5 text-center">{i.cantidadFacturada}</td>
+                              <td className="px-2 py-1.5 text-center">
+                                {i.cantidadFacturada}
+                                {i.excedenteNoAjustable > 0 && (
+                                  <span className="block text-xs font-semibold text-amber-800">
+                                    +{i.excedenteNoAjustable} no ajustable
+                                  </span>
+                                )}
+                              </td>
                               <td className="px-2 py-1.5 text-center font-semibold text-amber-800">
                                 {i.retornar > 0
                                   ? `${i.retornar}${i.cantidadFacturada === 0 ? ' (se elimina)' : ''}`
@@ -1206,9 +1214,18 @@ function PedidosContenido() {
                         </tbody>
                       </table>
                     </div>
+                    {ajustePreview.items.some((i) => i.excedenteNoAjustable > 0) && (
+                      <p className="mb-3 rounded bg-amber-100 px-3 py-2 text-xs text-amber-900">
+                        La factura trae más unidades de las alistadas en las referencias marcadas.
+                        El ajuste en Sofía solo reduce: ese excedente ya despachado «en directo»
+                        no se alista ni se empaca aquí; gestiónelo aparte en World Office.
+                      </p>
+                    )}
                     {ajustePreview.sinCruce.length > 0 && (
                       <p className="mb-3 rounded bg-amber-100 px-3 py-2 text-xs text-amber-900">
-                        Referencias de la factura sin cruce en el catálogo (no ajustan nada):{' '}
+                        Referencias de la factura sin cruce en el catálogo — si son productos
+                        nuevos de la corrección en WO, no se agregan al pedido ni al despacho
+                        (el ajuste en Sofía solo reduce); gestiónelos aparte en World Office:{' '}
                         {ajustePreview.sinCruce.map((s) => `${s.referencia} (${s.cantidad})`).join(', ')}
                       </p>
                     )}

@@ -252,10 +252,29 @@ describe('I69 ajuste por factura corregida y conservación de alistadas (e2e)', 
     expect(preview.body.numeroFactura).toBe('FECV-9001');
     const prev1 = preview.body.items.find((i: any) => i.codigo === 'I69-001');
     const prev2 = preview.body.items.find((i: any) => i.codigo === 'I69-002');
-    expect(prev1).toMatchObject({ cantidadDespachada: 5, cantidadFacturada: 3, retornar: 2 });
-    expect(prev2).toMatchObject({ cantidadDespachada: 3, cantidadFacturada: 0, retornar: 3 });
+    expect(prev1).toMatchObject({ cantidadDespachada: 5, cantidadFacturada: 3, retornar: 2, excedenteNoAjustable: 0 });
+    expect(prev2).toMatchObject({ cantidadDespachada: 3, cantidadFacturada: 0, retornar: 3, excedenteNoAjustable: 0 });
     // El preview no tocó nada
     expect(await stock('I69-001')).toEqual({ cantidad: 5, bloqueada: 0 });
+
+    // La revisión muestra lo que la factura NO puede agregar: un producto
+    // nuevo sin cruce y un excedente sobre lo alistado (la factura trae 7
+    // pero solo se alistaron 5 — Sofía no alista a posteriori)
+    const ocrConExceso = await insertarFactura('FECV-9002', [
+      { referencia: 'I69-001', descripcion: 'Producto I69-001', cantidad: 7, valorUnidad: 9000 },
+      { referencia: 'I69-999', descripcion: 'Producto nuevo de WO', cantidad: 4, valorUnidad: 5000 },
+    ]);
+    const prevExceso = await t.http
+      .post(`/api/v1/orders/${pedido.id}/ajuste-factura/preview`)
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ ocrDocumentId: ocrConExceso });
+    expect(prevExceso.status).toBe(201);
+    const prevEx1 = prevExceso.body.items.find((i: any) => i.codigo === 'I69-001');
+    // Se conservan las 5 alistadas (no retorna nada) y el excedente queda visible
+    expect(prevEx1).toMatchObject({ cantidadFacturada: 5, retornar: 0, excedenteNoAjustable: 2 });
+    expect(prevExceso.body.sinCruce).toEqual([
+      { referencia: 'I69-999', descripcion: 'Producto nuevo de WO', cantidad: 4 },
+    ]);
 
     // Aplicar el ajuste aprobado
     const ajuste = await t.http
