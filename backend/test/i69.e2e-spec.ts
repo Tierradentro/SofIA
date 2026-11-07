@@ -347,6 +347,17 @@ describe('I69 ajuste por factura corregida y conservación de alistadas (e2e)', 
     const ocrCorregida = await insertarFactura('FECV-9011', [
       { referencia: 'I69-001', descripcion: 'Otro producto', cantidad: 1, valorUnidad: 9000 },
     ]);
+    // I69: la revisión muestra los productos de la factura que existen en el
+    // catálogo pero NO están en el pedido (I69-001) — antes pasaban
+    // desapercibidos (caso real: amortiguadores IZQ del FEIR 10349)
+    const preview = await t.http
+      .post(`/api/v1/orders/${pedido.id}/ajuste-factura/preview`)
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ ocrDocumentId: ocrCorregida });
+    expect(preview.status).toBe(201);
+    expect(preview.body.faltantesEnPedido).toEqual([
+      { codigo: 'I69-001', descripcion: 'Producto I69-001', cantidad: 1 },
+    ]);
     const detalle = await t.http
       .get(`/api/v1/orders/${pedido.id}`)
       .set('Authorization', `Bearer ${generadorToken}`);

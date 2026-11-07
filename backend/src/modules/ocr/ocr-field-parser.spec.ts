@@ -169,6 +169,33 @@ describe('OcrFieldParser', () => {
     });
   });
 
+  it('I69: factura de 14 ítems con pares DER/IZQ no pierde los izquierdos (FEIR10349)', () => {
+    // Texto tal como lo devuelve `pdftotext -layout` de la factura real FEIR
+    // 10349. Caso reportado: el pedido quedó con 12 productos porque los dos
+    // amortiguadores IZQ (JGM5125SL y 34171G) no aparecían; el parser debe
+    // extraer los 14 ítems completos.
+    const texto = readFileSync(
+      join(__dirname, '../../../test/fixtures/factura-venta-feir10349.txt'),
+      'utf8',
+    );
+    const r = parser.parse(texto, DocumentType.FACTURA_VENTA);
+    expect(r.numeroFactura).toBe('FEIR10349');
+    expect(r.items).toHaveLength(14);
+    const refs = r.items.map((i) => i.referencia);
+    expect(refs).toContain('JGM5125SR');
+    expect(refs).toContain('JGM5125SL'); // izquierdo AVEO — el que faltaba
+    expect(refs).toContain('34170G');
+    expect(refs).toContain('34171G'); // izquierdo CRONOS — el que faltaba
+    expect(r.items.find((i) => i.referencia === 'JGM5125SL')).toMatchObject({
+      cantidad: 1,
+      descripcion: 'AMORTIGUADOR DEL IZQ AVEO 1.4 1.6 TRW',
+    });
+    expect(r.items.find((i) => i.referencia === '34171G')).toMatchObject({
+      cantidad: 1,
+      descripcion: 'AMORTIGUADOR DEL IZQ CRONOS SPARK II 06> CORVEN',
+    });
+  });
+
   it('I26: factura IRE con 16 ítems en columnas anchas (FE9832)', () => {
     const texto = readFileSync(
       join(__dirname, '../../../test/fixtures/factura-venta-fe9832.txt'),

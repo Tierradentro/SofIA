@@ -936,6 +936,7 @@ export class OrdersService {
     // Mismo cruce de la aprobación (HU-032/I60): exacto y luego parcial.
     const matcher = await this.buildMatcher(order.empresaId);
     const facturadaPorProducto = new Map<string, number>();
+    const productosFactura = new Map<string, { codigo: string; descripcion: string }>();
     const sinCruce: { referencia: string; descripcion: string | null; cantidad: number }[] = [];
     for (const i of d.items ?? []) {
       const referencia = String(i.referencia ?? '');
@@ -952,9 +953,25 @@ export class OrdersService {
         producto.id,
         (facturadaPorProducto.get(producto.id) ?? 0) + cantidad,
       );
+      productosFactura.set(producto.id, {
+        codigo: producto.codigo,
+        descripcion: producto.descripcion,
+      });
     }
 
     const items = await this.items.find({ where: { orderId: id } });
+    // I69: productos de la factura que SÍ existen en el catálogo pero NO
+    // están en el pedido (agregados en la corrección de WO, p. ej. los
+    // amortiguadores IZQ del FEIR 10349). No aparecen en la tabla del pedido
+    // ni en «sin cruce» — sin esta lista pasaban totalmente desapercibidos.
+    const enPedido = new Set(items.map((i) => i.productId));
+    const faltantesEnPedido = [...facturadaPorProducto.entries()]
+      .filter(([productId]) => !enPedido.has(productId))
+      .map(([productId, cantidad]) => ({
+        codigo: productosFactura.get(productId)!.codigo,
+        descripcion: productosFactura.get(productId)!.descripcion,
+        cantidad,
+      }));
     return {
       pedidoId: order.id,
       numero: order.numero,
@@ -985,6 +1002,9 @@ export class OrdersService {
       // Ítems de la factura sin cruce con el catálogo: productos nuevos que
       // WO facturó pero Sofía no puede agregar al pedido/despacho ya corregidos
       sinCruce,
+      // Ítems con cruce en el catálogo pero ausentes del pedido: tampoco se
+      // agregan (el ajuste solo reduce); se muestran para gestionarlos en WO
+      faltantesEnPedido,
     };
   }
 
