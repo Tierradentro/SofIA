@@ -19,6 +19,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { OrdersService } from './orders.service';
 import {
   AdjustPricesDto,
+  AjusteFacturaDto,
   CancelOrderDto,
   CorrectOrderDto,
   CreateOrderDto,
@@ -203,6 +204,34 @@ export class OrdersController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.orders.loadInvoice(id, dto.ocrDocumentId, user);
+  }
+
+  /**
+   * I69: revisión del ajuste contra la factura corregida (pedido Aprobado o
+   * Despachado). Muestra los cambios por ítem sin aplicar nada.
+   */
+  @Post(':id/ajuste-factura/preview')
+  @Roles(Role.GENERADOR, Role.ADMINISTRADOR)
+  preverAjusteFactura(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: InvoiceOrderDto,
+  ) {
+    return this.orders.preverAjusteFactura(id, dto.ocrDocumentId);
+  }
+
+  /**
+   * I69: aplica el ajuste aprobado: las unidades de más retornan al
+   * inventario y se retiran de las cajas del despacho (incluidas las
+   * cerradas). Solo Generador/Administrador.
+   */
+  @Post(':id/ajuste-factura')
+  @Roles(Role.GENERADOR, Role.ADMINISTRADOR)
+  ajustarPorFactura(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AjusteFacturaDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.orders.ajustarPorFactura(id, dto, user);
   }
 
   /**

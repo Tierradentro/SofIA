@@ -187,3 +187,35 @@ export class CancelOrderDto {
   @MaxLength(500)
   motivo?: string;
 }
+
+/**
+ * I69: ítem del ajuste post-factura. `cantidadFacturada` es lo que quedó en
+ * la factura corregida de World Office (0 = el producto sale del pedido).
+ */
+export class AjusteFacturaItemDto {
+  @IsUUID()
+  itemId: string;
+
+  @IsInt()
+  @Min(0)
+  cantidadFacturada: number;
+}
+
+/**
+ * I69: ajuste de un pedido Aprobado/Despachado contra la nueva factura
+ * (el pedido, el despacho y la factura ya se corrigieron «en directo» y en
+ * WO; aquí se refleja en Sofía). Solo reduce cantidades: las unidades de
+ * más retornan al inventario y se retiran de las cajas, incluidas las
+ * cerradas. Solo Generador/Administrador.
+ */
+export class AjusteFacturaDto {
+  /** Documento OCR de la factura de venta corregida (FACTURA_VENTA). */
+  @IsUUID()
+  ocrDocumentId: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => AjusteFacturaItemDto)
+  ajustes: AjusteFacturaItemDto[];
+}

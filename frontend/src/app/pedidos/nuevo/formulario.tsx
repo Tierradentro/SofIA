@@ -345,11 +345,19 @@ export function NuevoPedido({
   // I29: un solo resultado queda seleccionado de inmediato — antes el select
   // conservaba el cliente precargado y el usuario no podía "escoger" el
   // único que mostraba la búsqueda.
+  // I69: al buscar, si el cliente actual quedó fuera del filtro, el navegador
+  // mostraba la primera opción como seleccionada sin que React la tuviera, y
+  // elegirla no disparaba el cambio (tocaba escoger otra y volver). Ahora la
+  // primera de la lista filtrada queda seleccionada de verdad.
   useEffect(() => {
-    if (clientesFiltrados.length === 1 && clientesFiltrados[0].id !== clienteId) {
+    if (
+      termino &&
+      clientesFiltrados.length > 0 &&
+      !clientesFiltrados.some((c) => c.id === clienteId)
+    ) {
       setClienteId(clientesFiltrados[0].id);
     }
-  }, [termino, clientes.length]);
+  }, [termino, clientesFiltrados, clienteId]);
 
   function totalPie(): number {
     return items.reduce((acc, i) => {

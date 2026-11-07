@@ -14,6 +14,7 @@ import { OrderCounter } from './entities/order-counter.entity';
 import { OrderDraft } from './entities/order-draft.entity';
 import {
   AdjustPricesDto,
+  AjusteFacturaDto,
   CancelOrderDto,
   CorrectOrderDto,
   CreateOrderDto,
@@ -40,7 +41,7 @@ import { InboundMatcher } from '../inbound/inbound-matcher';
 import { compararFacturaConPedido } from './order-compare';
 import { BarcodeOrigin } from '../../common/enums/barcode-origin.enum';
 import { Role } from '../../common/enums/role.enum';
-import { asegurarAreaEmpaque, sacarDeEmpaque, trasladarAEmpaque } from '../warehouses/empaque';
+import { asegurarAreaEmpaque, sacarDeEmpaque, sumarEnEmpaque, trasladarAEmpaque } from '../warehouses/empaque';
 
 const TABLA = 'Pedidos';
 
@@ -682,6 +683,9 @@ export class OrdersService {
       cantidad: i.cantidad,
       cantidadAlistada: i.cantidadAlistada,
     }));
+    // I69: las unidades ya alistadas se conservan al corregir (el
+    // alistamiento no vuelve a empezar de cero); quedan en la auditoría.
+    const alistadaConservada = new Map<string, number>();
 
     await this.dataSource.transaction(async (em) => {
       const nuevosPorProducto = new Map(resueltos.map((r) => [r.producto.id, r]));
@@ -720,6 +724,9 @@ export class OrdersService {
             );
             actual.cantidadAlistada = nuevo.cantidad;
           }
+          // I69: lo alistado se conserva (solo se recorta si la nueva
+          // cantidad quedó por debajo)
+          alistadaConservada.set(actual.productId, actual.cantidadAlistada);
           actual.cantidad = nuevo.cantidad;
           actual.valorUnidad = nuevo.valorUnidad;
           actual.valorTotal = nuevo.cantidad * nuevo.valorUnidad;
@@ -772,7 +779,11 @@ export class OrdersService {
           },
           valorNuevo: {
             estado: OrderStatus.ABIERTO,
-            items: resueltos.map((r) => ({ codigo: r.producto.codigo, cantidad: r.cantidad })),
+            items: resueltos.map((r) => ({
+              codigo: r.producto.codigo,
+              cantidad: r.cantidad,
+              cantidadAlistada: alistadaConservada.get(r.producto.id) ?? 0,
+            })),
             ...(cambiaCliente || cambiaComercial
               ? {
                   clienteId: order.clienteId,
@@ -863,6 +874,311 @@ export class OrdersService {
         numeroFactura: order.numeroFactura,
         ...(crucesParciales.length ? { crucesParciales } : {}),
       },
+    });
+    return this.getDetalle(id);
+  }
+
+  // ---------------------------------------------------------------
+  // I69: ajuste post-factura en Aprobado/Despachado (Generador/Admin)
+  // ---------------------------------------------------------------
+
+  /**
+   * I69: el pedido y el despacho se corrigieron «en directo» y la factura
+   * se corrigió en World Office; este ajuste refleja esa nueva factura en
+   * Sofía. Solo REDUCE cantidades: las unidades de más retornan al
+   * inventario (salen de las cajas del despacho —incluidas las cerradas—
+   * o se desbloquean del alistamiento) y la línea se elimina si queda en
+   * cero. El pedido conserva su estado (Aprobado/Despachado).
+   */
+  private assertAjustableFactura(order: Order) {
+    if (
+      order.estado !== OrderStatus.APROBADO &&
+      order.estado !== OrderStatus.DESPACHADO
+    ) {
+      throw new BadRequestException(
+        `El ajuste por factura solo aplica a pedidos Aprobado o Despachado (actual: ${order.estado})`,
+      );
+    }
+  }
+
+  /** Documento OCR de la nueva factura (debe ser FACTURA_VENTA). */
+  private async ocrFactura(ocrDocumentId: string): Promise<OcrDocument> {
+    const ocrDoc = await this.dataSource
+      .getRepository(OcrDocument)
+      .findOne({ where: { id: ocrDocumentId } });
+    if (!ocrDoc) throw new NotFoundException('Documento OCR no encontrado');
+    if (ocrDoc.tipoDocumento !== DocumentType.FACTURA_VENTA) {
+      throw new BadRequestException(
+        'El documento OCR debe ser una factura de venta',
+      );
+    }
+    return ocrDoc;
+  }
+
+  /**
+   * Revisión previa del ajuste: cruza la nueva factura con el pedido y
+   * muestra qué cambiaría por ítem (unidades que retornan al inventario).
+   * No modifica nada; la aplicación la confirma ajustarPorFactura().
+   */
+  async preverAjusteFactura(id: string, ocrDocumentId: string) {
+    const order = await this.findOne(id);
+    this.assertAjustableFactura(order);
+    const ocrDoc = await this.ocrFactura(ocrDocumentId);
+    const d = ocrDoc.datosExtraidos as any;
+
+    // Mismo cruce de la aprobación (HU-032/I60): exacto y luego parcial.
+    const matcher = await this.buildMatcher(order.empresaId);
+    const facturadaPorProducto = new Map<string, number>();
+    const sinCruce: { referencia: string; descripcion: string | null; cantidad: number }[] = [];
+    for (const i of d.items ?? []) {
+      const referencia = String(i.referencia ?? '');
+      let { producto } = matcher.match(referencia);
+      if (!producto) {
+        producto = matcher.matchParcial(referencia, i.descripcion).producto;
+      }
+      const cantidad = Number(i.cantidad) || 0;
+      if (!producto) {
+        sinCruce.push({ referencia, descripcion: i.descripcion ?? null, cantidad });
+        continue;
+      }
+      facturadaPorProducto.set(
+        producto.id,
+        (facturadaPorProducto.get(producto.id) ?? 0) + cantidad,
+      );
+    }
+
+    const items = await this.items.find({ where: { orderId: id } });
+    return {
+      pedidoId: order.id,
+      numero: order.numero,
+      estado: order.estado,
+      numeroFactura: d.numeroFactura ?? null,
+      ocrDocumentId,
+      items: items.map((i) => {
+        const cantidadFacturada = facturadaPorProducto.get(i.productId) ?? 0;
+        return {
+          itemId: i.id,
+          codigo: i.codigo,
+          descripcion: i.descripcion,
+          cantidadPedida: i.cantidad,
+          cantidadAlistada: i.cantidadAlistada,
+          cantidadDespachada: i.cantidadDespachada,
+          cantidadFacturada,
+          // El ajuste solo reduce: retorna lo alistado por encima de la factura
+          retornar: Math.max(0, i.cantidadAlistada - cantidadFacturada),
+          valorUnidad: Number(i.valorUnidad),
+        };
+      }),
+      sinCruce,
+    };
+  }
+
+  /**
+   * Aplica el ajuste revisado. Por cada ítem, el exceso (alistada −
+   * facturada) se retira primero de las cajas del despacho —de la más
+   * reciente a la más antigua— y luego del remanente alistado sin empacar:
+   *  - Unidad de caja CERRADA: ya había salido del stock → reingresa
+   *    (cantidad += n) y cantidad_despachada baja.
+   *  - Unidad de caja ABIERTA o sin empacar: seguía bloqueada → se libera
+   *    (bloqueada -= n) sin tocar la cantidad.
+   *  - Las unidades retornadas salen de la bahía de empaque a la ubicación
+   *    oficial del producto (o a tránsito si no tiene).
+   *  - Una caja CERRADA que quede sin ítems se reabre (ABIERTA).
+   *  - La línea cuya cantidad quede en cero se elimina del pedido.
+   */
+  async ajustarPorFactura(id: string, dto: AjusteFacturaDto, user: Usuario) {
+    const order = await this.findOne(id);
+    this.assertAjustableFactura(order);
+    const ocrDoc = await this.ocrFactura(dto.ocrDocumentId);
+    const d = ocrDoc.datosExtraidos as any;
+
+    const items = await this.items.find({ where: { orderId: id } });
+    const porId = new Map(items.map((i) => [i.id, i]));
+    const anterior = items.map((i) => ({
+      codigo: i.codigo,
+      cantidad: i.cantidad,
+      cantidadAlistada: i.cantidadAlistada,
+      cantidadDespachada: i.cantidadDespachada,
+    }));
+
+    // Validar todo antes de tocar nada
+    const validados: { item: OrderItem; exceso: number; facturada: number }[] = [];
+    for (const a of dto.ajustes) {
+      const item = porId.get(a.itemId);
+      if (!item) {
+        throw new BadRequestException(
+          `El ítem ${a.itemId} no pertenece a este pedido`,
+        );
+      }
+      const facturada = Number(a.cantidadFacturada);
+      if (!Number.isInteger(facturada) || facturada < 0) {
+        throw new BadRequestException(
+          'cantidadFacturada debe ser un entero mayor o igual a cero',
+        );
+      }
+      // El ajuste solo reduce lo alistado; nunca aumenta unidades
+      if (facturada > item.cantidadAlistada) {
+        throw new BadRequestException(
+          `La cantidad facturada de ${item.codigo} (${facturada}) supera lo alistado (${item.cantidadAlistada}); el ajuste solo reduce cantidades`,
+        );
+      }
+      const exceso = item.cantidadAlistada - facturada;
+      if (exceso > 0) validados.push({ item, exceso, facturada });
+    }
+    const facturaAnterior = order.numeroFactura ?? null;
+
+    const cajasPorPk = new Map<
+      string,
+      { caja: string; estado: string; retiradas: number; reabierta: boolean }
+    >();
+    await this.dataSource.transaction(async (em) => {
+      const areaEmpaqueId = await asegurarAreaEmpaque(em);
+      for (const { item, exceso } of validados) {
+        let restante = exceso;
+        let retornoDespachadas = 0; // venían de cajas CERRADAS (salieron del stock)
+        let retornoBloqueadas = 0;  // alistadas sin despachar (aún bloqueadas)
+
+        // 1) Retirar de las cajas del despacho, de la más reciente a la más
+        //    antigua (las unidades de caja abierta siguen bloqueadas; las de
+        //    caja cerrada ya habían salido del inventario).
+        const filas: {
+          box_item_id: string;
+          box_pk: string;
+          cantidad: number;
+          box_ref: string;
+          box_estado: string;
+        }[] = await em.query(
+          `SELECT bi.id AS box_item_id, bi.box_id AS box_pk, bi.cantidad,
+                  b.box_id AS box_ref, b.estado AS box_estado
+             FROM box_items bi
+             JOIN boxes b ON b.id = bi.box_id
+            WHERE bi.order_item_id = $1
+            ORDER BY b.numero_en_despacho DESC`,
+          [item.id],
+        );
+        for (const fila of filas) {
+          if (restante <= 0) break;
+          const tomar = Math.min(Number(fila.cantidad), restante);
+          const nuevaCant = Number(fila.cantidad) - tomar;
+          if (nuevaCant <= 0) {
+            await em.query(`DELETE FROM box_items WHERE id = $1`, [
+              fila.box_item_id,
+            ]);
+          } else {
+            await em.query(
+              `UPDATE box_items SET cantidad = $2 WHERE id = $1`,
+              [fila.box_item_id, nuevaCant],
+            );
+          }
+          const caja = cajasPorPk.get(fila.box_pk) ?? {
+            caja: fila.box_ref,
+            estado: fila.box_estado,
+            retiradas: 0,
+            reabierta: false,
+          };
+          caja.retiradas += tomar;
+          cajasPorPk.set(fila.box_pk, caja);
+          if (fila.box_estado === 'CERRADA') {
+            retornoDespachadas += tomar;
+            item.cantidadDespachada -= tomar;
+            // La unidad vuelve a existir físicamente en la bodega (bahía,
+            // de donde sale a su ubicación oficial más abajo)
+            if (areaEmpaqueId) {
+              await sumarEnEmpaque(em, item.productId, areaEmpaqueId, tomar);
+            }
+          } else {
+            retornoBloqueadas += tomar;
+          }
+          restante -= tomar;
+        }
+
+        // 2) Lo que no estaba en cajas: alistado y bloqueado en la bahía
+        retornoBloqueadas += restante;
+
+        // 3) Movimiento de reingreso: las despachadas vuelven a sumar en
+        //    Cantidad; las bloqueadas se liberan del bloqueo
+        await this.movements.apply(
+          {
+            productId: item.productId,
+            tipo: MovementType.REINGRESO_DEVOLUCION,
+            cantidadDelta: retornoDespachadas,
+            cantidadBloqueadaDelta: -retornoBloqueadas,
+            docTipo: 'PEDIDO',
+            docId: order.id,
+            usuarioId: user.id,
+          },
+          em,
+        );
+
+        // 4) Las unidades retornadas salen de la bahía de empaque a la
+        //    ubicación oficial del producto (o a tránsito si no tiene)
+        await sacarDeEmpaque(em, item.productId, exceso);
+
+        // 5) La línea del pedido refleja la factura corregida; si queda en
+        //    cero, se elimina
+        item.cantidad -= exceso;
+        item.cantidadAlistada -= exceso;
+        if (item.cantidad <= 0) {
+          await em.remove(item);
+        } else {
+          item.valorTotal = (item.cantidad * Number(item.valorUnidad)) as any;
+          await em.save(item);
+        }
+      }
+
+      // 6) Una caja CERRADA que quedó sin ítems se reabre (afecta la caja,
+      //    como pide el ajuste); las que conservan ítems quedan cerradas
+      //    con su nuevo conteo
+      for (const [boxPk, caja] of cajasPorPk) {
+        if (caja.estado !== 'CERRADA') continue;
+        const quedan: { total: string }[] = await em.query(
+          `SELECT COALESCE(SUM(cantidad), 0)::text AS total FROM box_items WHERE box_id = $1`,
+          [boxPk],
+        );
+        if (Number(quedan[0].total) === 0) {
+          await em.query(
+            `UPDATE boxes SET estado = 'ABIERTA', cerrada_at = NULL WHERE id = $1`,
+            [boxPk],
+          );
+          caja.reabierta = true;
+        }
+      }
+
+      // 7) El pedido queda amarrado a la factura corregida, sin cambiar de
+      //    estado (sigue Aprobado o Despachado)
+      order.numeroFactura = d.numeroFactura ?? order.numeroFactura;
+      order.facturaOcrDocumentId = dto.ocrDocumentId;
+      await em.save(order);
+
+      await this.audit.log(
+        {
+          usuarioId: user.id,
+          usuarioUsername: user.username,
+          accion: 'PEDIDO_AJUSTADO_POR_FACTURA',
+          tabla: TABLA,
+          registroId: id,
+          valorAnterior: {
+            estado: order.estado,
+            numeroFactura: facturaAnterior,
+            items: anterior,
+          },
+          valorNuevo: {
+            estado: order.estado,
+            numeroFactura: order.numeroFactura,
+            ajustes: validados.map(({ item, exceso, facturada }) => ({
+              codigo: item.codigo,
+              cantidadFacturada: facturada,
+              retornadas: exceso,
+            })),
+            cajasAfectadas: [...cajasPorPk.values()].map((c) => ({
+              caja: c.caja,
+              retiradas: c.retiradas,
+              reabierta: c.reabierta,
+            })),
+          },
+        },
+        em,
+      );
     });
     return this.getDetalle(id);
   }

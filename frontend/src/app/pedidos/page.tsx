@@ -135,6 +135,28 @@ function PedidosContenido() {
   const [preciosEdit, setPreciosEdit] = useState<Record<string, string>>({});
   const [editandoPrecios, setEditandoPrecios] = useState(false);
 
+  // I69: confirmación antes de reportar novedad (no directo)
+  const [confirmandoReporte, setConfirmandoReporte] = useState(false);
+
+  // I69: ajuste de pedido Aprobado/Despachado contra la factura corregida
+  const [archivoAjuste, setArchivoAjuste] = useState<File | null>(null);
+  const [ajustePreview, setAjustePreview] = useState<{
+    numeroFactura: string | null;
+    ocrDocumentId: string;
+    items: {
+      itemId: string;
+      codigo: string;
+      descripcion: string;
+      cantidadPedida: number;
+      cantidadAlistada: number;
+      cantidadDespachada: number;
+      cantidadFacturada: number;
+      retornar: number;
+      valorUnidad: number;
+    }[];
+    sinCruce: { referencia: string; descripcion: string | null; cantidad: number }[];
+  } | null>(null);
+
   const [mensaje, setMensaje] = useState('');
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
@@ -225,6 +247,9 @@ function PedidosContenido() {
       setEditando(false);
       setEditandoPrecios(false);
       setPreciosEdit({});
+      setConfirmandoReporte(false);
+      setAjustePreview(null);
+      setArchivoAjuste(null);
       setMensaje('');
       setError('');
       if (body.estado === 'PENDIENTE_CORRECCION') prepararEdicion(body);
@@ -430,6 +455,57 @@ function PedidosContenido() {
       setError(err.message);
     } finally {
       setCargando(false);
+    }
+  }
+
+  /** I69: sube la factura corregida y muestra la revisión del ajuste. */
+  async function revisarAjuste() {
+    if (!pedido || !archivoAjuste) return;
+    setCargando(true);
+    setError('');
+    try {
+      const ocrId = await uploadOcr('FACTURA_VENTA', archivoAjuste);
+      const { status, body } = await api(`/orders/${pedido.id}/ajuste-factura/preview`, {
+        method: 'POST',
+        body: JSON.stringify({ ocrDocumentId: ocrId }),
+      });
+      if (status === 201 || status === 200) {
+        setAjustePreview(body);
+      } else {
+        setError(mensajeError(body, 'No se pudo revisar la nueva factura'));
+      }
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setCargando(false);
+    }
+  }
+
+  /** I69: aplica el ajuste revisado (retorna unidades y afecta las cajas). */
+  async function aplicarAjuste() {
+    if (!pedido || !ajustePreview) return;
+    const ajustes = ajustePreview.items
+      .filter((i) => i.retornar > 0)
+      .map((i) => ({ itemId: i.itemId, cantidadFacturada: i.cantidadFacturada }));
+    if (!ajustes.length) {
+      setError('La nueva factura no tiene diferencias contra el pedido: no hay nada que ajustar.');
+      return;
+    }
+    setCargando(true);
+    setError('');
+    const { status, body } = await api(`/orders/${pedido.id}/ajuste-factura`, {
+      method: 'POST',
+      body: JSON.stringify({ ocrDocumentId: ajustePreview.ocrDocumentId, ajustes }),
+    });
+    setCargando(false);
+    if (status === 201 || status === 200) {
+      setMensaje('Ajuste aplicado: las unidades retornaron al inventario y las cajas del despacho quedaron actualizadas.');
+      setAjustePreview(null);
+      setArchivoAjuste(null);
+      abrir(pedido.id);
+      cargarLista();
+    } else {
+      setError(mensajeError(body, 'No se pudo aplicar el ajuste'));
     }
   }
 
@@ -792,6 +868,7 @@ function PedidosContenido() {
               <p className="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-800">
                 El Operador reportó productos no encontrados o cantidades inferiores. El creador
                 del pedido debe corregirlo (agregar/eliminar productos); volverá a estado Abierto.
+                {' '}Las unidades ya alistadas se conservan: el alistamiento no vuelve a empezar de cero.
               </p>
             )}
 
@@ -849,7 +926,8 @@ function PedidosContenido() {
                   <button onClick={() => accion(() => api(`/orders/${pedido.id}/finalizar-picking`, { method: 'POST' }), 'Pedido alistado.')} disabled={cargando} className="rounded bg-green-600 px-3 py-1.5 text-sm text-white hover:bg-green-700 disabled:opacity-50">
                     Finalizar alistamiento
                   </button>
-                  <button onClick={() => accion(() => api(`/orders/${pedido.id}/reportar`, { method: 'POST' }), 'Pedido reportado: Pendiente de corrección.')} disabled={cargando} className="rounded bg-amber-600 px-3 py-1.5 text-sm text-white hover:bg-amber-700 disabled:opacity-50">
+                  {/* I69: la novedad no se reporta de forma directa — pide confirmación */}
+                  <button onClick={() => setConfirmandoReporte(true)} disabled={cargando} className="rounded bg-amber-600 px-3 py-1.5 text-sm text-white hover:bg-amber-700 disabled:opacity-50">
                     Reportar novedad
                   </button>
                 </div>
@@ -1069,6 +1147,91 @@ function PedidosContenido() {
               </div>
             )}
 
+            {/* I69: ajuste contra la factura corregida (Aprobado/Despachado).
+                El pedido y el despacho ya se corrigieron «en directo» y la
+                factura en WO; aquí se refleja en Sofía: las unidades de más
+                retornan al inventario y se retiran de las cajas. */}
+            {esGenerador && ['APROBADO', 'DESPACHADO'].includes(pedido.estado) && (
+              <div className="mt-4 rounded bg-slate-50 p-3">
+                <p className="mb-2 text-sm font-medium">Ajuste por nueva factura (World Office corregida)</p>
+                {!ajustePreview ? (
+                  <div className="flex flex-wrap items-center gap-3">
+                    <input
+                      type="file"
+                      accept=".pdf,.png,.jpg,.jpeg,.tiff"
+                      onChange={(e) => setArchivoAjuste(e.target.files?.[0] ?? null)}
+                      className="text-sm"
+                    />
+                    <button
+                      onClick={revisarAjuste}
+                      disabled={cargando || !archivoAjuste}
+                      className="rounded bg-sofia-600 px-4 py-2 text-sm text-white hover:bg-sofia-700 disabled:opacity-50"
+                    >
+                      Revisar nueva factura
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <p className="mb-2 text-sm text-slate-600">
+                      Factura {ajustePreview.numeroFactura ?? '—'}: revise los cambios y apruebe el ajuste.
+                      Las unidades que retornan vuelven al inventario y se retiran de las cajas del despacho.
+                    </p>
+                    <div className="mb-3 overflow-x-auto rounded border bg-white">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b text-left text-xs text-slate-500">
+                            <th className="px-2 py-1.5">Referencia</th>
+                            <th className="px-2 py-1.5">Descripción</th>
+                            <th className="px-2 py-1.5 text-center">Alistada</th>
+                            <th className="px-2 py-1.5 text-center">Despachada</th>
+                            <th className="px-2 py-1.5 text-center">Facturada</th>
+                            <th className="px-2 py-1.5 text-center">Retorna</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {ajustePreview.items.map((i) => (
+                            <tr key={i.itemId} className={`border-b ${i.retornar > 0 ? 'bg-amber-50' : ''}`}>
+                              <td className="px-2 py-1.5 font-medium">{i.codigo}</td>
+                              <td className="px-2 py-1.5">{i.descripcion}</td>
+                              <td className="px-2 py-1.5 text-center">{i.cantidadAlistada}</td>
+                              <td className="px-2 py-1.5 text-center">{i.cantidadDespachada}</td>
+                              <td className="px-2 py-1.5 text-center">{i.cantidadFacturada}</td>
+                              <td className="px-2 py-1.5 text-center font-semibold text-amber-800">
+                                {i.retornar > 0
+                                  ? `${i.retornar}${i.cantidadFacturada === 0 ? ' (se elimina)' : ''}`
+                                  : '—'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {ajustePreview.sinCruce.length > 0 && (
+                      <p className="mb-3 rounded bg-amber-100 px-3 py-2 text-xs text-amber-900">
+                        Referencias de la factura sin cruce en el catálogo (no ajustan nada):{' '}
+                        {ajustePreview.sinCruce.map((s) => `${s.referencia} (${s.cantidad})`).join(', ')}
+                      </p>
+                    )}
+                    <div className="flex gap-3">
+                      <button
+                        onClick={aplicarAjuste}
+                        disabled={cargando || !ajustePreview.items.some((i) => i.retornar > 0)}
+                        className="rounded bg-green-600 px-4 py-2 text-sm text-white hover:bg-green-700 disabled:opacity-50"
+                      >
+                        Aprobar ajuste
+                      </button>
+                      <button
+                        onClick={() => { setAjustePreview(null); setArchivoAjuste(null); }}
+                        className="rounded border bg-white px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
+                      >
+                        Descartar revisión
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* I65b: devolver Alistado → Abierto para correcciones (todos los perfiles) */}
             {pedido.estado === 'ALISTADO' && (
               <button
@@ -1096,6 +1259,46 @@ function PedidosContenido() {
               </button>
             )}
           </MarcoDocumento>
+        )}
+
+        {/* I69: confirmación antes de reportar la novedad — aceptar o cancelar */}
+        {confirmandoReporte && pedido && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+              <h3 className="mb-2 text-lg font-semibold text-slate-800">
+                Reportar novedad del pedido {pedido.numero}
+              </h3>
+              <p className="mb-2 text-sm text-slate-600">
+                El pedido pasará a <strong>Pendiente de corrección</strong> para que el creador
+                ajuste los productos; después volverá a Abierto.
+              </p>
+              <p className="mb-4 text-sm text-slate-600">
+                Las unidades ya alistadas se conservan: al corregirse, el alistamiento
+                continúa desde donde quedó.
+              </p>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setConfirmandoReporte(false)}
+                  className="rounded border px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => {
+                    setConfirmandoReporte(false);
+                    accion(
+                      () => api(`/orders/${pedido.id}/reportar`, { method: 'POST' }),
+                      'Pedido reportado: Pendiente de corrección.',
+                    );
+                  }}
+                  disabled={cargando}
+                  className="rounded bg-amber-600 px-4 py-2 text-sm text-white hover:bg-amber-700 disabled:opacity-50"
+                >
+                  Aceptar
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* I51: modal de pre-validación de la exportación a World Office */}
