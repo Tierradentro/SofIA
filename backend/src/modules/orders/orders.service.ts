@@ -41,7 +41,7 @@ import { InboundMatcher } from '../inbound/inbound-matcher';
 import { compararFacturaConPedido } from './order-compare';
 import { BarcodeOrigin } from '../../common/enums/barcode-origin.enum';
 import { Role } from '../../common/enums/role.enum';
-import { asegurarAreaEmpaque, sacarDeEmpaque, sumarEnEmpaque, trasladarAEmpaque } from '../warehouses/empaque';
+import { asegurarAreaEmpaque, descontarDeEmpaque, sacarDeEmpaque, sumarEnEmpaque, trasladarAEmpaque } from '../warehouses/empaque';
 
 const TABLA = 'Pedidos';
 
@@ -883,19 +883,18 @@ export class OrdersService {
   // ---------------------------------------------------------------
 
   /**
-   * I69: el pedido y el despacho se corrigieron «en directo» y la factura
-   * se corrigió en World Office; este ajuste refleja esa nueva factura en
-   * Sofía. Solo REDUCE cantidades: las unidades de más retornan al
-   * inventario (salen de las cajas del despacho —incluidas las cerradas—
-   * o se desbloquean del alistamiento) y la línea se elimina si queda en
-   * cero. El pedido conserva su estado (Aprobado/Despachado).
-   *
-   * La factura corregida NUNCA agrega unidades ni productos nuevos: Sofía
-   * no puede alistar/empacar a posteriori lo que ya se despachó por fuera;
-   * si la factura trae ítems nuevos o cantidades superiores a lo alistado,
-   * el excedente se muestra en la revisión como «no ajustable» para
-   * gestionarlo en WO (la cantidad de Sofía queda como está y NO retorna
-   * nada).
+   * I69/I70: el pedido y el despacho se corrigieron «en directo» y la
+   * factura se corrigió en World Office (mismo número); este ajuste refleja
+   * esa nueva factura en Sofía EN AMBOS SENTIDOS:
+   *  - Salidas: las unidades de más retornan al inventario (salen de las
+   *    cajas del despacho —incluidas las cerradas— o se desbloquean del
+   *    alistamiento) y la línea se elimina si queda en cero.
+   *  - Entradas: las unidades de menos y los productos nuevos de la factura
+   *    salen del inventario; si el pedido está Despachado se empacan en la
+   *    ÚLTIMA caja creada del despacho (si ya está cerrada, quedan
+   *    despachadas; si está abierta, bloqueadas en la bahía), y si está
+   *    Aprobado quedan alistadas/bloqueadas en la bahía de empaque.
+   * El pedido conserva su estado (Aprobado/Despachado).
    */
   private assertAjustableFactura(order: Order) {
     if (
@@ -923,20 +922,27 @@ export class OrdersService {
   }
 
   /**
-   * Revisión previa del ajuste: cruza la nueva factura con el pedido y
-   * muestra qué cambiaría por ítem (unidades que retornan al inventario).
-   * No modifica nada; la aplicación la confirma ajustarPorFactura().
+   * I70: cruza la nueva factura (OCR) con el catálogo —mismo cruce de la
+   * aprobación (HU-032/I60): exacto y luego parcial— y valida que su número
+   * sea EL MISMO de la factura del pedido: la corrección en World Office
+   * conserva el número; un número distinto es otra factura y no aplica.
    */
-  async preverAjusteFactura(id: string, ocrDocumentId: string) {
-    const order = await this.findOne(id);
-    this.assertAjustableFactura(order);
-    const ocrDoc = await this.ocrFactura(ocrDocumentId);
+  private async cruzarFacturaCorregida(order: Order, ocrDoc: OcrDocument) {
     const d = ocrDoc.datosExtraidos as any;
+    const numeroOcr = String(d?.numeroFactura ?? '').trim().toUpperCase();
+    const numeroPedido = String(order.numeroFactura ?? '').trim().toUpperCase();
+    if (!numeroOcr || numeroOcr !== numeroPedido) {
+      throw new BadRequestException(
+        `La nueva factura (${d?.numeroFactura ?? 'sin número'}) no coincide con la factura del pedido (${order.numeroFactura ?? 'sin factura'}): el número debe ser el mismo`,
+      );
+    }
 
-    // Mismo cruce de la aprobación (HU-032/I60): exacto y luego parcial.
     const matcher = await this.buildMatcher(order.empresaId);
     const facturadaPorProducto = new Map<string, number>();
-    const productosFactura = new Map<string, { codigo: string; descripcion: string }>();
+    const productosFactura = new Map<
+      string,
+      { codigo: string; descripcion: string; valorUnitario: number | null }
+    >();
     const sinCruce: { referencia: string; descripcion: string | null; cantidad: number }[] = [];
     for (const i of d.items ?? []) {
       const referencia = String(i.referencia ?? '');
@@ -956,35 +962,69 @@ export class OrdersService {
       productosFactura.set(producto.id, {
         codigo: producto.codigo,
         descripcion: producto.descripcion,
+        valorUnitario: i.valorUnitario != null ? Number(i.valorUnitario) : null,
       });
     }
+    return { d, facturadaPorProducto, productosFactura, sinCruce };
+  }
+
+  /** Existencias disponibles (cantidad − bloqueada) por producto. */
+  private async disponibles(productIds: string[]): Promise<Map<string, number>> {
+    const mapa = new Map<string, number>();
+    if (productIds.length === 0) return mapa;
+    const rows: { id: string; cantidad: number; cantidad_bloqueada: number }[] =
+      await this.dataSource.query(
+        `SELECT id, cantidad, cantidad_bloqueada FROM products WHERE id = ANY($1)`,
+        [productIds],
+      );
+    for (const r of rows) {
+      mapa.set(r.id, Number(r.cantidad) - Number(r.cantidad_bloqueada));
+    }
+    return mapa;
+  }
+
+  /**
+   * Revisión previa del ajuste: cruza la nueva factura con el pedido y
+   * muestra qué cambiaría por ítem — unidades que RETORNAN al inventario
+   * (salidas) y unidades/productos que se AGREGAN desde el inventario
+   * (entradas), con las existencias disponibles para cada entrada.
+   * No modifica nada; la aplicación la confirma ajustarPorFactura().
+   */
+  async preverAjusteFactura(id: string, ocrDocumentId: string) {
+    const order = await this.findOne(id);
+    this.assertAjustableFactura(order);
+    const ocrDoc = await this.ocrFactura(ocrDocumentId);
+    const { d, facturadaPorProducto, productosFactura, sinCruce } =
+      await this.cruzarFacturaCorregida(order, ocrDoc);
 
     const items = await this.items.find({ where: { orderId: id } });
-    // I69: productos de la factura que SÍ existen en el catálogo pero NO
-    // están en el pedido (agregados en la corrección de WO, p. ej. los
-    // amortiguadores IZQ del FEIR 10349). No aparecen en la tabla del pedido
-    // ni en «sin cruce» — sin esta lista pasaban totalmente desapercibidos.
+    const disponible = await this.disponibles([
+      ...new Set([...items.map((i) => i.productId), ...facturadaPorProducto.keys()]),
+    ]);
+
+    // I70: productos de la factura que existen en el catálogo pero NO en el
+    // pedido (agregados en la corrección de WO, p. ej. los amortiguadores
+    // IZQ del FEIR 10349): ahora SÍ se pueden ingresar con el ajuste.
     const enPedido = new Set(items.map((i) => i.productId));
-    const faltantesEnPedido = [...facturadaPorProducto.entries()]
+    const nuevosEnFactura = [...facturadaPorProducto.entries()]
       .filter(([productId]) => !enPedido.has(productId))
       .map(([productId, cantidad]) => ({
+        productId,
         codigo: productosFactura.get(productId)!.codigo,
         descripcion: productosFactura.get(productId)!.descripcion,
         cantidad,
+        valorUnitario: productosFactura.get(productId)!.valorUnitario,
+        stockDisponible: disponible.get(productId) ?? 0,
       }));
+
     return {
       pedidoId: order.id,
       numero: order.numero,
       estado: order.estado,
       numeroFactura: d.numeroFactura ?? null,
       ocrDocumentId,
-      // I69: la factura corregida solo reduce. Si trae MÁS unidades que lo
-      // alistado, el excedente no se puede reflejar (Sofía no alista ni
-      // empaca a posteriori un despacho ya corregido en directo): se muestra
-      // en la revisión para gestionarlo aparte en WO y NO se ajusta.
       items: items.map((i) => {
         const facturada = facturadaPorProducto.get(i.productId) ?? 0;
-        const cantidadFacturada = Math.min(facturada, i.cantidadAlistada);
         return {
           itemId: i.id,
           codigo: i.codigo,
@@ -992,26 +1032,28 @@ export class OrdersService {
           cantidadPedida: i.cantidad,
           cantidadAlistada: i.cantidadAlistada,
           cantidadDespachada: i.cantidadDespachada,
-          cantidadFacturada,
-          // El ajuste solo reduce: retorna lo alistado por encima de la factura
-          retornar: Math.max(0, i.cantidadAlistada - cantidadFacturada),
-          excedenteNoAjustable: Math.max(0, facturada - i.cantidadAlistada),
+          cantidadFacturada: facturada,
+          // Salida: lo alistado por encima de la factura retorna al inventario
+          retornar: Math.max(0, i.cantidadAlistada - facturada),
+          // Entrada: lo facturado por encima de lo alistado sale del inventario
+          agregar: Math.max(0, facturada - i.cantidadAlistada),
+          stockDisponible: disponible.get(i.productId) ?? 0,
           valorUnidad: Number(i.valorUnidad),
         };
       }),
-      // Ítems de la factura sin cruce con el catálogo: productos nuevos que
-      // WO facturó pero Sofía no puede agregar al pedido/despacho ya corregidos
+      // Ítems de la factura sin cruce con el catálogo: no se pueden ingresar
+      // (el producto no existe en Sofía); se gestionan aparte en WO
       sinCruce,
-      // Ítems con cruce en el catálogo pero ausentes del pedido: tampoco se
-      // agregan (el ajuste solo reduce); se muestran para gestionarlos en WO
-      faltantesEnPedido,
+      nuevosEnFactura,
     };
   }
 
   /**
-   * Aplica el ajuste revisado. Por cada ítem, el exceso (alistada −
-   * facturada) se retira primero de las cajas del despacho —de la más
-   * reciente a la más antigua— y luego del remanente alistado sin empacar:
+   * Aplica el ajuste revisado (entradas y salidas afectan el inventario):
+   *
+   * SALIDAS — por cada ítem, el exceso (alistada − facturada) se retira
+   * primero de las cajas del despacho —de la más reciente a la más antigua—
+   * y luego del remanente alistado sin empacar:
    *  - Unidad de caja CERRADA: ya había salido del stock → reingresa
    *    (cantidad += n) y cantidad_despachada baja.
    *  - Unidad de caja ABIERTA o sin empacar: seguía bloqueada → se libera
@@ -1020,15 +1062,27 @@ export class OrdersService {
    *    oficial del producto (o a tránsito si no tiene).
    *  - Una caja CERRADA que quede sin ítems se reabre (ABIERTA).
    *  - La línea cuya cantidad quede en cero se elimina del pedido.
+   *
+   * ENTRADAS — lo facturado por encima de lo alistado y los productos
+   * nuevos salen del inventario (requieren existencias disponibles):
+   *  - Pedido DESPACHADO: se empacan en la ÚLTIMA caja creada del despacho.
+   *    Si la caja está CERRADA, las unidades quedan despachadas (salen del
+   *    stock); si está ABIERTA, quedan bloqueadas en la bahía de empaque.
+   *  - Pedido APROBADO: quedan alistadas/bloqueadas en la bahía de empaque,
+   *    listas para empacar.
+   *  - Producto nuevo: se crea la línea del pedido con el valor unitario de
+   *    la factura (o el precio del catálogo si la factura no lo trae).
    */
   async ajustarPorFactura(id: string, dto: AjusteFacturaDto, user: Usuario) {
     const order = await this.findOne(id);
     this.assertAjustableFactura(order);
     const ocrDoc = await this.ocrFactura(dto.ocrDocumentId);
-    const d = ocrDoc.datosExtraidos as any;
+    const { d, facturadaPorProducto, productosFactura } =
+      await this.cruzarFacturaCorregida(order, ocrDoc);
 
     const items = await this.items.find({ where: { orderId: id } });
     const porId = new Map(items.map((i) => [i.id, i]));
+    const porProducto = new Map(items.map((i) => [i.productId, i]));
     const anterior = items.map((i) => ({
       codigo: i.codigo,
       cantidad: i.cantidad,
@@ -1036,39 +1090,191 @@ export class OrdersService {
       cantidadDespachada: i.cantidadDespachada,
     }));
 
-    // Validar todo antes de tocar nada
-    const validados: { item: OrderItem; exceso: number; facturada: number }[] = [];
+    // Validar todo antes de tocar nada. delta = facturada − alistada
+    // (negativo: salida/retorno; positivo: entrada desde el inventario).
+    const cambios: { item: OrderItem; delta: number; facturada: number }[] = [];
+    const nuevos: { productId: string; cantidad: number }[] = [];
     for (const a of dto.ajustes) {
-      const item = porId.get(a.itemId);
-      if (!item) {
-        throw new BadRequestException(
-          `El ítem ${a.itemId} no pertenece a este pedido`,
-        );
-      }
       const facturada = Number(a.cantidadFacturada);
       if (!Number.isInteger(facturada) || facturada < 0) {
         throw new BadRequestException(
           'cantidadFacturada debe ser un entero mayor o igual a cero',
         );
       }
-      // El ajuste solo reduce lo alistado; nunca aumenta unidades
-      if (facturada > item.cantidadAlistada) {
+      if (a.itemId) {
+        const item = porId.get(a.itemId);
+        if (!item) {
+          throw new BadRequestException(
+            `El ítem ${a.itemId} no pertenece a este pedido`,
+          );
+        }
+        const segunFactura = facturadaPorProducto.get(item.productId) ?? 0;
+        if (facturada !== segunFactura) {
+          throw new BadRequestException(
+            `La cantidad de ${item.codigo} (${facturada}) no coincide con la nueva factura (${segunFactura}); vuelva a revisar el ajuste`,
+          );
+        }
+        const delta = facturada - item.cantidadAlistada;
+        if (delta !== 0) cambios.push({ item, delta, facturada });
+      } else if (a.productId) {
+        const info = productosFactura.get(a.productId);
+        if (porProducto.has(a.productId)) {
+          throw new BadRequestException(
+            `El producto ${info?.codigo ?? a.productId} ya está en el pedido: ajuste la línea existente`,
+          );
+        }
+        if (!info) {
+          throw new BadRequestException(
+            'El producto no está en la nueva factura o no tiene cruce en el catálogo',
+          );
+        }
+        const segunFactura = facturadaPorProducto.get(a.productId) ?? 0;
+        if (facturada !== segunFactura || facturada <= 0) {
+          throw new BadRequestException(
+            `La cantidad de ${info.codigo} (${facturada}) no coincide con la nueva factura (${segunFactura}); vuelva a revisar el ajuste`,
+          );
+        }
+        nuevos.push({ productId: a.productId, cantidad: facturada });
+      } else {
         throw new BadRequestException(
-          `La cantidad facturada de ${item.codigo} (${facturada}) supera lo alistado (${item.cantidadAlistada}); el ajuste solo reduce cantidades`,
+          'Cada ajuste debe indicar itemId (línea del pedido) o productId (producto nuevo)',
         );
       }
-      const exceso = item.cantidadAlistada - facturada;
-      if (exceso > 0) validados.push({ item, exceso, facturada });
+    }
+
+    // Las entradas necesitan existencias disponibles (cantidad − bloqueada)
+    const entradas = [
+      ...cambios
+        .filter((c) => c.delta > 0)
+        .map((c) => ({ productId: c.item.productId, codigo: c.item.codigo, n: c.delta })),
+      ...nuevos.map((n) => ({
+        productId: n.productId,
+        codigo: productosFactura.get(n.productId)!.codigo,
+        n: n.cantidad,
+      })),
+    ];
+    const disponible = await this.disponibles([...new Set(entradas.map((e) => e.productId))]);
+    for (const e of entradas) {
+      const disp = disponible.get(e.productId) ?? 0;
+      if (e.n > disp) {
+        throw new BadRequestException(
+          `Existencias insuficientes para ${e.codigo}: se necesitan ${e.n} y hay ${disp} disponibles`,
+        );
+      }
     }
     const facturaAnterior = order.numeroFactura ?? null;
 
     const cajasPorPk = new Map<
       string,
-      { caja: string; estado: string; retiradas: number; reabierta: boolean }
+      { caja: string; estado: string; retiradas: number; agregadas: number; reabierta: boolean }
     >();
     await this.dataSource.transaction(async (em) => {
       const areaEmpaqueId = await asegurarAreaEmpaque(em);
-      for (const { item, exceso } of validados) {
+
+      // I70: si el pedido está DESPACHADO, las entradas se empacan en la
+      // ÚLTIMA caja creada de su despacho (las salidas retiran de la más
+      // reciente a la más antigua — ver el paso 1).
+      let ultimaCaja: {
+        id: string;
+        box_id: string;
+        estado: string;
+        dispatch_id: string;
+      } | null = null;
+      if (order.estado === OrderStatus.DESPACHADO) {
+        const filasCaja: {
+          id: string;
+          box_id: string;
+          estado: string;
+          dispatch_id: string;
+        }[] = await em.query(
+          `SELECT b.id, b.box_id, b.estado, b.dispatch_id
+             FROM boxes b
+             JOIN dispatch_orders dso ON dso.dispatch_id = b.dispatch_id
+            WHERE dso.order_id = $1
+            ORDER BY b.created_at DESC, b.numero_en_despacho DESC
+            LIMIT 1`,
+          [id],
+        );
+        ultimaCaja = filasCaja[0] ?? null;
+      }
+
+      const marcarCaja = (pk: string, boxRef: string, estado: string) => {
+        const caja = cajasPorPk.get(pk) ?? {
+          caja: boxRef,
+          estado,
+          retiradas: 0,
+          agregadas: 0,
+          reabierta: false,
+        };
+        cajasPorPk.set(pk, caja);
+        return caja;
+      };
+
+      /**
+       * Entrada de n unidades a una línea: salen del inventario. Las líneas
+       * nuevas ya se crean con sus cantidades finales (contar = false) y aquí
+       * solo reciben el efecto de inventario/caja.
+       */
+      const agregarUnidades = async (item: OrderItem, n: number, contar = true) => {
+        const cajaDestino = ultimaCaja;
+        if (cajaDestino && cajaDestino.estado === 'CERRADA') {
+          // La caja ya salió de la bodega: las unidades salen del stock y
+          // quedan despachadas en ella (trazabilidad como cierre de caja)
+          await this.movements.apply(
+            {
+              productId: item.productId,
+              tipo: MovementType.DESPACHO_CIERRE_CAJA,
+              cantidadDelta: -n,
+              docTipo: 'DESPACHO',
+              docId: cajaDestino.dispatch_id,
+              usuarioId: user.id,
+            },
+            em,
+          );
+          // Salen físicamente de sus ubicaciones (vía bahía, neto cero allí)
+          if (areaEmpaqueId) {
+            await trasladarAEmpaque(em, item.productId, areaEmpaqueId, n);
+            await descontarDeEmpaque(em, item.productId, n);
+          }
+          item.cantidadDespachada += n;
+        } else {
+          // Caja ABIERTA o pedido APROBADO: las unidades quedan bloqueadas
+          // en la bahía de empaque, como recién alistadas
+          await this.movements.apply(
+            {
+              productId: item.productId,
+              tipo: MovementType.BLOQUEO_ALISTAMIENTO,
+              cantidadBloqueadaDelta: n,
+              docTipo: 'PEDIDO',
+              docId: order.id,
+              usuarioId: user.id,
+            },
+            em,
+          );
+          if (areaEmpaqueId) {
+            await trasladarAEmpaque(em, item.productId, areaEmpaqueId, n);
+          }
+        }
+        if (cajaDestino) {
+          // Empacar en la última caja creada (upsert del conteo por línea)
+          await em.query(
+            `INSERT INTO box_items (id, box_id, order_item_id, product_id, empresa_id, codigo, cantidad)
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6)
+             ON CONFLICT (box_id, order_item_id)
+             DO UPDATE SET cantidad = box_items.cantidad + EXCLUDED.cantidad`,
+            [cajaDestino.id, item.id, item.productId, order.empresaId, item.codigo, n],
+          );
+          marcarCaja(cajaDestino.id, cajaDestino.box_id, cajaDestino.estado).agregadas += n;
+        }
+        if (contar) {
+          item.cantidad += n;
+          item.cantidadAlistada += n;
+        }
+      };
+
+      // 1) SALIDAS: el exceso (alistada − facturada) retorna al inventario
+      for (const { item, delta } of cambios.filter((c) => c.delta < 0)) {
+        const exceso = -delta;
         let restante = exceso;
         let retornoDespachadas = 0; // venían de cajas CERRADAS (salieron del stock)
         let retornoBloqueadas = 0;  // alistadas sin despachar (aún bloqueadas)
@@ -1105,14 +1311,7 @@ export class OrdersService {
               [fila.box_item_id, nuevaCant],
             );
           }
-          const caja = cajasPorPk.get(fila.box_pk) ?? {
-            caja: fila.box_ref,
-            estado: fila.box_estado,
-            retiradas: 0,
-            reabierta: false,
-          };
-          caja.retiradas += tomar;
-          cajasPorPk.set(fila.box_pk, caja);
+          marcarCaja(fila.box_pk, fila.box_ref, fila.box_estado).retiradas += tomar;
           if (fila.box_estado === 'CERRADA') {
             retornoDespachadas += tomar;
             item.cantidadDespachada -= tomar;
@@ -1161,7 +1360,42 @@ export class OrdersService {
         }
       }
 
-      // 6) Una caja CERRADA que quedó sin ítems se reabre (afecta la caja,
+      // 6) ENTRADAS en líneas existentes: lo facturado por encima de lo
+      //    alistado sale del inventario (a la última caja si está
+      //    Despachado; a la bahía bloqueada si está Aprobado)
+      for (const { item, delta } of cambios.filter((c) => c.delta > 0)) {
+        await agregarUnidades(item, delta);
+        item.valorTotal = (item.cantidad * Number(item.valorUnidad)) as any;
+        await em.save(item);
+      }
+
+      // 7) Productos NUEVOS de la factura: se crea la línea ya ajustada
+      //    (valor unitario de la factura; si no lo trae, el precio del
+      //    catálogo) y sus unidades entran como cualquier otra entrada
+      for (const n of nuevos) {
+        const info = productosFactura.get(n.productId)!;
+        const producto = await em.findOne(Product, { where: { id: n.productId } });
+        const valor = info.valorUnitario ?? Number(producto?.precio ?? 0);
+        const item = em.create(OrderItem, {
+          orderId: id,
+          productId: n.productId,
+          codigo: info.codigo,
+          descripcion: info.descripcion,
+          marca: producto?.marca ?? null,
+          cantidad: n.cantidad,
+          cantidadAlistada: n.cantidad,
+          cantidadDespachada: 0,
+          valorUnidad: valor as any,
+          valorTotal: (n.cantidad * valor) as any,
+        });
+        await em.save(item);
+        // Efecto de inventario/caja (despachada en caja cerrada, bloqueada
+        // en bahía si no); las cantidades de la línea ya quedaron creadas
+        await agregarUnidades(item, n.cantidad, false);
+        await em.save(item);
+      }
+
+      // 8) Una caja CERRADA que quedó sin ítems se reabre (afecta la caja,
       //    como pide el ajuste); las que conservan ítems quedan cerradas
       //    con su nuevo conteo
       for (const [boxPk, caja] of cajasPorPk) {
@@ -1179,8 +1413,8 @@ export class OrdersService {
         }
       }
 
-      // 7) El pedido queda amarrado a la factura corregida, sin cambiar de
-      //    estado (sigue Aprobado o Despachado)
+      // 9) El pedido queda amarrado a la factura corregida (mismo número),
+      //    sin cambiar de estado (sigue Aprobado o Despachado)
       order.numeroFactura = d.numeroFactura ?? order.numeroFactura;
       order.facturaOcrDocumentId = dto.ocrDocumentId;
       await em.save(order);
@@ -1200,14 +1434,20 @@ export class OrdersService {
           valorNuevo: {
             estado: order.estado,
             numeroFactura: order.numeroFactura,
-            ajustes: validados.map(({ item, exceso, facturada }) => ({
+            ajustes: cambios.map(({ item, delta, facturada }) => ({
               codigo: item.codigo,
               cantidadFacturada: facturada,
-              retornadas: exceso,
+              retornadas: delta < 0 ? -delta : 0,
+              agregadas: delta > 0 ? delta : 0,
+            })),
+            nuevos: nuevos.map((n) => ({
+              codigo: productosFactura.get(n.productId)!.codigo,
+              cantidad: n.cantidad,
             })),
             cajasAfectadas: [...cajasPorPk.values()].map((c) => ({
               caja: c.caja,
               retiradas: c.retiradas,
+              agregadas: c.agregadas,
               reabierta: c.reabierta,
             })),
           },

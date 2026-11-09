@@ -152,11 +152,19 @@ function PedidosContenido() {
       cantidadDespachada: number;
       cantidadFacturada: number;
       retornar: number;
-      excedenteNoAjustable: number;
+      agregar: number;
+      stockDisponible: number;
       valorUnidad: number;
     }[];
     sinCruce: { referencia: string; descripcion: string | null; cantidad: number }[];
-    faltantesEnPedido?: { codigo: string; descripcion: string; cantidad: number }[];
+    nuevosEnFactura?: {
+      productId: string;
+      codigo: string;
+      descripcion: string;
+      cantidad: number;
+      valorUnitario: number | null;
+      stockDisponible: number;
+    }[];
   } | null>(null);
 
   const [mensaje, setMensaje] = useState('');
@@ -483,12 +491,18 @@ function PedidosContenido() {
     }
   }
 
-  /** I69: aplica el ajuste revisado (retorna unidades y afecta las cajas). */
+  /** I69/I70: aplica el ajuste revisado (entradas y salidas de inventario). */
   async function aplicarAjuste() {
     if (!pedido || !ajustePreview) return;
-    const ajustes = ajustePreview.items
-      .filter((i) => i.retornar > 0)
-      .map((i) => ({ itemId: i.itemId, cantidadFacturada: i.cantidadFacturada }));
+    const ajustes = [
+      ...ajustePreview.items
+        .filter((i) => i.retornar > 0 || i.agregar > 0)
+        .map((i) => ({ itemId: i.itemId, cantidadFacturada: i.cantidadFacturada })),
+      ...(ajustePreview.nuevosEnFactura ?? []).map((n) => ({
+        productId: n.productId,
+        cantidadFacturada: n.cantidad,
+      })),
+    ];
     if (!ajustes.length) {
       setError('La nueva factura no tiene diferencias contra el pedido: no hay nada que ajustar.');
       return;
@@ -501,7 +515,7 @@ function PedidosContenido() {
     });
     setCargando(false);
     if (status === 201 || status === 200) {
-      setMensaje('Ajuste aplicado: las unidades retornaron al inventario y las cajas del despacho quedaron actualizadas.');
+      setMensaje('Ajuste aplicado: las entradas y salidas se reflejaron en el inventario y en las cajas del despacho.');
       setAjustePreview(null);
       setArchivoAjuste(null);
       abrir(pedido.id);
@@ -1149,10 +1163,12 @@ function PedidosContenido() {
               </div>
             )}
 
-            {/* I69: ajuste contra la factura corregida (Aprobado/Despachado).
+            {/* I69/I70: ajuste contra la factura corregida (Aprobado/Despachado).
                 El pedido y el despacho ya se corrigieron «en directo» y la
-                factura en WO; aquí se refleja en Sofía: las unidades de más
-                retornan al inventario y se retiran de las cajas. */}
+                factura en WO (mismo número); aquí se refleja en Sofía:
+                salidas retornan al inventario y entradas (unidades de más o
+                productos nuevos) salen del inventario; en Despachado afectan
+                la última caja creada del despacho. */}
             {esGenerador && ['APROBADO', 'DESPACHADO'].includes(pedido.estado) && (
               <div className="mt-4 rounded bg-slate-50 p-3">
                 <p className="mb-2 text-sm font-medium">Ajuste por nueva factura (World Office corregida)</p>
@@ -1176,7 +1192,8 @@ function PedidosContenido() {
                   <div>
                     <p className="mb-2 text-sm text-slate-600">
                       Factura {ajustePreview.numeroFactura ?? '—'}: revise los cambios y apruebe el ajuste.
-                      Las unidades que retornan vuelven al inventario y se retiran de las cajas del despacho.
+                      Las entradas y salidas afectan el inventario; si el pedido está despachado,
+                      los productos se agregan o retiran de la última caja del despacho.
                     </p>
                     <div className="mb-3 overflow-x-auto rounded border bg-white">
                       <table className="w-full text-sm">
@@ -1187,69 +1204,98 @@ function PedidosContenido() {
                             <th className="px-2 py-1.5 text-center">Alistada</th>
                             <th className="px-2 py-1.5 text-center">Despachada</th>
                             <th className="px-2 py-1.5 text-center">Facturada</th>
-                            <th className="px-2 py-1.5 text-center">Retorna</th>
+                            <th className="px-2 py-1.5 text-center">Ajuste</th>
                           </tr>
                         </thead>
                         <tbody>
                           {ajustePreview.items.map((i) => (
-                            <tr key={i.itemId} className={`border-b ${i.retornar > 0 ? 'bg-amber-50' : ''}`}>
+                            <tr
+                              key={i.itemId}
+                              className={`border-b ${i.retornar > 0 ? 'bg-amber-50' : i.agregar > 0 ? 'bg-green-50' : ''}`}
+                            >
                               <td className="px-2 py-1.5 font-medium">{i.codigo}</td>
                               <td className="px-2 py-1.5">{i.descripcion}</td>
                               <td className="px-2 py-1.5 text-center">{i.cantidadAlistada}</td>
                               <td className="px-2 py-1.5 text-center">{i.cantidadDespachada}</td>
-                              <td className="px-2 py-1.5 text-center">
-                                {i.cantidadFacturada}
-                                {i.excedenteNoAjustable > 0 && (
-                                  <span className="block text-xs font-semibold text-amber-800">
-                                    +{i.excedenteNoAjustable} no ajustable
+                              <td className="px-2 py-1.5 text-center">{i.cantidadFacturada}</td>
+                              <td className="px-2 py-1.5 text-center font-semibold">
+                                {i.retornar > 0 ? (
+                                  <span className="text-amber-800">
+                                    −{i.retornar} retorna{i.cantidadFacturada === 0 ? ' (se elimina)' : ''}
                                   </span>
+                                ) : i.agregar > 0 ? (
+                                  <span className="text-green-800">
+                                    +{i.agregar} agrega
+                                    {i.agregar > i.stockDisponible && (
+                                      <span className="block text-xs font-semibold text-red-700">
+                                        solo {i.stockDisponible} disponibles
+                                      </span>
+                                    )}
+                                  </span>
+                                ) : (
+                                  '—'
                                 )}
                               </td>
-                              <td className="px-2 py-1.5 text-center font-semibold text-amber-800">
-                                {i.retornar > 0
-                                  ? `${i.retornar}${i.cantidadFacturada === 0 ? ' (se elimina)' : ''}`
-                                  : '—'}
+                            </tr>
+                          ))}
+                          {(ajustePreview.nuevosEnFactura ?? []).map((n) => (
+                            <tr key={n.productId} className="border-b bg-green-50">
+                              <td className="px-2 py-1.5 font-medium">
+                                {n.codigo}
+                                <span className="ml-1 rounded bg-green-200 px-1 text-[10px] font-bold text-green-900">
+                                  NUEVO
+                                </span>
+                              </td>
+                              <td className="px-2 py-1.5">{n.descripcion}</td>
+                              <td className="px-2 py-1.5 text-center">0</td>
+                              <td className="px-2 py-1.5 text-center">0</td>
+                              <td className="px-2 py-1.5 text-center">{n.cantidad}</td>
+                              <td className="px-2 py-1.5 text-center font-semibold">
+                                <span className="text-green-800">
+                                  +{n.cantidad} ingresa
+                                  {n.cantidad > n.stockDisponible && (
+                                    <span className="block text-xs font-semibold text-red-700">
+                                      solo {n.stockDisponible} disponibles
+                                    </span>
+                                  )}
+                                </span>
                               </td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
-                    {ajustePreview.items.some((i) => i.excedenteNoAjustable > 0) && (
-                      <p className="mb-3 rounded bg-amber-100 px-3 py-2 text-xs text-amber-900">
-                        La factura trae más unidades de las alistadas en las referencias marcadas.
-                        El ajuste en Sofía solo reduce: ese excedente ya despachado «en directo»
-                        no se alista ni se empaca aquí; gestiónelo aparte en World Office.
+                    {(ajustePreview.items.some((i) => i.agregar > i.stockDisponible) ||
+                      (ajustePreview.nuevosEnFactura ?? []).some((n) => n.cantidad > n.stockDisponible)) && (
+                      <p className="mb-3 rounded bg-red-50 px-3 py-2 text-xs font-semibold text-red-900">
+                        No hay existencias suficientes para las entradas marcadas: ingrese el
+                        producto al inventario antes de aprobar el ajuste.
                       </p>
                     )}
-                    {(ajustePreview.faltantesEnPedido?.length ?? 0) > 0 && (
-                      <div className="mb-3 rounded bg-red-50 px-3 py-2 text-xs text-red-900">
-                        <p className="mb-1 font-semibold">
-                          La factura trae productos que NO están en el pedido. No se agregan
-                          ni se despachan en Sofía (el ajuste solo reduce); gestiónelos aparte
-                          en World Office:
-                        </p>
-                        <ul className="list-inside list-disc">
-                          {ajustePreview.faltantesEnPedido!.map((f) => (
-                            <li key={f.codigo}>
-                              <strong>{f.codigo}</strong> — {f.descripcion} · {f.cantidad} und.
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
+                    {(ajustePreview.nuevosEnFactura?.length ?? 0) > 0 && (
+                      <p className="mb-3 rounded bg-green-100 px-3 py-2 text-xs text-green-900">
+                        La factura trae productos que no están en el pedido (marcados NUEVO): al
+                        aprobar, se agregan al pedido, salen del inventario y, si el pedido está
+                        despachado, se empacan en la última caja del despacho.
+                      </p>
                     )}
                     {ajustePreview.sinCruce.length > 0 && (
                       <p className="mb-3 rounded bg-amber-100 px-3 py-2 text-xs text-amber-900">
-                        Referencias de la factura sin cruce en el catálogo — si son productos
-                        nuevos de la corrección en WO, no se agregan al pedido ni al despacho
-                        (el ajuste en Sofía solo reduce); gestiónelos aparte en World Office:{' '}
+                        Referencias de la factura sin cruce en el catálogo: no se pueden ingresar
+                        porque el producto no existe en Sofía; gestiónelas aparte en World Office:{' '}
                         {ajustePreview.sinCruce.map((s) => `${s.referencia} (${s.cantidad})`).join(', ')}
                       </p>
                     )}
                     <div className="flex gap-3">
                       <button
                         onClick={aplicarAjuste}
-                        disabled={cargando || !ajustePreview.items.some((i) => i.retornar > 0)}
+                        disabled={
+                          cargando ||
+                          (!ajustePreview.items.some((i) => i.retornar > 0 || i.agregar > 0) &&
+                            (ajustePreview.nuevosEnFactura?.length ?? 0) === 0) ||
+                          ajustePreview.items.some((i) => i.agregar > i.stockDisponible) ||
+                          (ajustePreview.nuevosEnFactura ?? []).some((n) => n.cantidad > n.stockDisponible)
+                        }
                         className="rounded bg-green-600 px-4 py-2 text-sm text-white hover:bg-green-700 disabled:opacity-50"
                       >
                         Aprobar ajuste

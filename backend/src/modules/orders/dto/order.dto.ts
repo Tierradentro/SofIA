@@ -13,6 +13,7 @@ import {
   IsUUID,
   MaxLength,
   Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 
@@ -193,8 +194,18 @@ export class CancelOrderDto {
  * la factura corregida de World Office (0 = el producto sale del pedido).
  */
 export class AjusteFacturaItemDto {
+  /** Línea existente del pedido (aumento, disminución o retiro total). */
+  @ValidateIf((o) => !o.productId)
   @IsUUID()
-  itemId: string;
+  itemId?: string;
+
+  /**
+   * Producto nuevo: está en la factura corregida y en el catálogo, pero no
+   * en el pedido; el ajuste lo ingresa (itemId y productId son excluyentes).
+   */
+  @ValidateIf((o) => !o.itemId)
+  @IsUUID()
+  productId?: string;
 
   @IsInt()
   @Min(0)
@@ -202,11 +213,13 @@ export class AjusteFacturaItemDto {
 }
 
 /**
- * I69: ajuste de un pedido Aprobado/Despachado contra la nueva factura
+ * I69/I70: ajuste de un pedido Aprobado/Despachado contra la nueva factura
  * (el pedido, el despacho y la factura ya se corrigieron «en directo» y en
- * WO; aquí se refleja en Sofía). Solo reduce cantidades: las unidades de
- * más retornan al inventario y se retiran de las cajas, incluidas las
- * cerradas. Solo Generador/Administrador.
+ * WO; aquí se refleja en Sofía). El número de la factura corregida debe ser
+ * el mismo de la factura del pedido. Ajusta en ambos sentidos: las unidades
+ * de más retornan al inventario y las de menos (o los productos nuevos)
+ * salen del inventario; si el pedido está Despachado, entradas y salidas
+ * afectan la última caja creada del despacho. Solo Generador/Administrador.
  */
 export class AjusteFacturaDto {
   /** Documento OCR de la factura de venta corregida (FACTURA_VENTA). */
