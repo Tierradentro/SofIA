@@ -1,0 +1,75 @@
+IMPORT - REPUESTOS EL ESCARABAJO S A S                            FACTURA DE COMPRA                    1241
+Nit      900349362                                                        Documento Externo No.      FCOL4800
+PROVEEDO FRAS-LE PANAMERICANA S.A.S                             POR CONCEPTO DE
+NIT         901124481 0                                         FACTURA DE COMPRA SEGÚN ORDEN DE COMPRA No 83
+DIRECCION                 CIUDAD     TELEFONO
+CL 100 19 61 OF 605 EDF C Bogota D.C 7434024
+      FECHA DOCUMENTO                FECHA VENCIMIENTO                     COMPRÓ                  FORMA DE PAGO
+miércoles, 11 de noviembre de 2026       11-nov-26              ORLANDO LAGOS SUAREZ              Credito 30 DIAS
+                       Descripción                   Cantidad U Medida   Valor Unitario     IVA       Total
+NBJ1011DP    TIJERA DER NVO GOL C/BUJES C/ROTULA         5,00   Und.               51.113   19%               255.565
+             NAKATA
+NBJ1011EP    TIJERA IZQ NVO GOL C/BUJES C/ROTULA        26,00   Und.               51.113   19%          1.328.938
+             NAKATA
+NBJ1011EP    TIJERA IZQ NVO GOL C/BUJES C/ROTULA        10,00   Und.               53.724   19%               537.240
+             NAKATA
+HG41007      AMORTIGUADOR TRAS RENAULT DUSTER            6,00   Und.               74.904   19%               449.424
+             4x2 11> NAKATA
+NBJ1014      TIJERA GOLF3 VENTO 94>98 NAKATA            10,00   Und.               46.244   19%               462.440
+N93036       BIELETA CHEVROLET COBALT ONIX              24,00   Und.                8.407   19%               201.768
+             NAKATA
+HG41298      AMORTIGUADOR TRASERO POLO VIRTUS           60,00   Und.               48.564   19%          2.913.840
+             2019 NAKATA
+N93055       AXIAL CHEVROLET CAPTIVA SPORT 2.4 3.6       2,00   Und.               11.634   19%                23.268
+             NAKATA
+N93036       BIELETA CHEVROLET COBALT ONIX              28,00   Und.                8.813   19%               246.764
+             NAKATA
+NKF8127      BOCIN DEL VW TIGUAN NAKATA                 10,00   Und.               77.380   19%               773.800
+NKJ1153      CAUCHO CANDELERO ESCARABAJO               170,00   Und.                8.084   19%          1.374.280
+             NAKATA
+NJH01-839    PUNTA EJE CROSSFOX 2013 ESTR INT           10,00   Und.               38.642   19%               386.420
+             36/EXT 30 NAKATA
+N1012        ROTULA RECTA 15MM GOL NAKATA               60,00   Und.               13.092   19%               785.520
+N1015        ROTULA DER 17MM HIDRAULICA GOL             60,00   Und.               12.236   19%               734.160
+             NAKATA
+N1020        ROTULA RECTA 17MM GOL NAKATA               60,00   Und.               10.556   19%               633.360
+N111         ROTULA SUP ESC NAKATA                     300,00   Und.                8.718   19%          2.615.400
+N112         ROTULA INF ESC NAKATA                     350,00   Und.                8.844   19%          3.095.400
+N196         TERMINAL IZQ GOLF NAKATA                   40,00   Und.                9.066   19%               362.640
+N197         ROTULA GOLF3 VENTO NAKATA                  62,00   Und.               11.190   19%               693.780
+N1027        TERMINAL LARGA GOL 98 NAKATA               60,00   Und.                8.622   19%               517.320
+N122         TERMINAL DER ESC M61 NAKATA                80,00   Und.                8.020   19%               641.600
+N183         TERMINAL CORTA HEMBRA GOL 2005            200,00   Und.                8.147   19%          1.629.400
+             NAKATA
+N195         TERMINAL DER GOLF3 NAKATA                  20,00   Und.                9.193   19%               183.860
+
+
+Valor en Letras                                                     SUBTOTAL                            22.155.717
+VEINTISEIS MILLONES TRESCIENTOS SESENTA Y CINCO MIL TRESCIENTOS DESCUENTO                                        0
+TRES PESOS M/CTE                                                    IVA                                  4.209.586
+                                                                    RETEFUENTE                             775.450
+                                                                    RETEIVA                                      0
+                                                                    RETEICA                                      0
+Firma Responsable________________ Entregado Por____________________ TOTAL DOCUMENTO                     26.365.303
+IMPORT - REPUESTOS EL ESCARABAJO S A S                         FACTURA DE COMPRA                    1241
+Nit     900349362                                                      Documento Externo No.      FCOL4800
+PROVEEDO FRAS-LE PANAMERICANA S.A.S                          POR CONCEPTO DE
+NIT         901124481 0                                      FACTURA DE COMPRA SEGÚN ORDEN DE COMPRA No 83
+DIRECCION                 CIUDAD     TELEFONO
+CL 100 19 61 OF 605 EDF C Bogota D.C 7434024
+      FECHA DOCUMENTO                FECHA VENCIMIENTO                  COMPRÓ                  FORMA DE PAGO
+miércoles, 11 de noviembre de 2026       11-nov-26           ORLANDO LAGOS SUAREZ              Credito 30 DIAS
+                       Descripción                Cantidad U Medida   Valor Unitario     IVA       Total
+NBJ1009      TIJERA JETTA4 00>14 NAKATA              30,00   Und.               43.651   19%          1.309.530
+
+
+
+
+Valor en Letras                                                     SUBTOTAL                         22.155.717
+VEINTISEIS MILLONES TRESCIENTOS SESENTA Y CINCO MIL TRESCIENTOS DESCUENTO                                     0
+TRES PESOS M/CTE                                                    IVA                               4.209.586
+                                                                    RETEFUENTE                          775.450
+                                                                    RETEIVA                                   0
+                                                                    RETEICA                                   0
+Firma Responsable________________ Entregado Por____________________ TOTAL DOCUMENTO                  26.365.303
+

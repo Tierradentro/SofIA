@@ -118,8 +118,20 @@ describe('Ingreso de mercancía (e2e)', () => {
     expect(ingreso.estado).toBe('CREADO');
     expect(ingreso.items.every((i: any) => i.esNuevo === false && i.productId)).toBe(true);
 
-    // Aprobar sin caja principal → 400 (HU-023)
+    // I71: la verificación del Operador es opcional — aprobar sin conteo
+    // ya no exige caja; la caja principal se exige cuando el Operador sí
+    // verificó y cerró el conteo (HU-023: trazabilidad de la recepción)
     await t.http.post(`/api/v1/inbound/${ingreso.id}/iniciar`).set('Authorization', `Bearer ${operadorToken}`);
+    const det0 = await t.http.get(`/api/v1/inbound/${ingreso.id}`).set('Authorization', `Bearer ${operadorToken}`);
+    for (const item of det0.body.items) {
+      await t.http
+        .put(`/api/v1/inbound/${ingreso.id}/items/${item.id}/cantidad`)
+        .set('Authorization', `Bearer ${operadorToken}`)
+        .send({ cantidadRecibida: item.cantidadFacturada });
+    }
+    await t.http
+      .post(`/api/v1/inbound/${ingreso.id}/cerrar-conteo`)
+      .set('Authorization', `Bearer ${operadorToken}`);
     const sinCaja = await t.http
       .post(`/api/v1/inbound/${ingreso.id}/approve`)
       .set('Authorization', `Bearer ${generadorToken}`)
@@ -127,7 +139,14 @@ describe('Ingreso de mercancía (e2e)', () => {
     expect(sinCaja.status).toBe(400);
     expect(sinCaja.body.message).toContain('caja principal');
 
-    const cierre = await flujoRecepcion(ingreso.id, {});
+    // Caja registrada → aprueba (las cantidades ya quedaron del conteo)
+    await t.http
+      .post(`/api/v1/inbound/${ingreso.id}/caja`)
+      .set('Authorization', `Bearer ${operadorToken}`)
+      .send({ codigoCaja: 'CAJA-MADRE-001' });
+    const cierre = await t.http
+      .post(`/api/v1/inbound/${ingreso.id}/cerrar-conteo`)
+      .set('Authorization', `Bearer ${operadorToken}`);
     expect(cierre.body.estado).toBe('EN_INGRESO'); // sin diferencias
     expect(cierre.body.resumen.coincidencias).toBe(2);
 

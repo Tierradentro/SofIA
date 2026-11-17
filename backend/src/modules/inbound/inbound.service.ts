@@ -16,6 +16,7 @@ import {
 import { Product } from '../products/entities/product.entity';
 import { ProductBarcode } from '../products/entities/product-barcode.entity';
 import { ProductStatus } from '../../common/enums/product-status.enum';
+import { Company } from '../companies/entities/company.entity';
 import { OcrDocument } from '../ocr/entities/ocr-document.entity';
 import { DocumentType } from '../../common/enums/document-type.enum';
 import { MovementsService } from '../movements/movements.service';
@@ -77,12 +78,25 @@ export class InboundService {
       numeroFactura = numeroFactura ?? d.numeroFactura ?? null;
       fechaFactura = fechaFactura ?? d.fecha ?? null;
       proveedor = proveedor ?? d.proveedor ?? null;
+      // I71: la factura de compra trae la empresa emisora (nombre y NIT).
+      // Si se identifica y NO corresponde a la empresa del ingreso, se
+      // rechaza: la mercancía no puede entrar al inventario de otra empresa.
+      const empresaFactura = await this.empresaDeFactura(d);
+      if (empresaFactura && empresaFactura.id !== dto.empresaId) {
+        const seleccionada = await this.dataSource
+          .getRepository(Company)
+          .findOne({ where: { id: dto.empresaId } });
+        throw new BadRequestException(
+          `La factura ${numeroFactura ?? ''} pertenece a la empresa "${empresaFactura.nombre}" (${empresaFactura.siglas}) y el ingreso se está creando para "${seleccionada?.nombre ?? dto.empresaId}". Cambie de empresa o verifique la factura.`,
+        );
+      }
       if (!itemsDto.length && Array.isArray(d.items)) {
         itemsDto = d.items.map((i: any) => ({
           referencia: String(i.referencia ?? ''),
           descripcion: i.descripcion ?? undefined,
           unidad: i.unidad ?? 'UND',
-          cantidadFacturada: Number(i.cantidad) || 0,
+          // I71: los decimales de la factura se descartan (solo el entero)
+          cantidadFacturada: Math.trunc(Number(i.cantidad) || 0),
         }));
       }
     }
@@ -130,14 +144,14 @@ export class InboundService {
         }),
       );
       for (const it of itemsDto) {
-        const { producto } = matcher.match(it.referencia);
+        const producto = this.resolverProducto(matcher, it.referencia, it.descripcion);
         await em.save(
           em.create(InboundItem, {
             receiptId: saved.id,
             referencia: it.referencia.trim(),
             descripcion: it.descripcion?.trim() || null,
             unidad: it.unidad?.trim() || 'UND',
-            cantidadFacturada: it.cantidadFacturada,
+            cantidadFacturada: Math.trunc(it.cantidadFacturada),
             cantidadRecibida: 0,
             productId: producto?.id ?? null,
             esNuevo: !producto,
@@ -187,14 +201,14 @@ export class InboundService {
         });
         await em.remove(anteriores);
         for (const it of dto.items) {
-          const { producto } = matcher.match(it.referencia);
+          const producto = this.resolverProducto(matcher, it.referencia, it.descripcion);
           await em.save(
             em.create(InboundItem, {
               receiptId: receipt.id,
               referencia: it.referencia.trim(),
               descripcion: it.descripcion?.trim() || null,
               unidad: it.unidad?.trim() || 'UND',
-              cantidadFacturada: it.cantidadFacturada,
+              cantidadFacturada: Math.trunc(it.cantidadFacturada),
               cantidadRecibida: 0,
               productId: producto?.id ?? null,
               esNuevo: !producto,
@@ -326,32 +340,40 @@ export class InboundService {
   // ---------------------------------------------------------------
 
   /**
-   * HU-026: aprueba el ingreso. Con diferencias o productos nuevos exige
-   * observación obligatoria. En una única transacción: crea los productos
-   * nuevos (Generador aprueba su creación, CU-001) y aplica los movimientos
-   * INGRESO_APROBADO por las cantidades recibidas (nunca sobrescritura).
+   * HU-026 + I71: aprueba el ingreso. La verificación del Operador es
+   * OPCIONAL: el Generador (o el Administrador) puede aprobar directamente
+   * por el TOTAL facturado de cada producto, sin caja ni cierre de conteo.
+   * Con diferencias o productos nuevos exige observación obligatoria.
+   * En una única transacción: crea los productos nuevos (CU-001, marcados
+   * con ficha técnica pendiente) y aplica los movimientos INGRESO_APROBADO
+   * que SUMAN a las existencias (nunca sobrescritura).
    */
   async approve(id: string, dto: ApproveInboundDto, user: Usuario) {
     const receipt = await this.findOne(id);
     if (
+      receipt.estado !== InboundStatus.CREADO &&
       receipt.estado !== InboundStatus.EN_INGRESO &&
       receipt.estado !== InboundStatus.PENDIENTE_CORRECCION
     ) {
       throw new BadRequestException(
-        `Solo se puede aprobar un ingreso En_ingreso o Pendiente_Corrección (actual: ${receipt.estado})`,
+        `Solo se puede aprobar un ingreso Creado, En_ingreso o Pendiente_Corrección (actual: ${receipt.estado})`,
       );
     }
-    if (!receipt.cajaPrincipal) {
+    // I71: sin cierre de conteo del Operador, el Generador da el ingreso por
+    // el total de la mercancía facturada (las líneas sin cantidad registrada
+    // entran por lo facturado; las que el Operador ya contó se respetan).
+    const porTotalFactura = !receipt.conteoCerrado;
+    if (!porTotalFactura && !receipt.cajaPrincipal) {
       throw new BadRequestException(
         'Debe registrar la caja principal o contenedor antes de aprobar',
       );
     }
-    if (!receipt.conteoCerrado) {
-      throw new BadRequestException(
-        'El Operador debe cerrar el conteo antes de aprobar (paso 4, M07)',
-      );
-    }
     const items = await this.items.find({ where: { receiptId: id } });
+    if (porTotalFactura) {
+      for (const it of items) {
+        if (!it.cantidadRecibida) it.cantidadRecibida = it.cantidadFacturada;
+      }
+    }
     const comparacion = items.map((it) => ({ item: it, ...compararItem(it) }));
     const conNovedad = comparacion.filter(
       (c) => c.estado !== 'COINCIDE',
@@ -365,6 +387,7 @@ export class InboundService {
     const nuevosCreados: { referencia: string; productId: string }[] = [];
     await this.dataSource.transaction(async (em) => {
       for (const { item } of comparacion) {
+        if (porTotalFactura) await em.save(item); // cantidad rellenada
         // Producto nuevo: creación automática aprobada por el Generador
         if (item.esNuevo && !item.productId) {
           const producto = await this.crearProductoNuevo(em, receipt, item, user);
@@ -402,6 +425,8 @@ export class InboundService {
       registroId: id,
       valorNuevo: {
         observacion: dto.observacion ?? null,
+        numeroFactura: receipt.numeroFactura,
+        porTotalFactura,
         productosNuevos: nuevosCreados.map((n) => n.referencia),
         itemsConMovimiento: comparacion.filter((c) => c.item.cantidadRecibida > 0).length,
       },
@@ -514,6 +539,92 @@ export class InboundService {
   }
 
   /**
+   * I71: cruce del ítem contra el catálogo — exacto primero (código, OE,
+   * referencias cruzadas, barcode); si no hay, los ajustes del módulo de
+   * pedidos para el código truncado por la factura (I60): código parcial
+   * con desempate por descripción, siempre único. Se completa con la
+   * descripción exacta normalizada (I39).
+   * El cruce SOLO por descripción aproximada no aplica al catálogo
+   * completo: productos distintos comparten casi toda la descripción
+   * ("GOL" vs "GOLF3") y el ingreso sumaría al producto errado.
+   */
+  private resolverProducto(
+    matcher: InboundMatcher,
+    referencia: string,
+    descripcion?: string | null,
+  ): Product | null {
+    const exacto = matcher.match(referencia);
+    if (exacto.producto) return exacto.producto;
+    const parcial = matcher.matchParcial(referencia, descripcion);
+    if (
+      parcial.producto &&
+      (parcial.criterio === 'CODIGO_PARCIAL' ||
+        parcial.criterio === 'CODIGO_PARCIAL_DESCRIPCION')
+    ) {
+      return parcial.producto;
+    }
+    return matcher.matchPorDescripcion(descripcion).producto;
+  }
+
+  /**
+   * I71: identifica la empresa EMISORA de la factura de compra (los datos
+   * que el OCR extrajo del encabezado). Se intenta por NIT (con o sin
+   * dígito de verificación), luego por nombre y finalmente por siglas
+   * (iniciales de las palabras significativas del nombre). Si no se puede
+   * identificar se devuelve null y el ingreso continúa sin bloqueo.
+   */
+  private async empresaDeFactura(d: any): Promise<Company | null> {
+    const empresas = await this.dataSource.getRepository(Company).find();
+    const nitFactura = String(d?.nitEmpresa ?? '').replace(/\D/g, '');
+    if (nitFactura.length >= 5) {
+      const porNit = empresas.find((e) => {
+        const nit = String(e.identificacion ?? '').replace(/\D/g, '');
+        return (
+          nit.length >= 5 &&
+          (nit === nitFactura ||
+            nit.startsWith(nitFactura) ||
+            nitFactura.startsWith(nit))
+        );
+      });
+      if (porNit) return porNit;
+    }
+    const nombre = this.normalizarEmpresa(d?.empresaFactura);
+    if (!nombre) return null;
+    const porNombre = empresas.find((e) => {
+      const ne = this.normalizarEmpresa(e.nombre);
+      return !!ne && (nombre.includes(ne) || ne.includes(nombre));
+    });
+    if (porNombre) return porNombre;
+    // Siglas = iniciales de las palabras significativas del nombre
+    // ("IMPORT - REPUESTOS EL ESCARABAJO S A S" → IRE)
+    const iniciales = nombre
+      .split(' ')
+      .filter(
+        (w) =>
+          w.length >= 2 &&
+          !['DE', 'DEL', 'LA', 'EL', 'LOS', 'LAS', 'EN', 'SAS', 'SA', 'LTDA'].includes(w),
+      )
+      .map((w) => w[0])
+      .join('');
+    if (iniciales.length >= 2) {
+      const porSiglas = empresas.find(
+        (e) => (e.siglas ?? '').trim().toUpperCase() === iniciales,
+      );
+      if (porSiglas) return porSiglas;
+    }
+    return null;
+  }
+
+  private normalizarEmpresa(s: unknown): string {
+    return String(s ?? '')
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, ' ')
+      .trim();
+  }
+
+  /**
    * I39: referencia provisional para ítems sin código en el documento
    * (SR-<factura>-<##>), única contra los códigos existentes de la empresa.
    * El producto creado al aprobar queda con este código, editable después.
@@ -554,7 +665,11 @@ export class InboundService {
         cantidadBloqueada: 0,
         precio: 0,
         estado: ProductStatus.ACTIVO,
-        observaciones: `Creado automáticamente por ingreso ${receipt.numeroFactura ?? receipt.id}. Completar atributos.`,
+        // I71: queda marcado — la ficha técnica se completa manualmente y,
+        // mientras tenga la marca, el producto permite editar TODOS sus
+        // campos (incluido el código provisional).
+        fichaPendiente: true,
+        observaciones: `Creado automáticamente por ingreso ${receipt.numeroFactura ?? receipt.id}. Ficha técnica pendiente: complete los datos manualmente.`,
       }),
     );
     // Auditoría con la MISMA conexión de la transacción (pool max=1 en test)

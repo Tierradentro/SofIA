@@ -116,6 +116,14 @@ export class Product {
   @Column({ name: 'foto_document_id', nullable: true })
   fotoDocumentId: string;
 
+  /**
+   * I71: el producto fue creado automáticamente por un ingreso de mercancía
+   * y su ficha técnica está pendiente de completar manualmente. Mientras
+   * tenga la marca, la edición permite TODOS los campos (incluido el código).
+   */
+  @Column({ name: 'ficha_pendiente', default: false })
+  fichaPendiente: boolean;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

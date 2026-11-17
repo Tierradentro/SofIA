@@ -25,6 +25,9 @@ const ALIAS_CABECERA: Record<string, string[]> = {
   transportadora: ['carrier', 'transportista'],
   total: ['grand_total', 'total_amount', 'totalAmount', 'total_factura', 'totalFactura'],
   observaciones: ['notes', 'remarks', 'observations'],
+  // I71: empresa emisora de la factura de compra (para validar el ingreso)
+  empresaFactura: ['issuer', 'seller', 'company', 'empresa', 'razon_social'],
+  nitEmpresa: ['issuer_nit', 'seller_nit', 'company_nit', 'nit_empresa'],
 };
 
 const ALIAS_ITEM: Record<string, string[]> = {
@@ -297,6 +300,8 @@ export class OcrLlmStrategy {
       direccion: texto(cab('direccion')),
       numeroGuia: texto(cab('numeroGuia')),
       transportadora: texto(cab('transportadora')),
+      empresaFactura: texto(cab('empresaFactura')),
+      nitEmpresa: texto(cab('nitEmpresa')),
       total: numero(cab('total')),
       observaciones: texto(cab('observaciones')),
       items: itemsMapeados.map((i) => ({ ...i, cantidad: Math.trunc(i.cantidad) })),

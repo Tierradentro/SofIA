@@ -27,6 +27,13 @@ export interface OcrExtractedData {
   direccion: string | null;
   numeroGuia: string | null;
   transportadora: string | null;
+  /**
+   * I71 (facturas de compra): empresa EMISORA del documento — nombre en el
+   * encabezado (antes del rótulo "FACTURA DE COMPRA") y su NIT. El ingreso
+   * de mercancía valida que corresponda a la empresa de la actividad.
+   */
+  empresaFactura: string | null;
+  nitEmpresa: string | null;
   items: OcrItem[];
   /** QA Func. 2.5: totales del documento cuando aparecen. */
   total?: number | null;
@@ -44,7 +51,7 @@ export const OCR_CAMPOS_POR_TIPO: Record<
   [DocumentType.FACTURA_IMPORTACION]: {
     cabecera: [
       'numeroFactura', 'fecha', 'proveedor', 'numeroGuia',
-      'transportadora', 'direccion', 'total',
+      'transportadora', 'direccion', 'total', 'empresaFactura', 'nitEmpresa',
     ],
     itemFields: ['referencia', 'descripcion', 'cantidad', 'unidad'],
   },
@@ -199,6 +206,8 @@ function empty(): OcrExtractedData {
     direccion: null,
     numeroGuia: null,
     transportadora: null,
+    empresaFactura: null,
+    nitEmpresa: null,
     items: [],
     total: null,
     observaciones: null,
@@ -345,6 +354,20 @@ export class OcrFieldParser {
           /(?:invoice|inv|remisi[oó]n)\s*(?:n(?:ro|um|úmero)?[°#.:]*)?\s*[:#-]?\s*([A-Z0-9][A-Z0-9-]{2,24})/i.exec(l);
         if (m && !/^\d{1,2}[/-]\d{1,2}[/-]/.test(m[1])) data.numeroFactura = m[1].toUpperCase();
       }
+    }
+
+    // I71 (facturas de compra): empresa emisora — nombre a la izquierda del
+    // rótulo "FACTURA DE COMPRA" en el encabezado, y el primer NIT del
+    // documento (el de la empresa; el del proveedor viene después).
+    if (!data.empresaFactura && aplica('empresaFactura')) {
+      const m = /^(.+?)\s{1,10}factura\s+de\s+compra\b/i.exec(l);
+      if (m && m[1].trim().length >= 4 && !/^\s*nit\b/i.test(m[1])) {
+        data.empresaFactura = m[1].trim();
+      }
+    }
+    if (!data.nitEmpresa && aplica('nitEmpresa')) {
+      const m = /^Nit\.?\s+([0-9][0-9.\-]{4,19})/i.exec(l);
+      if (m) data.nitEmpresa = m[1].trim();
     }
 
     // Número de guía
@@ -517,43 +540,52 @@ export class OcrFieldParser {
       // valorTotal. La cantidad puede tener decimales ("4,00") y el patrón
       // monetario se la traga; por eso se extraen los números del FINAL de la
       // línea en orden: cantidad = primero, luego unitario y total.
-      let valores: { unitario: number | null; total: number | null } = {
-        unitario: null,
-        total: null,
-      };
       let textoResto = resto.join(' ');
-      if (conValor) {
-        // I26 (ICV): layout con columna de unidad — "… 3  Und.  68.000 19%  10.982  204.000".
-        // La cantidad va ANTES de la unidad; detrás van unitario, IVA% y total.
-        const idxUnidad = resto.findIndex((p) =>
-          UNIDADES.includes(p.replace(/\./g, '').toUpperCase()),
-        );
-        if (idxUnidad > 0) {
-          const antes = resto.slice(0, idxUnidad).join(' ');
-          // I68: la descripción puede faltar por completo (quedó en la
-          // columna del ítem); entonces lo que precede a la unidad es SOLO
-          // la cantidad ("1" en "… | 1 | Und. | 87.000 19% | …").
-          const mCant = /^(?:(.*?)\s+)?(\d{1,6}(?:[.,]\d{1,2})?)$/.exec(antes);
-          if (mCant) {
+      // I26 (ICV): layout con columna de unidad — "… 3  Und.  68.000 19%  10.982  204.000".
+      // La cantidad va ANTES de la unidad; detrás van unitario, IVA% y total.
+      // I71 (facturas de compra, p. ej. FC 1241): el mismo layout —
+      // "… 5,00  Und.  51.113  19%  255.565" — pero los valores monetarios se
+      // descartan y de la cantidad solo cuenta la parte entera (se truncan
+      // los decimales, no se redondean).
+      const idxUnidad = resto.findIndex((p) =>
+        UNIDADES.includes(p.replace(/\./g, '').toUpperCase()),
+      );
+      if (idxUnidad > 0) {
+        const antes = resto.slice(0, idxUnidad).join(' ');
+        // I68: la descripción puede faltar por completo (quedó en la
+        // columna del ítem); entonces lo que precede a la unidad es SOLO
+        // la cantidad ("1" en "… | 1 | Und. | 87.000 19% | …").
+        const mCant = /^(?:(.*?)\s+)?(\d{1,6}(?:[.,]\d{1,2})?)$/.exec(antes);
+        if (mCant) {
+          const bruto = Number(mCant[2].replace(',', '.'));
+          const cantidad = conValor ? Math.round(bruto) : Math.trunc(bruto);
+          if (cantidad > 0) {
+            if (!conValor) {
+              return {
+                referencia: ref.toUpperCase(),
+                descripcion: (mCant[1] ?? '').trim() || null,
+                cantidad,
+                unidad: 'UND',
+              } as OcrItem;
+            }
             const despues = resto.slice(idxUnidad + 1).join(' ');
             const nums = [
               ...despues.matchAll(
                 /(\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?|\d+[.,]\d{1,2}|\d+)/g,
               ),
             ].map((m) => Number(m[1].replace(/\./g, '').replace(',', '.')));
-            const cantidad = Math.round(Number(mCant[2].replace(',', '.')));
-            if (cantidad > 0) {
-              return {
-                referencia: ref.toUpperCase(),
-                descripcion: (mCant[1] ?? '').trim() || null,
-                cantidad,
-                unidad: 'UND',
-                valorUnitario: nums.length >= 2 ? nums[0] : null,
-                valorTotal: nums.length ? nums[nums.length - 1] : null,
-              } as OcrItem;
-            }
+            return {
+              referencia: ref.toUpperCase(),
+              descripcion: (mCant[1] ?? '').trim() || null,
+              cantidad,
+              unidad: 'UND',
+              valorUnitario: nums.length >= 2 ? nums[0] : null,
+              valorTotal: nums.length ? nums[nums.length - 1] : null,
+            } as OcrItem;
           }
         }
+      }
+      if (conValor) {
         const extraidos = this.extraerColaNumerica(textoResto);
         if (extraidos) {
           return {
@@ -732,8 +764,10 @@ export class OcrFieldParser {
         return { cantidad: null, unidad: null, descripcion };
       }
     }
-    // I22: cantidad con decimales de factura ("4,00") → entero redondeado
-    const cantidad = Math.round(Number(m[2].replace(',', '.')));
+    // I22: cantidad con decimales de factura ("4,00") → entero.
+    // I71: en las facturas de compra los decimales se DESCARTAN (se trunca,
+    // no se redondea): solo cuenta el número entero.
+    const cantidad = Math.trunc(Number(m[2].replace(',', '.')));
     return { cantidad, unidad, descripcion };
   }
 }

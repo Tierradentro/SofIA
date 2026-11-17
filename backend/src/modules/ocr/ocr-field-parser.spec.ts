@@ -401,4 +401,55 @@ describe('OcrFieldParser', () => {
     const suma = r.items.reduce((a, i) => a + (i.valorTotal ?? 0), 0);
     expect(suma).toBe(5934500);
   });
+
+  it('I71: factura de compra FC 1241 — empresa, NIT, ítems con decimales truncados y valores descartados', () => {
+    // Texto tal como lo devuelve `pdftotext -layout` del PDF adjunto por el
+    // usuario: encabezado con la empresa emisora a la izquierda del rótulo
+    // "FACTURA DE COMPRA", NIT propio en la línea siguiente, e ítems
+    // "REF  DESCRIPCIÓN  5,00  Und.  51.113  19%  255.565" (la cantidad va
+    // antes de la unidad y los valores monetarios se descartan).
+    const texto = readFileSync(
+      join(__dirname, '../../../test/fixtures/factura-compra-fc1241.txt'),
+      'utf8',
+    );
+    const r = parser.parse(texto, DocumentType.FACTURA_IMPORTACION);
+    // Cabecera: folio, empresa emisora y su NIT (no el del proveedor)
+    expect(r.numeroFactura).toBe('1241');
+    expect(r.empresaFactura).toBe('IMPORT - REPUESTOS EL ESCARABAJO S A S');
+    expect(r.nitEmpresa).toBe('900349362');
+    expect(r.proveedor).toBe('FRAS-LE PANAMERICANA S.A.S');
+    expect(r.fecha).toBe('2026-11-11'); // "miércoles, 11 de noviembre de 2026"
+    // Las 24 líneas de producto de la factura (refs repetidas incluidas)
+    expect(r.items).toHaveLength(24);
+    // Cantidades con decimales: solo cuenta el entero ("5,00" → 5)
+    expect(r.items[0]).toEqual({
+      referencia: 'NBJ1011DP',
+      descripcion: 'TIJERA DER NVO GOL C/BUJES C/ROTULA NAKATA',
+      cantidad: 5,
+      unidad: 'UND',
+    });
+    // Referencia repetida: las dos líneas de NBJ1011EP se conservan
+    const tijerasIzq = r.items.filter((i) => i.referencia === 'NBJ1011EP');
+    expect(tijerasIzq.map((i) => i.cantidad)).toEqual([26, 10]);
+    expect(r.items.find((i) => i.referencia === 'N111')).toMatchObject({
+      descripcion: 'ROTULA SUP ESC NAKATA',
+      cantidad: 300,
+    });
+    expect(r.items.find((i) => i.referencia === 'NKJ1153')).toMatchObject({
+      descripcion: 'CAUCHO CANDELERO ESCARABAJO NAKATA',
+      cantidad: 170,
+    });
+    // Referencia con guion y continuación de descripción con medidas
+    expect(r.items.find((i) => i.referencia === 'NJH01-839')).toMatchObject({
+      cantidad: 10,
+    });
+    // Último ítem de la página 2
+    expect(r.items[23]).toMatchObject({
+      referencia: 'NBJ1009',
+      descripcion: 'TIJERA JETTA4 00>14 NAKATA',
+      cantidad: 30,
+    });
+    // Los valores monetarios no viajan al ingreso de mercancía
+    expect(r.items.every((i) => i.valorUnitario == null && i.valorTotal == null)).toBe(true);
+  });
 });

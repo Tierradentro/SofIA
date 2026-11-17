@@ -252,6 +252,11 @@ export default function IngresosPage() {
 
   const enRecepcion =
     ingreso && ['EN_INGRESO', 'PENDIENTE_CORRECCION'].includes(ingreso.estado);
+  // I71: la aprobación final es del Generador (o Administrador) y la
+  // verificación del Operador es opcional — se puede aprobar desde CREADO
+  // por el total facturado.
+  const puedeAprobar =
+    ingreso && ['CREADO', 'EN_INGRESO', 'PENDIENTE_CORRECCION'].includes(ingreso.estado);
   const conNovedad =
     ingreso && (ingreso.resumen.conDiferencias > 0 || ingreso.resumen.nuevos > 0);
 
@@ -562,8 +567,8 @@ export default function IngresosPage() {
               </div>
             )}
 
-            {/* Paso 5: Generador */}
-            {esGenerador && enRecepcion && (
+            {/* Paso 5: Generador/Administrador — la verificación del Operador es opcional (I71) */}
+            {esGenerador && puedeAprobar && (
               <div className="mt-4 rounded bg-slate-50 p-3">
                 <label className="block text-sm font-medium">
                   Observación {conNovedad && <span className="text-red-700">(obligatoria: hay diferencias o productos nuevos)</span>}
@@ -577,14 +582,14 @@ export default function IngresosPage() {
                 <div className="mt-2 flex gap-3">
                   <button
                     onClick={() => accion(() => api(`/inbound/${ingreso.id}/approve`, { method: 'POST', body: JSON.stringify({ observacion: observacion || undefined }) }), 'Ingreso aprobado: existencias actualizadas.')}
-                    disabled={cargando || !ingreso.conteoCerrado}
+                    disabled={cargando}
                     className="rounded bg-green-600 px-4 py-2 text-white hover:bg-green-700 disabled:opacity-50"
                   >
                     Aprobar ingreso
                   </button>
                   {!ingreso.conteoCerrado && (
-                    <p className="self-center text-sm text-amber-700">
-                      El Operador debe cerrar el conteo antes de aprobar.
+                    <p className="self-center text-sm text-slate-600">
+                      Sin verificación del Operador: el ingreso se aprobará por el total facturado de cada producto.
                     </p>
                   )}
                 </div>

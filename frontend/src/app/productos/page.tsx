@@ -56,6 +56,8 @@ interface Producto {
   empresa?: { id: string; nombre: string; siglas: string };
   /** I41: foto del producto (documento almacenado). */
   fotoDocumentId?: string | null;
+  /** I71: ficha técnica pendiente (creado por ingreso de mercancía). */
+  fichaPendiente?: boolean;
 }
 
 const FORM_VACIO = {
@@ -90,6 +92,20 @@ function faltanDatos(p: { codigoOE?: string; marca?: string; ubicacion?: string 
   return !p.codigoOE?.trim() || !p.marca?.trim() || !p.ubicacion?.trim();
 }
 
+/**
+ * I71: con la marca de "ficha técnica pendiente" (producto creado por un
+ * ingreso de mercancía) la edición permite TODOS los campos de la ficha,
+ * incluidos el código (puede ser provisional SR-…) y las observaciones.
+ */
+function camposEdicion(p: { fichaPendiente?: boolean }) {
+  if (!p.fichaPendiente) return CAMPOS_EDICION;
+  return [
+    { clave: 'codigo' as keyof FormProducto, etiqueta: 'Código *' },
+    ...CAMPOS_EDICION,
+    { clave: 'observaciones' as keyof FormProducto, etiqueta: 'Observaciones' },
+  ];
+}
+
 export default function ProductosPage() {
   const router = useRouter();
   const [sesion, setSesion] = useState<Sesion | null>(null);
@@ -107,6 +123,9 @@ export default function ProductosPage() {
   const [ficha, setFicha] = useState<Producto | null>(null); // QA Func. 2.2
   const [editando, setEditando] = useState<Producto | null>(null);
   const [formEdicion, setFormEdicion] = useState<FormProducto>(FORM_VACIO);
+  // I71: con la marca de ficha pendiente se editan TODOS los campos y esta
+  // casilla permite quitar la marca al completar la ficha
+  const [fichaCompletada, setFichaCompletada] = useState(false);
   const [barcodeProducto, setBarcodeProducto] = useState<Producto | null>(null);
   const [correccion, setCorreccion] = useState<Producto | null>(null); // QA Func. 2.3
   const [barcode, setBarcode] = useState('');
@@ -215,6 +234,7 @@ export default function ProductosPage() {
       grupoOcho: p.grupoOcho ?? '',
     });
     setEditando(p);
+    setFichaCompletada(false);
     setFicha(null);
     setError('');
     setMensaje('');
@@ -226,10 +246,12 @@ export default function ProductosPage() {
     setError('');
     setMensaje('');
     const payload: Record<string, unknown> = {};
-    for (const { clave, tipo } of CAMPOS_EDICION) {
+    for (const { clave, tipo } of camposEdicion(editando)) {
       const v = formEdicion[clave];
       payload[clave] = tipo === 'number' ? Number(v) || 0 : v;
     }
+    // I71: al completar la ficha se puede quitar la marca de pendiente
+    if (editando.fichaPendiente) payload.fichaPendiente = !fichaCompletada;
     const { status, body } = await api(`/products/${editando.id}`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
@@ -445,6 +467,14 @@ export default function ProductosPage() {
               </button>
             </div>
           </div>
+          {/* I71: aviso de ficha técnica pendiente (creado por ingreso) */}
+          {ficha.fichaPendiente && (
+            <p className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              Producto creado por un ingreso de mercancía: la ficha técnica está pendiente.
+              Complete los datos manualmente desde «Editar» (con la marca se pueden modificar
+              todos los campos, incluido el código).
+            </p>
+          )}
           {/* I41: foto del producto junto a la ficha (carga: los tres
               roles; eliminar: Generador/Administrador) */}
           <div className="mb-4 flex flex-col gap-4 border-b border-slate-100 pb-4 sm:flex-row">
@@ -529,10 +559,12 @@ export default function ProductosPage() {
             </button>
           </div>
           <p className="mb-3 text-xs text-slate-500">
-            El código y la empresa no se editan aquí; las cantidades solo cambian por movimientos.
+            {editando.fichaPendiente
+              ? 'Ficha técnica pendiente: puede editar TODOS los campos, incluido el código. Las cantidades solo cambian por movimientos.'
+              : 'El código y la empresa no se editan aquí; las cantidades solo cambian por movimientos.'}
           </p>
           <form onSubmit={guardarEdicion} className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {CAMPOS_EDICION.map((c) => (
+            {camposEdicion(editando).map((c) => (
               <input
                 key={c.clave}
                 placeholder={c.etiqueta}
@@ -542,9 +574,19 @@ export default function ProductosPage() {
                 className={CLASE_INPUT}
                 value={formEdicion[c.clave]}
                 onChange={(e) => setFormEdicion({ ...formEdicion, [c.clave]: e.target.value })}
-                required={c.clave === 'descripcion'}
+                required={c.clave === 'descripcion' || c.clave === 'codigo'}
               />
             ))}
+            {editando.fichaPendiente && (
+              <label className="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2 lg:col-span-3">
+                <input
+                  type="checkbox"
+                  checked={fichaCompletada}
+                  onChange={(e) => setFichaCompletada(e.target.checked)}
+                />
+                Ficha técnica completada (quitar la marca de pendiente)
+              </label>
+            )}
             <button className={`${CLASE_BOTON_PRIMARIO} sm:col-span-2 lg:col-span-3`}>
               Guardar cambios
             </button>
@@ -707,6 +749,14 @@ export default function ProductosPage() {
                 <tr key={p.id} className={CLASES_TABLA.fila}>
                   <td className={`${CLASES_TABLA.celda} font-medium`}>
                     {p.codigo}
+                    {p.fichaPendiente && (
+                      <span
+                        title="Ficha técnica pendiente: creado por un ingreso de mercancía, completar los datos manualmente"
+                        className="ml-2 rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700"
+                      >
+                        Ficha pendiente
+                      </span>
+                    )}
                     {faltanDatos(p) && (
                       <span
                         title="Datos incompletos: el Generador puede completar código OE, marca o ubicación"

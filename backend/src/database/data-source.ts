@@ -69,6 +69,7 @@ import { DispositivosI571753000025000 } from './migrations/1753000025000-disposi
 import { WorldOfficePorEmpresaI621753000026000 } from './migrations/1753000026000-world-office-por-empresa-i62';
 import { WorldOfficeSinGlobalI621753000027000 } from './migrations/1753000027000-world-office-sin-global-i62';
 import { BorradoresPedidoI671753000028000 } from './migrations/1753000028000-borradores-pedido-i67';
+import { ProductoFichaPendienteI711753000029000 } from './migrations/1753000029000-producto-ficha-pendiente-i71';
 import { runInitialSeed } from './seeds/initial.seed';
 
 export function buildDataSourceOptions(): DataSourceOptions {
@@ -153,6 +154,7 @@ export function buildDataSourceOptions(): DataSourceOptions {
       WorldOfficePorEmpresaI621753000026000,
       WorldOfficeSinGlobalI621753000027000,
       BorradoresPedidoI671753000028000,
+      ProductoFichaPendienteI711753000029000,
     ],
     synchronize: false,
     logging: false,
