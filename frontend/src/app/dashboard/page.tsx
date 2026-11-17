@@ -56,11 +56,6 @@ interface DespachoTraza {
 interface InboundPendiente {
   id: string;
   estado: string;
-  /** I71: datos visibles en «Recibos de mercancía del día». */
-  numeroFactura?: string | null;
-  proveedor?: string | null;
-  empresaId?: string;
-  aprobadoAt?: string | null;
 }
 
 interface ProductoStock {
@@ -277,9 +272,7 @@ export default function DashboardPage() {
   const [stockTotal, setStockTotal] = useState<number | null>(null);
   // I25: además de las unidades, cuántos productos tienen existencias (> 0)
   const [productosConStock, setProductosConStock] = useState<number | null>(null);
-  const [recibosPendientes, setRecibosPendientes] = useState<number | null>(null);
-  // I71: recibos de mercancía aprobados en el día
-  const [recibosHoy, setRecibosHoy] = useState<InboundPendiente[] | null>(null);
+  const [recibosEfectuados, setRecibosEfectuados] = useState<number | null>(null);
   const [nombreClientes, setNombreClientes] = useState<Record<string, string>>({});
   const [pestana, setPestana] = useState<PedidoCola['estado']>('ABIERTO');
   // I40: pestaña activa de la Cola de Despachos.
@@ -331,17 +324,10 @@ export default function DashboardPage() {
     };
     sondear();
     const sondeo = setInterval(sondear, 20000);
-    // KPI Recibos pendientes: recibos de ingreso aún no aprobados.
-    // I71: también los recibos de mercancía realizados en el día (aprobados hoy).
+    // KPI Recibos efectuados: ingresos de mercancía realizados (estado Aprobado)
     api<InboundPendiente[]>('/inbound').then(({ status, body }) => {
       if (status === 200) {
-        setRecibosPendientes(body.filter((r) => r.estado !== 'APROBADO' && r.estado !== 'CANCELADO').length);
-        const hoyStr = new Date().toDateString();
-        setRecibosHoy(
-          body
-            .filter((r) => r.estado === 'APROBADO' && r.aprobadoAt && new Date(r.aprobadoAt).toDateString() === hoy)
-            .sort((a, b) => new Date(b.aprobadoAt!).getTime() - new Date(a.aprobadoAt!).getTime()),
-        );
+        setRecibosEfectuados(body.filter((r) => r.estado === 'APROBADO').length);
       }
     });
     api<{ id: string; nombre: string }[]>('/clients').then(({ status, body }) => {
@@ -407,8 +393,8 @@ export default function DashboardPage() {
       </div>
 
       {/* KPIs operativos (I25): Stock total muestra arriba la cantidad de
-          productos con existencias y debajo las unidades; Recibos pendientes
-          va de último en la fila */}
+          productos con existencias y debajo las unidades; Recibos Efectuados
+          (ingresos en estado Aprobado) va de último en la fila */}
       <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <TarjetaStat
           icono={Package}
@@ -438,54 +424,12 @@ export default function DashboardPage() {
         />
         <TarjetaStat
           icono={Download}
-          etiqueta="Recibos pendientes"
-          valor={recibosPendientes === null ? '…' : String(recibosPendientes)}
+          etiqueta="Recibos Efectuados"
+          valor={recibosEfectuados === null ? '…' : String(recibosEfectuados)}
           unidad="Lotes"
           tono="menta"
         />
       </div>
-
-      {/* I71: recibos de mercancía realizados en el día */}
-      <Tarjeta className="mb-8 p-5">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-semibold text-slate-900">Recibos de mercancía del día</h2>
-          <a href="/ingresos" className="text-sm font-medium text-sofia-700 hover:underline">
-            Ir a ingresos
-          </a>
-        </div>
-        {recibosHoy === null ? (
-          <p className="text-sm text-slate-400">Cargando…</p>
-        ) : recibosHoy.length === 0 ? (
-          <p className="text-sm text-slate-500">Hoy no se han realizado recibos de mercancía.</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
-                <th className="py-1.5 pr-3">Factura</th>
-                <th className="py-1.5 pr-3">Proveedor</th>
-                <th className="py-1.5 pr-3">Empresa</th>
-                <th className="py-1.5">Hora de aprobación</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recibosHoy.map((r) => (
-                <tr key={r.id} className="border-b border-slate-50 last:border-0">
-                  <td className="py-1.5 pr-3 font-medium text-slate-800">{r.numeroFactura || '—'}</td>
-                  <td className="py-1.5 pr-3 text-slate-600">{r.proveedor || '—'}</td>
-                  <td className="py-1.5 pr-3 text-slate-600">
-                    {empresas.find((e) => e.id === r.empresaId)?.siglas ?? '—'}
-                  </td>
-                  <td className="py-1.5 text-slate-600">
-                    {r.aprobadoAt
-                      ? new Date(r.aprobadoAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
-                      : '—'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Tarjeta>
 
       {/* Cola de pedidos (picking y packing) */}
       <Tarjeta className="mb-8 p-5">
