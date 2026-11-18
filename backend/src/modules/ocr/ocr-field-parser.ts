@@ -162,7 +162,8 @@ function capturarRef(token: string): string | null {
  * se tocan.
  */
 const PALABRAS_REPUESTO = [
-  'AMORTIGUADOR', 'RODAMIENTOS', 'RODAMIENTO', 'INTERRUPTOR', 'TERMOSTATO',
+  'MOTOVENTILADOR', 'AMORTIGUADOR', 'POTENCIOMETRO', 'RODAMIENTOS',
+  'RODAMIENTO', 'INTERRUPTOR', 'TERMOSTATO', 'VENTILADOR',
   'MANGUERA', 'EMPAQUE', 'PASTILLAS', 'SOPORTE', 'VALVULA', 'RADIADOR',
   'INYECTOR', 'SENSOR', 'BOMBA', 'RETEN', 'BUJE', 'TENSOR', 'CORREA',
   'FILTRO', 'TAPA', 'BIELETA', 'PERA', 'AXIAL', 'MODULO', 'JUEGO',
@@ -177,6 +178,19 @@ function separarRefPegada(token: string): { ref: string; descInicial: string } |
     const prefijo = token.slice(0, token.length - palabra.length);
     if (prefijo.length >= 6 && /\d/.test(prefijo) && capturarRef(prefijo)) {
       return { ref: prefijo, descInicial: palabra };
+    }
+  }
+  // I72: con códigos LARGOS World Office trunca al ancho de la columna y la
+  // descripción queda pegada al recorte — p. ej. el código
+  // 377959455/002-60-01988 sale como "377959455/00MOTOVENTILADOR" aunque la
+  // palabra no esté en el diccionario. El token completo ya no cabe como
+  // referencia (supera el largo máximo), así que se corta donde un dígito o
+  // separador queda seguido de letras hasta el final; el prefijo queda como
+  // referencia parcial y el cruce por prefijo (I60/I64) la completa.
+  if (!REF_RE.test(token)) {
+    const m = /^([A-Z0-9][A-Z0-9\-_./:]{4,19}[0-9/:.-])([A-ZÁÉÍÓÚÑ]{4,})$/i.exec(token);
+    if (m && /\d/.test(m[1]) && capturarRef(m[1])) {
+      return { ref: m[1].toUpperCase(), descInicial: m[2].toUpperCase() };
     }
   }
   return null;

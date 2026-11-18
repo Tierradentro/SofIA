@@ -227,6 +227,35 @@ describe('Pedidos — factura con códigos truncados (I60) y ajuste de precios (
     ]);
   });
 
+  it('I72: el código largo truncado con descripción pegada aprueba el pedido (FECV 3610)', async () => {
+    // Caso real reportado: el pedido WO 1739 tiene el código de 19 caracteres
+    // '377959455/002-60-01988'; en la factura FECV 3610 World Office lo
+    // trunca a 12 y pega la descripción ("377959455/00MOTOVENTILADOR"). El
+    // parser I72 separa el prefijo y el cruce parcial lo completa.
+    await crearProducto('377959455/002-60-01988', 10, 'MOTOVENTILADOR VW GOL 98 COOLXPERT', '7559455');
+    const pedido = await crearPedido([{ referencia: '377959455/002-60-01988', cantidad: 2 }]);
+    await alistarCompleto(pedido.id, '7559455', 2);
+
+    // Ítem tal como lo produce el parser OCR con la factura real
+    const ocrId = await ocrFacturaWo([
+      { referencia: '377959455/00', descripcion: 'MOTOVENTILADOR VW GOL 98 COOLXPERT', cantidad: 2 },
+    ]);
+    const aprob = await t.http
+      .post(`/api/v1/orders/${pedido.id}/invoice`)
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ ocrDocumentId: ocrId });
+    expect(aprob.status).toBe(201);
+    expect(aprob.body.estado).toBe('APROBADO');
+
+    const aud = await t.dataSource.query(
+      `SELECT valor_nuevo FROM audit_logs WHERE tabla='Pedidos' AND registro_id=$1 AND accion='PEDIDO_APROBADO'`,
+      [pedido.id],
+    );
+    expect(aud[0].valor_nuevo.crucesParciales).toEqual([
+      { referencia: '377959455/00', codigo: '377959455/002-60-01988', criterio: 'CODIGO_PARCIAL' },
+    ]);
+  });
+
   it('I61: el Administrador ajusta precios en cualquier estado; otros roles no', async () => {
     const pedido = await crearPedido([
       { referencia: 'WOTRUNCADO-001', cantidad: 3, valorUnidad: 5000 },

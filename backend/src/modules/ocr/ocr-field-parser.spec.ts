@@ -452,4 +452,54 @@ describe('OcrFieldParser', () => {
     // Los valores monetarios no viajan al ingreso de mercancía
     expect(r.items.every((i) => i.valorUnitario == null && i.valorTotal == null)).toBe(true);
   });
+
+  it('I72: código LARGO truncado con descripción pegada (FECV 3610 — 377959455/002-60-01988)', () => {
+    // Texto tal como lo devuelve `pdftotext -layout` del PDF adjunto por el
+    // usuario. El ítem 5 es un código de 19 caracteres que World Office
+    // trunca a 12 y la descripción queda PEGADA al recorte:
+    // "377959455/00MOTOVENTILADOR" (26 chars, supera el largo de referencia).
+    // Antes caía como ítem "sin referencia" y la aprobación del pedido
+    // fallaba con FALTANTE_EN_FACTURA / EXTRA_EN_FACTURA.
+    const texto = readFileSync(
+      join(__dirname, '../../../test/fixtures/factura-venta-fecv3610.txt'),
+      'utf8',
+    );
+    const r = parser.parse(texto, DocumentType.FACTURA_VENTA);
+    expect(r.numeroFactura).toBe('FECV3610');
+    expect(r.fecha).toBe('2026-11-18');
+    // Los 8 ítems de la factura
+    expect(r.items).toHaveLength(8);
+    // El código truncado se separa de la descripción pegada y conserva el
+    // prefijo: el cruce por prefijo (I60/I64) lo completa contra el pedido
+    const moto = r.items.find((i) => i.referencia === '377959455/00');
+    expect(moto).toMatchObject({
+      descripcion: 'MOTOVENTILADOR VW GOL 98 COOLXPERT',
+      cantidad: 2,
+      unidad: 'UND',
+      valorUnitario: 155462,
+      valorTotal: 310924,
+    });
+    // Ningún ítem queda sin referencia
+    expect(r.items.every((i) => i.referencia.length > 0)).toBe(true);
+    // Los demás ítems se reconocen con sus cantidades
+    expect(r.items.find((i) => i.referencia === '7856')).toMatchObject({
+      descripcion: 'BUJE TIJERA PEQUEÑO GOLF3 JETTA4 FEBI',
+      cantidad: 20,
+    });
+    expect(r.items.find((i) => i.referencia === '36752')).toMatchObject({ cantidad: 8 });
+    expect(r.items.find((i) => i.referencia === '23548')).toMatchObject({ cantidad: 5 });
+    expect(r.items.find((i) => i.referencia === '33711')).toMatchObject({ cantidad: 5 });
+    expect(r.items.find((i) => i.referencia === '044907385A')).toMatchObject({
+      descripcion: 'POTENCIOMETRO GOLF 1.8 HELLA',
+      cantidad: 2,
+    });
+    expect(r.items.find((i) => i.referencia === '15908')).toMatchObject({ cantidad: 1 });
+    expect(r.items.find((i) => i.referencia === '6688')).toMatchObject({
+      descripcion: 'TENSOR CORREA REPARTICION GOLF3 FEBI',
+      cantidad: 6,
+    });
+    // La suma de los totales cuadra con el SUBTOTAL del documento
+    const suma = r.items.reduce((a, i) => a + (i.valorTotal ?? 0), 0);
+    expect(suma).toBe(1620161);
+  });
 });

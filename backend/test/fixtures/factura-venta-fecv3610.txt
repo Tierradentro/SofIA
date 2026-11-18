@@ -1,0 +1,59 @@
+                                                                         Factura Electrónica De Venta No
+                                                                    .           FECV           No. 3610
+                                                                           Documento Oficial de Autorización de Numeración
+                                                                        Facturación Electrónica No. 18764105865627 que habilita
+                                                                          desde FECV 3127 hasta FECV 5000. Vence 2027-02-13
+                                                                                Responsable de IVA- No somos Agentes de
+IMPORTADORA CASA VOLSKWAGEN SAS                                                             Retención de IVA
+
+Nit        830135446 2                                                              No somos Grandes Contribuyentes
+                                                                                Actividad Económica ICA 5030 4.00 X 1000
+
+    CLIENTE FOXWAGEN/HERMES MEDINA LIZARAZO                                 POR CONCEPTO DE
+    NIT       19281177                                                      FACTURA DE VENTA SEGÚN COTIZACIÓN No 1739
+           DIRECCIÓN       CIUDAD       TELÉFONO
+        CR 27 B BIS 67 13 Bogota D.C.    2409862
+           FECHA FACTURA                  FECHA VENCIMIENTO                             VENDEDOR
+              18/11/2026                      18/12/2026                           ORLANDO LAGOS SUAREZ
+Item    Código                  Descripción          Cantidad U Medida Valor Unitario IVA                   Valor IVA      Total
+1    7856           BUJE TIJERA PEQUEÑO GOLF3          20       Und.           7.563 19%                        1.437         151.260
+                    JETTA4 FEBI
+2       36752       BUJE TIJERA VW JETTA5 2.5 FEBI      8       Und.          21.008 19%                        3.992         168.064
+3       23548       EMPAQUE TAPA VALVULAS AUDI 1.8      5       Und.          47.899 19%                        9.101         239.495
+                    TURBO FEBI
+4       33711       EMPAQUE TAPA VALVULAS JETTA4 2.0    5       Und.          26.891 19%                        5.109         134.455
+                    FEBI
+5       377959455/00MOTOVENTILADOR VW GOL 98            2       Und.        155.462 19%                        29.538         310.924
+                    COOLXPERT
+6       044907385A POTENCIOMETRO GOLF 1.8 HELLA         2       Und.        113.445 19%                        21.555         226.890
+7       15908       SOPORTE MOTOR DER GOLF4 JETTA4      1       Und.        172.269 19%                        32.731         172.269
+                    1.8 FEBI
+8       6688        TENSOR CORREA REPARTICION           6       Und.          36.134 19%                        6.865         216.804
+                    GOLF3 FEBI
+
+
+
+
+Valor en Letras
+
+UN MILLON NOVECIENTOS VEINTISIETE MIL NOVECIENTOS NOVENTA Y                          SUBTOTAL                               1.620.161
+DOS PESOS M/CTE                                                                      DESCUENTO                                      0
+                                                                                     IVA                                      307.831
+    FAVOR GIRAR CHEQUE CRUZADO A NOMBRE DE IMPORTADORA CASA                          RETEFUENTE                                     0
+    VOLKSWAGEN S.A.S. EN CASO DE TRANSFERENCIA O CONSIGNACION                        RETEIVA                                        0
+                                                                                     RETEICA                                        0
+     DAVIVIENDA CTA CTE No. 000969998343
+                                                                                     TOTAL MENOS RETENCIONES                1.927.992
+.
+
+
+
+
+                                           Representación Gráfica de la Factura de Venta Electrónica
+                                 Fecha y Hora de Generación: 18/11/2026 10:44:41
+                                 Medios de Pago: Acuerdo mutuo
+
+
+                                   km 2,5 via Cota Parcelas Portos Sabana 80 bdga 55 Teléfono 601 0242407
+     Documento de Contingencia                   Correo Electrónico gerencia@importrepuestos.com.co
+
