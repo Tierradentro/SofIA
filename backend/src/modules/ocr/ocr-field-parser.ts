@@ -121,6 +121,9 @@ const PATRONES_FOLIO: RegExp[] = [
   // I39: factura de compra extranjera — "FACTURA DE COMPRA  61" (el folio va
   // al final de la línea del título, sin prefijo ni rótulo "No.")
   /factura\s+de\s+compra(?:\s+extranjera)?\s+(\d{1,7})\b/i,
+  // I74: registro de IMPORTACIÓN del mismo ERP (sin el rótulo "FACTURA") —
+  // "IMPORT - REPUESTOS EL ESCARABAJO IMPORTACION                  233"
+  /\bIMPORTACI[OÓ]N\s+(\d{1,7})\s*$/i,
   /factura\s+electr[oó]nica(?:\s+de\s+venta)?[^A-Z0-9]{0,10}(?:n[°.o:]?\s*)?([A-Z]{1,6}[- ]?\d{3,})/i,
   // I26: prefijo y número separados por muchos espacios (layout de columnas):
   // "FACTURA ELECTRÓNICA FE                                  9832"
@@ -147,6 +150,15 @@ const REF_RE = /^[A-Z0-9][A-Z0-9\-_./:]{2,24}$/i;
 /** Rótulos de cabecera/tabla que NUNCA son referencias de producto. */
 const ROTULOS_RE =
   /^(NIT|CLIENTE|DIRECCION|TELEFONO|CIUDAD|FECHA|VENDEDOR|FORMA|ITEM|REFERENCIA|SUBTOTAL|TOTAL|FACTURA|ACTIVIDAD|NO|CODIGO|DESCRIPCION|CANTIDAD|VALOR|VENCE|RESPONSABLE|MEDIOS|PAGO)$/i;
+
+/**
+ * I74: palabras que abren una DIRECCIÓN postal (colombiana o brasileña).
+ * Una línea de dirección puede terminar en número ("RUA JOAO THOMAZ … EXT 2")
+ * y, sin esta guarda, el parser la tomaba como ítem con referencia "RUA" y
+ * cantidad 2. Ninguna referencia de repuesto empieza con estas palabras.
+ */
+const REF_DIRECCION_RE =
+  /^(RUA|AV|AVE|AVENIDA|CALLE|CARRERA|CRA|KR|CL|DIAGONAL|DIAG|TRANSVERSAL|TRANSV|TV|MANZANA|MZ|BLOQUE|BARRIO|KM)$/i;
 
 function capturarRef(token: string): string | null {
   return REF_RE.test(token) && !ROTULOS_RE.test(token) ? token : null;
@@ -261,11 +273,20 @@ export class OcrFieldParser {
     let ultimoItem: OcrItem | null = null;
     for (const linea of lineas) {
       // I26 (ICV): fila de rótulos "DIRECCIÓN  CIUDAD  TELÉFONO" con los
-      // valores en la línea siguiente (layout de dos líneas)
+      // valores en la línea siguiente (layout de dos líneas).
+      // I74: la variante del registro de importación omite CIUDAD y agrega
+      // PAÍS — "DIRECCION  TELEFONO  PAIS ORIGEN  PAIS COMPRA". Su fila de
+      // valores (la dirección del proveedor) tampoco es un ítem: termina en
+      // número ("RUA JOAO … EXT 2") y sin consumirla aquí salía como
+      // producto con referencia "RUA" y cantidad 2.
       if (pendienteFilaDir) {
         pendienteFilaDir = false;
         this.aplicarFilaDireccion(linea, data, esquema.cabecera);
-      } else if (/^DIRECCI[OÓ]N\s{2,}CIUDAD\s{2,}TEL[EÉ]FONO/i.test(linea)) {
+        previa = linea;
+        continue; // la fila de valores de la dirección no es un ítem (I74)
+      } else if (
+        /^DIRECCI[OÓ]N\s{2,}(?:CIUDAD\s{2,})?TEL[EÉ]FONO/i.test(linea)
+      ) {
         pendienteFilaDir = true;
         previa = linea;
         continue; // la fila de rótulos no es dato
@@ -331,7 +352,11 @@ export class OcrFieldParser {
    */
   private esContinuacionDescripcion(l: string): boolean {
     const iniciaConAnio = /^\d{4}\s+[A-Za-zÁÉÍÓÚÑ(]/.test(l);
-    if (!/^[A-ZÁÉÍÓÚÑ(]/i.test(l) && !iniciaConAnio) return false;
+    // I74: la continuación puede arrancar con un número corto seguido de
+    // texto — "16 VAL SCHADEK" (segunda línea de "…MEGANE 1.6 / 16 VAL…")
+    const iniciaConNumeroCorto = /^\d{1,2}\s+[A-ZÁÉÍÓÚÑ]{2,}/.test(l);
+    if (!/^[A-ZÁÉÍÓÚÑ(]/i.test(l) && !iniciaConAnio && !iniciaConNumeroCorto)
+      return false;
     if (/\d{1,3}[.,]\d{3}/.test(l)) return false; // valores de miles
     if (!iniciaConAnio && /\d{3,}/.test(l)) return false; // CUFE, teléfonos, cuentas
     if (l.length > 70) return false;
@@ -377,6 +402,15 @@ export class OcrFieldParser {
       const m = /^(.+?)\s{1,10}factura\s+de\s+compra\b/i.exec(l);
       if (m && m[1].trim().length >= 4 && !/^\s*nit\b/i.test(m[1])) {
         data.empresaFactura = m[1].trim();
+      }
+      // I74: registro de IMPORTACIÓN — la empresa va antes de la palabra
+      // IMPORTACIÓN en el título y el folio cierra la línea:
+      // "IMPORT - REPUESTOS EL ESCARABAJO IMPORTACION               233"
+      if (!data.empresaFactura) {
+        const imp = /^(.+?)\s+IMPORTACI[OÓ]N\s+\d{1,7}\s*$/i.exec(l);
+        if (imp && imp[1].trim().length >= 4 && !/^\s*nit\b/i.test(imp[1])) {
+          data.empresaFactura = imp[1].trim();
+        }
       }
     }
     if (!data.nitEmpresa && aplica('nitEmpresa')) {
@@ -542,10 +576,31 @@ export class OcrFieldParser {
             resto = cabeza ? [cabeza, ...partes.slice(1)] : partes.slice(1);
           }
         }
+        // I74 (IMPORTACIÓN con columna Código): cuando el código es más
+        // ancho que la columna queda en la misma "columna" que la descripción
+        // con un solo espacio — "10086/10094 BOMBA ACEITE CON TUBO …". Se
+        // separa en el primer espacio; la guarda de dígitos evita confundir
+        // la primera palabra de una descripción sin código (FCE) con una ref.
+        if (ref === partes[0]) {
+          const refDesc = /^(\S*\d\S*)\s+(.+)$/.exec(partes[0]);
+          if (refDesc) {
+            const sep = capturarRefConDescripcion(refDesc[1]);
+            if (sep) {
+              ref = sep.ref;
+              const cabeza = [sep.descInicial, refDesc[2]]
+                .filter(Boolean)
+                .join(' ');
+              resto = cabeza ? [cabeza, ...partes.slice(1)] : partes.slice(1);
+            }
+          }
+        }
       }
       // I68: la referencia directa también puede traer descripción pegada
       const sepRef = capturarRefConDescripcion(ref);
       if (!sepRef) return this.parseLineaSinRef(linea);
+      // I74: una "referencia" que es el inicio de una dirección postal
+      // ("RUA …", "CALLE …") no es un ítem, aunque la línea cierre en número
+      if (REF_DIRECCION_RE.test(sepRef.ref)) return null;
       if (sepRef.descInicial) {
         ref = sepRef.ref;
         resto = [sepRef.descInicial, ...resto];
@@ -599,6 +654,21 @@ export class OcrFieldParser {
           }
         }
       }
+      // I74 (registro de IMPORTACIÓN con columna Código, mismo ERP de la
+      // FCE): la línea no tiene unidad y cierra con cola monetaria —
+      // "… SCHADEK 150 41.687 0% 6.253.111". La cantidad es el entero que
+      // precede a los valores; los valores monetarios se descartan.
+      if (!conValor) {
+        const imp = this.extraerCantidadImportacion(textoResto);
+        if (imp) {
+          return {
+            referencia: ref.toUpperCase(),
+            descripcion: imp.descripcion || null,
+            cantidad: imp.cantidad,
+            unidad: 'UND',
+          } as OcrItem;
+        }
+      }
       if (conValor) {
         const extraidos = this.extraerColaNumerica(textoResto);
         if (extraidos) {
@@ -637,6 +707,30 @@ export class OcrFieldParser {
       } as OcrItem;
     }
 
+    // I74: el formato IMPORTACIÓN con columnas colapsadas a un solo espacio
+    // (Tesseract) — "62001 JGO BALANCINES CORSA 1400 X8 SCHADEK 150 41.687
+    // 0% 6.253.111". Sin esta rama la línea plana no producía ítem alguno.
+    if (!conValor) {
+      const cabeza = /^([A-Z0-9][A-Z0-9\-_./:]{2,24})\s+(.+)$/.exec(linea);
+      if (cabeza) {
+        const sepRef = capturarRefConDescripcion(cabeza[1]);
+        if (sepRef && !REF_DIRECCION_RE.test(sepRef.ref)) {
+          const resto = [sepRef.descInicial, cabeza[2]]
+            .filter(Boolean)
+            .join(' ');
+          const imp = this.extraerCantidadImportacion(resto);
+          if (imp) {
+            return {
+              referencia: sepRef.ref.toUpperCase(),
+              descripcion: imp.descripcion || null,
+              cantidad: imp.cantidad,
+              unidad: 'UND',
+            } as OcrItem;
+          }
+        }
+      }
+    }
+
     // Línea plana: REF DESCRIPCION CANTIDAD [UNIDAD]
     const m =
       /^([A-Z0-9][A-Z0-9\-_./]{2,24})\s+(.+?)\s+(\d{1,6})(?:\s+([A-Z]{2,7}))?$/i.exec(linea);
@@ -651,12 +745,43 @@ export class OcrFieldParser {
     const ref = m[1].toUpperCase();
     // Evitar falsos positivos de cabeceras (I26: lista ampliada de rótulos)
     if (ROTULOS_RE.test(ref) || /^(INVOICE|DATE|GUIA)$/i.test(ref)) return null;
+    // I74: tampoco una línea de dirección ("RUA … EXT 2" salía como ítem)
+    if (REF_DIRECCION_RE.test(ref)) return null;
     return {
       referencia: ref,
       descripcion: m[2].trim(),
       cantidad: parseInt(m[3], 10),
       unidad: unidad ?? 'UND',
     };
+  }
+
+  /**
+   * I74: cantidad en el formato IMPORTACIÓN con columna Código —
+   * "… DESCRIPCIÓN cantidad valorUnitario IVA% valorTotal" SIN unidad.
+   * La cantidad es el entero que precede a los valores monetarios; un valor
+   * monetario exige separador de miles o decimales para no confundir la
+   * cantidad con dinero. El IVA% se descarta antes de medir la cola.
+   * Ej.: "JGO BALANCINES CORSA 1400 X8 SCHADEK 150 41.687 0% 6.253.111"
+   */
+  private extraerCantidadImportacion(
+    texto: string,
+  ): { cantidad: number; descripcion: string } | null {
+    const limpio = texto
+      .replace(/\d+(?:[.,]\d+)?\s*%/g, ' ')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+    const DINERO = String.raw`\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?|\d+[.,]\d{2}`;
+    const m = new RegExp(
+      `^(.*?)\\s+(\\d{1,6})\\s+((?:${DINERO})(?:\\s+(?:${DINERO}))?)\\s*$`,
+    ).exec(limpio);
+    if (!m) return null;
+    const descripcion = m[1].trim();
+    if (descripcion.length < 3 || !/[A-ZÁÉÍÓÚÑ]{2,}/i.test(descripcion)) {
+      return null;
+    }
+    const cantidad = parseInt(m[2], 10);
+    if (!Number.isFinite(cantidad) || cantidad <= 0) return null;
+    return { cantidad, descripcion };
   }
 
   /**

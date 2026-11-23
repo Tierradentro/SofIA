@@ -365,6 +365,89 @@ describe('Ingreso de mercancía (e2e)', () => {
     expect(cruzadoFinal[0].cantidad).toBe(92);
   });
 
+  it('I74: ingreso desde el registro de IMPORTACIÓN 233 (columna Código; la dirección no es un ítem)', async () => {
+    // PDF real adjunto por el usuario: 20 ítems CON código (62001, …,
+    // 10086/10094) del proveedor Schadek. Antes el OCR solo "leía" un ítem
+    // fantasma con la dirección del proveedor ("RUA" × 2).
+    await crearProducto('62001', {
+      descripcion: 'JGO BALANCINES CORSA 1400 X8 SCHADEK',
+    });
+    await crearProducto('10129', {
+      descripcion: 'BOMBA ACEITE CORSA 1.4 1.6 SCHADEK',
+    });
+
+    const IMP233 = readFileSync(
+      join(__dirname, 'fixtures', 'importacion-imp233.pdf'),
+    );
+    const ocr = await t.http
+      .post('/api/v1/ocr/documents')
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .field('tipoDocumento', 'FACTURA_IMPORTACION')
+      .attach('file', IMP233, {
+        filename: 'imp 233.pdf',
+        contentType: 'application/pdf',
+      });
+    expect(ocr.status).toBe(201);
+    expect(ocr.body.datosExtraidos.numeroFactura).toBe('233');
+    expect(ocr.body.datosExtraidos.proveedor).toBe('METALURGICA SCHADEK LTDA');
+    expect(ocr.body.datosExtraidos.fecha).toBe('2026-10-20');
+    expect(ocr.body.datosExtraidos.items).toHaveLength(20);
+    // Nada de la dirección del proveedor como producto
+    expect(
+      ocr.body.datosExtraidos.items.some((i: any) =>
+        /^(RUA|CALLE|CARRERA|AVENIDA)$/i.test(i.referencia),
+      ),
+    ).toBe(false);
+
+    // El documento es de IRE: crear el ingreso para ICV se rechaza (I71)
+    const icv = await t.dataSource.query(
+      `SELECT id FROM companies WHERE siglas='ICV'`,
+    );
+    const empresaErrada = await t.http
+      .post('/api/v1/inbound')
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ empresaId: icv[0].id, ocrDocumentId: ocr.body.id });
+    expect(empresaErrada.status).toBe(400);
+
+    const ingreso = await t.http
+      .post('/api/v1/inbound')
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ empresaId: ireId, ocrDocumentId: ocr.body.id });
+    expect(ingreso.status).toBe(201);
+    expect(ingreso.body.numeroFactura).toBe('233');
+    expect(ingreso.body.items).toHaveLength(20);
+
+    // Los productos existentes se cruzan por su código
+    for (const codigo of ['62001', '10129']) {
+      const cruzado = ingreso.body.items.find((i: any) => i.referencia === codigo);
+      expect(cruzado).toBeDefined();
+      expect(cruzado.esNuevo).toBe(false);
+      expect(cruzado.productId).toBeTruthy();
+    }
+    // El código compuesto llega completo desde el documento
+    const compuesto = ingreso.body.items.find(
+      (i: any) => i.referencia === '10086/10094',
+    );
+    expect(compuesto).toBeDefined();
+    expect(compuesto.cantidadFacturada).toBe(20);
+
+    // Flujo completo: recepción y aprobación suman el stock cruzado
+    await flujoRecepcion(ingreso.body.id, {});
+    const aprob = await t.http
+      .post(`/api/v1/inbound/${ingreso.body.id}/approve`)
+      .set('Authorization', `Bearer ${generadorToken}`)
+      .send({ observacion: 'Importación 233 con códigos Schadek' });
+    expect(aprob.status).toBe(201);
+    const stock = await t.dataSource.query(
+      `SELECT codigo, cantidad FROM products WHERE codigo IN ('62001','10129') AND empresa_id=$1 ORDER BY codigo`,
+      [ireId],
+    );
+    expect(stock).toEqual([
+      { codigo: '10129', cantidad: 150 },
+      { codigo: '62001', cantidad: 150 },
+    ]);
+  });
+
   it('Cancelación: el Generador cancela en cualquier momento; aprobado no cancela', async () => {
     await crearProducto('ING-030');
     const ingreso = await crearIngreso([

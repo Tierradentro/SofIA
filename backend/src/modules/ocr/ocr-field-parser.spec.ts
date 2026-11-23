@@ -502,4 +502,99 @@ describe('OcrFieldParser', () => {
     const suma = r.items.reduce((a, i) => a + (i.valorTotal ?? 0), 0);
     expect(suma).toBe(1620161);
   });
+
+  it('I74: registro de IMPORTACIÓN 233 (Schadek) — columna Código sin unidad y dirección con número', () => {
+    // Texto tal como lo devuelve `pdftotext -layout` del PDF adjunto por el
+    // usuario. Mismo ERP de la FCE 61, pero el registro de IMPORTACIÓN sí
+    // tiene columna Código y NO tiene unidad:
+    // "62001  JGO BALANCINES CORSA 1400 X8 SCHADEK  150  41.687  0%  6.253.111"
+    // Antes: los 20 ítems se perdían (cola monetaria sin unidad) y la fila
+    // de la dirección del proveedor ("RUA JOAO THOMAZ … EXT 2") salía como
+    // ítem con referencia "RUA" y cantidad 2.
+    const texto = readFileSync(
+      join(__dirname, '../../../test/fixtures/importacion-imp233.txt'),
+      'utf8',
+    );
+    const r = parser.parse(texto, DocumentType.FACTURA_IMPORTACION);
+    // Cabecera: folio del título, empresa emisora y su NIT, proveedor, fecha
+    expect(r.numeroFactura).toBe('233');
+    expect(r.empresaFactura).toBe('IMPORT - REPUESTOS EL ESCARABAJO');
+    expect(r.nitEmpresa).toBe('900349362');
+    expect(r.proveedor).toBe('METALURGICA SCHADEK LTDA');
+    expect(r.fecha).toBe('2026-10-20'); // "martes, 20 de octubre de 2026"
+    expect(r.total).toBe(66821737);
+    // Los 20 ítems del registro, todos CON referencia y sin valores
+    expect(r.items).toHaveLength(20);
+    expect(r.items.every((i) => i.referencia.length > 0)).toBe(true);
+    expect(r.items.every((i) => i.valorUnitario == null && i.valorTotal == null)).toBe(true);
+    expect(r.items[0]).toEqual({
+      referencia: '62001',
+      descripcion: 'JGO BALANCINES CORSA 1400 X8 SCHADEK',
+      cantidad: 150,
+      unidad: 'UND',
+    });
+    // La dirección del proveedor NO es un ítem (era el falso "RUA" × 2)
+    expect(
+      r.items.some(
+        (i) =>
+          /^(RUA|AV|AVENIDA|CALLE|CARRERA|DIAGONAL|TRANSVERSAL)$/i.test(i.referencia) ||
+          (i.descripcion ?? '').includes('JOAO THOMAZ'),
+      ),
+    ).toBe(false);
+    // Descripciones que envuelven a la línea siguiente se reconstruyen,
+    // incluso cuando la continuación arranca con número ("16 VAL SCHADEK")
+    expect(r.items.find((i) => i.referencia === '10235')?.descripcion).toBe(
+      'BOMBA ACEITE 22 DIENTES CLIO SCENIC MEGANE 1.6 16 VAL SCHADEK',
+    );
+    expect(r.items.find((i) => i.referencia === '60017')?.descripcion).toBe(
+      'EJE LEVAS CHEVROLET CORSA 1.4 1.6 1.8 8 VALVULAS SCHADEK',
+    );
+    // Código compuesto más ancho que la columna (queda pegado a la
+    // descripción con un solo espacio): "10086/10094 BOMBA ACEITE …"
+    expect(r.items.find((i) => i.referencia === '10086/10094')).toMatchObject({
+      descripcion: 'BOMBA ACEITE CON TUBO GOL 1.6 1.8 GOLF3 VENTO SCHADEK',
+      cantidad: 20,
+    });
+    // Las cantidades cuadran con el documento
+    const cantidades = r.items.map((i) => i.cantidad);
+    expect(cantidades).toEqual([
+      150, 150, 20, 40, 30, 20, 30, 10, 80, 80, 40, 200, 30, 30, 150, 30, 40,
+      20, 50, 25,
+    ]);
+  });
+
+  it('I74: el formato IMPORTACIÓN también se reconoce con columnas colapsadas (Tesseract)', () => {
+    const texto = [
+      '62001 JGO BALANCINES CORSA 1400 X8 SCHADEK 150 41.687 0% 6.253.111',
+      '10086/10094 BOMBA ACEITE CON TUBO GOL 1.6 1.8 GOLF3 VENTO 20 36.271 0% 725.417',
+    ].join('\n');
+    const r = parser.parse(texto, DocumentType.FACTURA_IMPORTACION);
+    expect(r.items).toHaveLength(2);
+    expect(r.items[0]).toEqual({
+      referencia: '62001',
+      descripcion: 'JGO BALANCINES CORSA 1400 X8 SCHADEK',
+      cantidad: 150,
+      unidad: 'UND',
+    });
+    expect(r.items[1]).toMatchObject({
+      referencia: '10086/10094',
+      cantidad: 20,
+    });
+  });
+
+  it('I74: una línea de dirección nunca es un ítem, con o sin fila de rótulos', () => {
+    // La dirección del proveedor termina en número y antes salía como
+    // producto con referencia "RUA" y cantidad 2
+    const texto = [
+      'DIRECCION                           TELEFONO                   PAIS ORIGEN                      PAIS COMPRA',
+      'RUA JOAO THOMAZ DE ALMEIDA.900-VILA 55153262-8890 EXT 2',
+      '62001 JGO BALANCINES CORSA 1400 X8 SCHADEK 150 41.687 0% 6.253.111',
+      'CALLE 45 # 12-30 INT 7',
+    ].join('\n');
+    const r = parser.parse(texto, DocumentType.FACTURA_IMPORTACION);
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0].referencia).toBe('62001');
+    // La dirección quedó como dato de cabecera, no como producto
+    expect(r.direccion).toContain('RUA JOAO THOMAZ');
+  });
 });
