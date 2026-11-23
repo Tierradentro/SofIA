@@ -6,7 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { createWriteStream, mkdirSync, unlinkSync } from 'fs';
-import { join, extname } from 'path';
+import { extname, join } from 'path';
 import { randomUUID } from 'crypto';
 import { Document } from './entities/document.entity';
 import {
@@ -15,8 +15,45 @@ import {
 } from '../../common/enums/document-type.enum';
 import { AuditService } from '../audit/audit.service';
 
-const IMAGE_MIMES = ['image/png', 'image/jpeg', 'image/jpg'];
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB
+
+/**
+ * Seguridad (auditoría #3): lista blanca de imágenes verificada por MAGIC
+ * BYTES, nunca por el Content-Type que declara quien sube. Un SVG con
+ * <script> servido desde el origen de la app roba el token de localStorage
+ * (XSS). Solo se aceptan PNG, JPEG y WEBP reales.
+ */
+export function mimeImagenSegura(buffer: Buffer): 'image/png' | 'image/jpeg' | 'image/webp' | null {
+  if (!buffer || buffer.length < 12) return null;
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e &&
+    buffer[3] === 0x47 && buffer[4] === 0x0d && buffer[5] === 0x0a &&
+    buffer[6] === 0x1a && buffer[7] === 0x0a
+  ) {
+    return 'image/png';
+  }
+  // JPEG: FF D8 FF
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return 'image/jpeg';
+  }
+  // WEBP: "RIFF" .... "WEBP"
+  if (
+    buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 &&
+    buffer[3] === 0x46 && buffer[8] === 0x57 && buffer[9] === 0x45 &&
+    buffer[10] === 0x42 && buffer[11] === 0x50
+  ) {
+    return 'image/webp';
+  }
+  return null;
+}
+
+/** Extensión segura según el tipo verificado por bytes (nunca la del nombre). */
+const EXT_POR_MIME: Record<string, string> = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/webp': '.webp',
+};
 
 export interface UploadedFilePayload {
   originalname: string;
@@ -39,7 +76,9 @@ export class DocumentsService {
   /** HU-006: carga del logo empresarial con validación de formato de imagen. */
   async uploadLogo(file: UploadedFilePayload, admin: { id: string; username: string }) {
     if (!file) throw new BadRequestException('Archivo requerido');
-    if (!IMAGE_MIMES.includes(file.mimetype)) {
+    // Seguridad: se verifica el contenido por magic bytes, no el MIME declarado
+    const verificado = mimeImagenSegura(file.buffer);
+    if (!verificado || verificado === 'image/webp') {
       throw new BadRequestException(
         'Formato no válido: el logo debe ser una imagen PNG o JPG',
       );
@@ -59,7 +98,7 @@ export class DocumentsService {
 
     const dir = join(this.filesDir(), 'system');
     mkdirSync(dir, { recursive: true });
-    const relPath = join('system', `logo${extname(file.originalname).toLowerCase()}`);
+    const relPath = join('system', `logo${EXT_POR_MIME[verificado]}`);
     await new Promise<void>((resolve, reject) => {
       const stream = createWriteStream(join(this.filesDir(), relPath));
       stream.on('error', reject);
@@ -74,7 +113,7 @@ export class DocumentsService {
         tipo: DocumentType.LOGO,
         path: relPath,
         nombreOriginal: file.originalname,
-        mime: file.mimetype,
+        mime: verificado,
         size: file.size,
         esTemporal: false,
         createdBy: admin.id,
@@ -105,12 +144,24 @@ export class DocumentsService {
     userId: string,
   ): Promise<Document> {
     if (!file) throw new BadRequestException('Archivo requerido');
+    // Seguridad (auditoría #3): si declara ser imagen, se verifica por magic
+    // bytes y el MIME guardado es el verificado, no el declarado. Si no
+    // verifica, se rechaza: un SVG/HTML disfrazado ejecutaría scripts en el
+    // origen de la aplicación al abrirlo.
+    let mime = file.mimetype;
+    if (file.mimetype?.startsWith('image/')) {
+      const verificado = mimeImagenSegura(file.buffer);
+      if (!verificado) {
+        throw new BadRequestException(
+          'El contenido del archivo no corresponde a una imagen válida (PNG, JPEG o WEBP)',
+        );
+      }
+      mime = verificado;
+    }
     const dir = join(this.filesDir(), ownerType);
     mkdirSync(dir, { recursive: true });
-    const relPath = join(
-      ownerType,
-      `${randomUUID()}${extname(file.originalname).toLowerCase()}`,
-    );
+    const ext = EXT_POR_MIME[mime] ?? extname(file.originalname).toLowerCase();
+    const relPath = join(ownerType, `${randomUUID()}${ext}`);
     await new Promise<void>((resolve, reject) => {
       const stream = createWriteStream(join(this.filesDir(), relPath));
       stream.on('error', reject);
@@ -124,7 +175,7 @@ export class DocumentsService {
         tipo,
         path: relPath,
         nombreOriginal: file.originalname,
-        mime: file.mimetype,
+        mime,
         size: file.size,
         esTemporal: !PERMANENT_DOCUMENT_TYPES.includes(tipo),
         createdBy: userId,
@@ -168,6 +219,9 @@ export class DocumentsService {
    * La etiqueta lleva el código de barras CODE-128 de la caja, el nombre de
    * la empresa (o ambas si el envío es mixto), el código de la caja y el
    * número del despacho.
+   * Seguridad (auditoría #5): los datos de BD se ESCAPAN antes de interpolar
+   * (el nombre de empresa lo edita el Administrador) y el data URL del
+   * código de barras se valida estrictamente.
    */
   buildLabelHtml(
     boxCode: string,
@@ -175,11 +229,19 @@ export class DocumentsService {
     despachoNumero?: string,
     empresas?: string,
   ): string {
+    const box = escapeHtml(boxCode);
+    const emp = empresas ? escapeHtml(empresas) : '';
+    const dsp = despachoNumero ? escapeHtml(despachoNumero) : '';
+    const dataUrl = /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(
+      barcodeDataUrl ?? '',
+    )
+      ? barcodeDataUrl
+      : '';
     return `<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<title>Etiqueta ${boxCode}</title>
+<title>Etiqueta ${box}</title>
 <style>
   @page { size: 50mm 30mm; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -202,12 +264,22 @@ export class DocumentsService {
 </head>
 <body onload="window.print()">
   <div class="etiqueta">
-    ${empresas ? `<div class="empresa">${empresas}</div>` : ''}
-    <img src="${barcodeDataUrl}" alt="Código de barras">
-    <div class="codigo">${boxCode}</div>
-    ${despachoNumero ? `<div class="despacho">Despacho ${despachoNumero}</div>` : ''}
+    ${emp ? `<div class="empresa">${emp}</div>` : ''}
+    <img src="${dataUrl}" alt="Código de barras">
+    <div class="codigo">${box}</div>
+    ${dsp ? `<div class="despacho">Despacho ${dsp}</div>` : ''}
   </div>
 </body>
 </html>`;
   }
+}
+
+/** Escape HTML básico para interpolar texto de BD en la etiqueta (#5). */
+function escapeHtml(s: string): string {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }

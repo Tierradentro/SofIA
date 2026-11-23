@@ -19,7 +19,7 @@ import { MovementsService } from '../movements/movements.service';
 import { MovementType } from '../../common/enums/movement-type.enum';
 import { AuditService } from '../audit/audit.service';
 import { User } from '../users/entities/user.entity';
-import { DocumentsService, UploadedFilePayload } from '../documents/documents.service';
+import { DocumentsService, UploadedFilePayload, mimeImagenSegura } from '../documents/documents.service';
 import { resolverFacturaCaso, validarReingreso } from './pqrs-helpers';
 import { DocumentType } from '../../common/enums/document-type.enum';
 import {
@@ -256,8 +256,10 @@ export class PqrsService {
       throw new BadRequestException('El soporte de solución se adjunta con el caso ABIERTO o CERRADO');
     }
     if (!file) throw new BadRequestException('Archivo requerido');
-    if (!file.mimetype?.startsWith('image/')) {
-      throw new BadRequestException('El soporte debe ser una imagen');
+    // Seguridad (auditoría #3): lista blanca por magic bytes — el tipo que
+    // declara quien sube no es confiable (un SVG con <script> roba la sesión)
+    if (!mimeImagenSegura(file.buffer)) {
+      throw new BadRequestException('El soporte debe ser una imagen PNG, JPEG o WEBP');
     }
     const doc = await this.documents.store('pqrs', DocumentType.SOPORTE_PQRS, file, user.id);
     const soporte = await this.dataSource.getRepository(PqrsSupport).save(

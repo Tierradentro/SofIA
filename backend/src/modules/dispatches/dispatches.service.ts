@@ -843,20 +843,6 @@ export class DispatchesService {
   // ------------------------------------------------------------------
   async registerTransport(id: string, dto: TransportDto, user: Usuario) {
     const dispatch = await this.findDispatch(id);
-    if (!dispatch.empaqueFinalizado) {
-      throw new BadRequestException('Primero debe finalizar el empaque');
-    }
-    if (dispatch.estado === DispatchStatus.PARCIAL && !dispatch.parcialAprobadoAt) {
-      throw new BadRequestException(
-        'El despacho parcial requiere aprobación del Generador con motivo',
-      );
-    }
-    if (
-      dispatch.estado !== DispatchStatus.ABIERTO &&
-      dispatch.estado !== DispatchStatus.PARCIAL
-    ) {
-      throw new BadRequestException(`No se puede registrar transporte en estado ${dispatch.estado}`);
-    }
 
     let carrier: Carrier | null = null;
     if (dto.tipo === TransportType.EXTERNA) {
@@ -883,50 +869,120 @@ export class DispatchesService {
       }
     }
 
-    dispatch.tipoTransporte = dto.tipo;
-    dispatch.carrierId = carrier?.id ?? null;
-    dispatch.guia = dto.guia?.trim() || null;
-    dispatch.nombreTransporte =
-      dto.tipo === TransportType.EXTERNA ? carrier!.nombre : dto.nombreTransporte!.trim();
-    dispatch.fechaSalida = new Date();
-    dispatch.estado = DispatchStatus.DESPACHADO;
-    // I19: trazabilidad del usuario que registra la salida
-    dispatch.despachadoPor = user.id;
-    dispatch.despachadoAt = new Date();
-    await this.dataSource.getRepository(Dispatch).save(dispatch);
+    // I73 (auditoría, hallazgo 7): el flag `empaqueFinalizado` queda en true
+    // una vez finalizado el empaque y NO se restablece, así que no basta con
+    // confiar en él: la salida con transporte REVALIDA el estado real del
+    // empaque (cajas y pendientes) dentro de UNA transacción con bloqueo
+    // pesimista del despacho. Dos registros concurrentes se serializan: el
+    // segundo encuentra el estado DESPACHADO y aborta.
+    await this.dataSource.transaction(async (em) => {
+      const locked: Array<{
+        id: string;
+        estado: DispatchStatus;
+        empaque_finalizado: boolean;
+        parcial_aprobado_at: Date | null;
+      }> = await em.query(
+        `SELECT id, estado, empaque_finalizado, parcial_aprobado_at
+           FROM dispatches WHERE id = $1 FOR UPDATE`,
+        [id],
+      );
+      if (!locked.length) throw new NotFoundException('Despacho no encontrado');
+      const fila = locked[0];
 
-    // I25: los pedidos del despacho salen de APROBADO → DESPACHADO solo si
-    // ya no tienen unidades pendientes (despachos parciales los mantienen
-    // APROBADO hasta que el despacho adicional los complete).
-    const [pedidosCompletos] = (await this.dataSource.query(
-      `UPDATE orders o
-          SET estado = 'DESPACHADO'
-        WHERE o.id IN (SELECT order_id FROM dispatch_orders WHERE dispatch_id = $1)
-          AND o.estado = 'APROBADO'
-          AND NOT EXISTS (
-            SELECT 1 FROM order_items oi
-             WHERE oi.order_id = o.id
-               AND (oi.cantidad_alistada - oi.cantidad_despachada) > 0
-          )
-        RETURNING o.numero`,
-      [id],
-    )) as [Array<{ numero: string }>, number];
+      if (!fila.empaque_finalizado) {
+        throw new BadRequestException('Primero debe finalizar el empaque');
+      }
+      if (fila.estado === DispatchStatus.PARCIAL && !fila.parcial_aprobado_at) {
+        throw new BadRequestException(
+          'El despacho parcial requiere aprobación del Generador con motivo',
+        );
+      }
+      if (
+        fila.estado !== DispatchStatus.ABIERTO &&
+        fila.estado !== DispatchStatus.PARCIAL
+      ) {
+        throw new BadRequestException(
+          `No se puede registrar transporte en estado ${fila.estado}`,
+        );
+      }
 
-    await this.audit.log({
-      usuarioId: user.id,
-      usuarioUsername: user.username,
-      accion: 'DESPACHO_TRANSPORTE_REGISTRADO',
-      tabla: TABLA,
-      registroId: id,
-      valorNuevo: {
-        tipo: dto.tipo,
-        transporte: dispatch.nombreTransporte,
-        guia: dispatch.guia,
-        estado: DispatchStatus.DESPACHADO,
-        ...(pedidosCompletos.length > 0
-          ? { pedidosDespachados: pedidosCompletos.map((p) => p.numero) }
-          : {}),
-      },
+      // Revalidación de cajas: al menos una CERRADA y ninguna ABIERTA. Sin
+      // esto, una caja creada o reabierta tras finalizar el empaque salía en
+      // el transporte sin control.
+      const [cajas]: Array<{ abiertas: string; cerradas: string }> = await em.query(
+        `SELECT COUNT(*) FILTER (WHERE estado = 'ABIERTA') AS abiertas,
+                COUNT(*) FILTER (WHERE estado = 'CERRADA') AS cerradas
+           FROM boxes WHERE dispatch_id = $1`,
+        [id],
+      );
+      if (Number(cajas.cerradas) < 1) {
+        throw new BadRequestException('El despacho no tiene cajas cerradas para transportar');
+      }
+      if (Number(cajas.abiertas) > 0) {
+        throw new BadRequestException(
+          `Hay ${cajas.abiertas} caja(s) ABIERTA(s); ciérrelas antes de registrar el transporte`,
+        );
+      }
+
+      // Revalidación de pendientes: un empaque COMPLETO (estado ABIERTO) debe
+      // salir sin unidades pendientes. Un PARCIAL aprobado sí sale con
+      // pendientes: se completan con un despacho adicional (HU-042).
+      const pendientes = (await this.pendientes(id, em)).filter((p) => p.pendiente > 0);
+      if (fila.estado === DispatchStatus.ABIERTO && pendientes.length > 0) {
+        const total = pendientes.reduce((a, p) => a + p.pendiente, 0);
+        throw new BadRequestException(
+          `Aún hay ${total} unidad(es) pendiente(s) por empacar; finalice el empaque nuevamente`,
+        );
+      }
+
+      dispatch.tipoTransporte = dto.tipo;
+      dispatch.carrierId = carrier?.id ?? null;
+      dispatch.guia = dto.guia?.trim() || null;
+      dispatch.nombreTransporte =
+        dto.tipo === TransportType.EXTERNA ? carrier!.nombre : dto.nombreTransporte!.trim();
+      dispatch.fechaSalida = new Date();
+      dispatch.estado = DispatchStatus.DESPACHADO;
+      // I19: trazabilidad del usuario que registra la salida
+      dispatch.despachadoPor = user.id;
+      dispatch.despachadoAt = new Date();
+      await em.save(Dispatch, dispatch);
+
+      // I25: los pedidos del despacho salen de APROBADO → DESPACHADO solo si
+      // ya no tienen unidades pendientes (despachos parciales los mantienen
+      // APROBADO hasta que el despacho adicional los complete).
+      const [pedidosCompletos] = (await em.query(
+        `UPDATE orders o
+            SET estado = 'DESPACHADO'
+          WHERE o.id IN (SELECT order_id FROM dispatch_orders WHERE dispatch_id = $1)
+            AND o.estado = 'APROBADO'
+            AND NOT EXISTS (
+              SELECT 1 FROM order_items oi
+               WHERE oi.order_id = o.id
+                 AND (oi.cantidad_alistada - oi.cantidad_despachada) > 0
+            )
+          RETURNING o.numero`,
+        [id],
+      )) as [Array<{ numero: string }>, number];
+
+      await this.audit.log(
+        {
+          usuarioId: user.id,
+          usuarioUsername: user.username,
+          accion: 'DESPACHO_TRANSPORTE_REGISTRADO',
+          tabla: TABLA,
+          registroId: id,
+          valorNuevo: {
+            tipo: dto.tipo,
+            transporte: dispatch.nombreTransporte,
+            guia: dispatch.guia,
+            estado: DispatchStatus.DESPACHADO,
+            ...(pedidosCompletos.length > 0
+              ? { pedidosDespachados: pedidosCompletos.map((p) => p.numero) }
+              : {}),
+          },
+        },
+        em,
+      );
     });
     return this.get(id);
   }
@@ -1195,8 +1251,8 @@ export class DispatchesService {
    * Pendientes por línea de pedido del despacho: alistada − despachada,
    * descontando lo ya contado en cajas ABIERTAS de este despacho.
    */
-  private async pendientes(dispatchId: string): Promise<PendienteItem[]> {
-    const rows: any[] = await this.dataSource.query(
+  private async pendientes(dispatchId: string, em?: EntityManager): Promise<PendienteItem[]> {
+    const rows: any[] = await (em ?? this.dataSource).query(
       `SELECT oi.id AS "orderItemId", oi.order_id AS "orderId", o.numero AS "numeroPedido",
               o.empresa_id AS "empresaId", oi.product_id AS "productId", oi.codigo,
               oi.descripcion, oi.cantidad_alistada AS "cantidadAlistada",

@@ -13,7 +13,7 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { AssignBarcodeDto } from './dto/assign-barcode.dto';
 import { AuditService } from '../audit/audit.service';
-import { DocumentsService, UploadedFilePayload } from '../documents/documents.service';
+import { DocumentsService, UploadedFilePayload, mimeImagenSegura } from '../documents/documents.service';
 import { Document } from '../documents/entities/document.entity';
 import { DocumentType } from '../../common/enums/document-type.enum';
 import { ProductStatus } from '../../common/enums/product-status.enum';
@@ -301,8 +301,10 @@ export class ProductsService {
   async subirFoto(productId: string, file: UploadedFilePayload, user: { id: string; username: string }) {
     const product = await this.findById(productId);
     if (!file) throw new BadRequestException('Archivo requerido');
-    if (!file.mimetype?.startsWith('image/')) {
-      throw new BadRequestException('La foto del producto debe ser una imagen');
+    // Seguridad (auditoría #3): lista blanca por magic bytes — el tipo que
+    // declara quien sube no es confiable (un SVG con <script> roba la sesión)
+    if (!mimeImagenSegura(file.buffer)) {
+      throw new BadRequestException('La foto del producto debe ser una imagen PNG, JPEG o WEBP');
     }
     const anteriorId = product.fotoDocumentId;
     // El store usa su propio repositorio: va FUERA de la transacción (en

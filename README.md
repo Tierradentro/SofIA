@@ -31,7 +31,11 @@ docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
 - API (local): http://localhost:8080/api/v1 (health: `/api/v1/health`)
 - En producción el frontend llama a la API con la ruta relativa `/api/v1`
   sobre el dominio HTTPS asignado por EasyPanel.
-- Usuario inicial: **Admin / Admin** (cambio de clave obligatorio en el primer login, M02/M14)
+- Usuario inicial: **Admin**. La clave inicial (I73) se define con la variable
+  `ADMIN_INITIAL_PASSWORD`; si no se define, el seed genera una aleatoria y la
+  muestra **una sola vez** en el log del arranque del backend. En desarrollo y
+  pruebas (`NODE_ENV≠production`) la clave fija es `Admin`. El primer login
+  exige cambio de clave (M02/M14).
 - El backend corre migraciones y semillas al arrancar (empresas IRE/ICV,
   parámetros del sistema, catálogo de motivos PQRS G01–G40/N01–N18).
 

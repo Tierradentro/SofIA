@@ -45,6 +45,10 @@ services:
       JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET en el entorno}
       JWT_EXPIRES_IN: 8h
       OCR_ENCRYPTION_KEY: ${OCR_ENCRYPTION_KEY:?Defina OCR_ENCRYPTION_KEY en el entorno}
+      # I73 (opcional): clave inicial del Admin en la primera instalación.
+      # Si no se define, el seed genera una aleatoria y la muestra una vez
+      # en el log del arranque.
+      ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:-}
       REDIS_URL: redis://redis:6379
       FILES_DIR: /data/files
       EXPORTS_DIR: /data/exports

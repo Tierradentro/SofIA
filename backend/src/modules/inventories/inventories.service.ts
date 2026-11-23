@@ -238,6 +238,21 @@ export class InventoriesService {
     }
 
     await this.dataSource.transaction(async (em) => {
+      // Seguridad (auditoría #2): transición de estado ATÓMICA dentro de la
+      // transacción — dos aprobaciones simultáneas no duplican los ajustes:
+      // la segunda no encuentra la fila en PENDIENTE_APROBACION y aborta.
+      const transicion = await em.query(
+        `UPDATE stock_counts
+            SET estado = 'APROBADO', aprobado_por = $2, aprobado_at = NOW()
+          WHERE id = $1 AND estado = 'PENDIENTE_APROBACION'
+          RETURNING id`,
+        [id, user.id],
+      );
+      if (!transicion.length) {
+        throw new BadRequestException(
+          'La jornada ya fue aprobada o cancelada por otra operación',
+        );
+      }
       for (const item of diferencias) {
         const delta = calcularDiferencia(item.conteo ?? 0, item.existenciaSnapshot);
         await this.movements.apply(
@@ -252,11 +267,6 @@ export class InventoriesService {
           em,
         );
       }
-      await em.update(
-        StockCount,
-        { id },
-        { estado: StockCountStatus.APROBADO, aprobadoPor: user.id, aprobadoAt: new Date() },
-      );
       await this.audit.log(
         {
           usuarioId: user.id,

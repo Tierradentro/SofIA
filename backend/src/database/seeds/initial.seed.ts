@@ -1,5 +1,7 @@
 import { DataSource } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
+import { Logger } from '@nestjs/common';
+import { randomInt } from 'crypto';
 import { User } from '../../modules/users/entities/user.entity';
 import { Company } from '../../modules/companies/entities/company.entity';
 import {
@@ -47,17 +49,31 @@ export async function runInitialSeed(dataSource: DataSource): Promise<void> {
   // ---- Usuario Admin (M02/M14) ----
   const admin = await userRepo.findOne({ where: { username: 'Admin' } });
   if (!admin) {
+    // Seguridad (auditoría #4): en una instalación nueva de PRODUCCIÓN la
+    // clave inicial ya NO es la fija «Admin»: se toma de
+    // ADMIN_INITIAL_PASSWORD o se genera aleatoria y solo se muestra UNA VEZ
+    // en el log del arranque. En desarrollo y pruebas se conserva la fija
+    // «Admin» para no entorpecer el trabajo local. El primer login siempre
+    // exige cambio de clave (debeCambiarClave).
+    const claveInicial =
+      process.env.ADMIN_INITIAL_PASSWORD?.trim() ||
+      (process.env.NODE_ENV === 'production'
+        ? generarClaveInicial()
+        : 'Admin');
     await userRepo.save(
       userRepo.create({
         nombre: 'Administrador del sistema',
         descripcion: 'Usuario inicial',
         username: 'Admin',
         email: 'admin@sofia.local',
-        passwordHash: await bcrypt.hash('Admin', 10),
+        passwordHash: await bcrypt.hash(claveInicial, 10),
         rol: Role.ADMINISTRADOR,
         estado: UserStatus.ACTIVO,
         debeCambiarClave: true,
       }),
+    );
+    new Logger('InitialSeed').warn(
+      `Usuario Admin creado. Clave inicial (cámbiela en el primer inicio de sesión): ${claveInicial}`,
     );
   }
 
@@ -213,4 +229,25 @@ export async function runInitialSeed(dataSource: DataSource): Promise<void> {
 
   // ---- I32: bodega de ejemplo para el mapa 2D ----
   await runWarehouseSeed(dataSource);
+}
+
+/**
+ * Seguridad (auditoría #4): clave inicial aleatoria para el Admin de una
+ * instalación nueva — 12 caracteres con mayúsculas, minúsculas y dígitos
+ * (cumple la política de claves del sistema).
+ */
+export function generarClaveInicial(): string {
+  const mayus = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const minus = 'abcdefghjkmnpqrstuvwxyz';
+  const digitos = '23456789';
+  const todos = mayus + minus + digitos;
+  const pick = (s: string) => s[randomInt(s.length)];
+  const base = [pick(mayus), pick(minus), pick(digitos)];
+  while (base.length < 12) base.push(pick(todos));
+  // Mezcla para que los caracteres garantizados no queden al inicio
+  for (let i = base.length - 1; i > 0; i--) {
+    const j = randomInt(i + 1);
+    [base[i], base[j]] = [base[j], base[i]];
+  }
+  return base.join('');
 }

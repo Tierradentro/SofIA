@@ -386,6 +386,22 @@ export class InboundService {
 
     const nuevosCreados: { referencia: string; productId: string }[] = [];
     await this.dataSource.transaction(async (em) => {
+      // Seguridad (auditoría #1): la transición de estado es ATÓMICA dentro
+      // de la transacción — dos aprobaciones simultáneas no pueden pasar las
+      // dos: la segunda no encuentra fila y se aborta antes de sumar stock.
+      const transicion = await em.query(
+        `UPDATE inbound_receipts
+            SET estado = 'APROBADO', aprobado_por = $2, aprobado_at = NOW(),
+                observacion_diferencias = $3
+          WHERE id = $1 AND estado IN ('CREADO', 'EN_INGRESO', 'PENDIENTE_CORRECCION')
+          RETURNING id`,
+        [id, user.id, dto.observacion?.trim() || null],
+      );
+      if (!transicion.length) {
+        throw new BadRequestException(
+          'El ingreso ya fue aprobado o cancelado por otra operación',
+        );
+      }
       for (const { item } of comparacion) {
         if (porTotalFactura) await em.save(item); // cantidad rellenada
         // Producto nuevo: creación automática aprobada por el Generador
@@ -410,11 +426,6 @@ export class InboundService {
           );
         }
       }
-      receipt.estado = InboundStatus.APROBADO;
-      receipt.aprobadoPor = user.id;
-      receipt.aprobadoAt = new Date();
-      receipt.observacionDiferencias = dto.observacion?.trim() || null;
-      await em.save(receipt);
     });
 
     await this.audit.log({

@@ -101,7 +101,12 @@ export class PqrsController {
   async getSupportFile(@Param('supportId', ParseUUIDPipe) supportId: string, @Res() res: Response) {
     const { doc, absolutePath } = await this.pqrs.getSupportFile(supportId);
     if (!doc) throw new NotFoundException('Archivo no encontrado');
+    // Seguridad (auditoría #3): la imagen se descarga, nunca se ejecuta en
+    // el origen; nosniff impide que el navegador la reinterprete como HTML/JS
     res.setHeader('Content-Type', doc.mime);
+    res.setHeader('Content-Disposition', 'attachment');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'");
     createReadStream(absolutePath).pipe(res);
   }
 

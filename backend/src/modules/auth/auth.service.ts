@@ -27,6 +27,13 @@ import { DeviceEstado } from '../devices/entities/device.entity';
 /** Mensaje genérico: nunca revela si el usuario existe o está bloqueado (HU-001). */
 const INVALID_CREDENTIALS = 'Usuario o contraseña incorrectos';
 
+/**
+ * I73 (auditoría #6): duración del bloqueo por intentos fallidos. Antes el
+ * bloqueo era PERMANENTE (un atacante dejaba fuera a todo el personal con
+ * 5 intentos por usuario); ahora expira solo y el contador se reinicia.
+ */
+const BLOQUEO_MINUTOS = 15;
+
 /** Hash bcrypt precalculado ('sofia-timing-dummy') para igualar tiempos (M-9). */
 const DUMMY_HASH = '$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
 
@@ -51,6 +58,30 @@ export class AuthService {
   async login(username: string, password: string, dispositivo: InfoDispositivo, ip?: string) {
     const user = await this.users.findOne({ where: { username } });
 
+    // I73: el bloqueo por intentos expira solo — al vencer, el usuario
+    // vuelve a ACTIVO y el contador se reinicia sin intervención.
+    if (
+      user &&
+      user.estado === UserStatus.BLOQUEADO &&
+      user.bloqueadoHasta &&
+      user.bloqueadoHasta.getTime() <= Date.now()
+    ) {
+      user.estado = UserStatus.ACTIVO;
+      user.intentosFallidos = 0;
+      user.bloqueadoHasta = null;
+      await this.users.save(user);
+      await this.audit.log({
+        usuarioId: user.id,
+        usuarioUsername: user.username,
+        accion: 'USUARIO_DESBLOQUEADO_AUTOMATICO',
+        tabla: 'users',
+        registroId: user.id,
+        valorAnterior: { estado: UserStatus.BLOQUEADO },
+        valorNuevo: { estado: UserStatus.ACTIVO },
+        motivo: `Expiró el bloqueo temporal de ${BLOQUEO_MINUTOS} minutos`,
+      });
+    }
+
     if (!user || user.estado !== UserStatus.ACTIVO) {
       // M-9: comparación contra un hash dummy para igualar el tiempo de
       // respuesta entre "usuario inexistente" y "clave errada" (evita
@@ -71,7 +102,9 @@ export class AuthService {
       const policy = await this.params.getPasswordPolicy();
       user.intentosFallidos += 1;
       if (user.intentosFallidos >= policy.max_failed_attempts) {
+        // I73: bloqueo TEMPORAL — se desbloquea solo al expirar (#6)
         user.estado = UserStatus.BLOQUEADO;
+        user.bloqueadoHasta = new Date(Date.now() + BLOQUEO_MINUTOS * 60_000);
         await this.users.save(user);
         await this.audit.log({
           usuarioId: user.id,
@@ -80,8 +113,8 @@ export class AuthService {
           tabla: 'users',
           registroId: user.id,
           valorAnterior: { estado: UserStatus.ACTIVO },
-          valorNuevo: { estado: UserStatus.BLOQUEADO },
-          motivo: `${policy.max_failed_attempts} intentos fallidos de inicio de sesión`,
+          valorNuevo: { estado: UserStatus.BLOQUEADO, bloqueadoHasta: user.bloqueadoHasta },
+          motivo: `${policy.max_failed_attempts} intentos fallidos de inicio de sesión (bloqueo de ${BLOQUEO_MINUTOS} min)`,
         });
       } else {
         await this.users.save(user);
@@ -146,6 +179,7 @@ export class AuthService {
     }
 
     user.intentosFallidos = 0;
+    user.bloqueadoHasta = null;
     await this.users.save(user);
 
     await this.audit.log({

@@ -31,10 +31,12 @@ export interface UsuarioAccion {
  * I57: control de dispositivos (navegadores autorizados). La autorización
  * es por dispositivo, no por usuario: un navegador aprobado sirve para
  * cualquier usuario. El primer login del Administrador desde un navegador
- * lo aprueba automáticamente; para los demás roles el navegador queda
- * PENDIENTE hasta que un Administrador lo apruebe (o lo rechace). Una
- * revocación bloquea el navegador aunque haya sesiones vigentes: el guard
- * valida el estado del dispositivo en cada petición.
+ * lo aprueba automáticamente SOLO si es su primer dispositivo (seguridad,
+ * auditoría #4): si el Admin ya tiene un navegador aprobado, los demás
+ * quedan PENDIENTES hasta que los apruebe desde su sesión — un atacante
+ * con la clave inicial no obtiene así un navegador confiable en el acto.
+ * Una revocación bloquea el navegador aunque haya sesiones vigentes: el
+ * guard valida el estado del dispositivo en cada petición.
  */
 @Injectable()
 export class DevicesService {
@@ -46,7 +48,9 @@ export class DevicesService {
   /**
    * Registra (o actualiza) el dispositivo en un login exitoso. Si el usuario
    * es Administrador y el dispositivo está PENDIENTE (nuevo), lo aprueba en
-   * el acto — es la puerta de entrada que evita el bloqueo total del sistema.
+   * el acto SOLO cuando no existe aún ningún dispositivo aprobado de ese
+   * usuario — es la puerta de entrada que evita el bloqueo total del sistema
+   * sin regalar navegadores confiables a quien robe la clave inicial (#4).
    * Un RECHAZADO/REVOCADO no se reactiva solo: exige decisión explícita.
    */
   async registrarEnLogin(
@@ -82,10 +86,18 @@ export class DevicesService {
       device.ultimoUsoAt = ahora;
     }
     if (user.rol === Role.ADMINISTRADOR && device.estado === DeviceEstado.PENDIENTE) {
-      device.estado = DeviceEstado.APROBADO;
-      device.aprobadoAt = ahora;
-      device.aprobadoPorId = user.id;
-      device.aprobadoPorNombre = `${user.nombre || user.username} (automático)`;
+      // Seguridad (auditoría #4): auto-aprobar SOLO el primer dispositivo
+      // del Administrador. Si ya tiene uno aprobado, este queda PENDIENTE y
+      // lo aprueba él mismo desde su sesión activa.
+      const yaAprobados = await this.devices.count({
+        where: { estado: DeviceEstado.APROBADO, registradoPorId: user.id },
+      });
+      if (yaAprobados === 0) {
+        device.estado = DeviceEstado.APROBADO;
+        device.aprobadoAt = ahora;
+        device.aprobadoPorId = user.id;
+        device.aprobadoPorNombre = `${user.nombre || user.username} (automático, primer dispositivo)`;
+      }
     }
     return this.devices.save(device);
   }

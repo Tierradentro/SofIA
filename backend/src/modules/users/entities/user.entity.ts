@@ -58,6 +58,14 @@ export class User {
   @Column({ name: 'intentos_fallidos', default: 0 })
   intentosFallidos: number;
 
+  /**
+   * I73 (auditoría #6): bloqueo TEMPORAL por intentos fallidos. Mientras
+   * esté en el futuro el login se rechaza; al expirar el usuario vuelve a
+   * ACTIVO sin intervención (antes el bloqueo era permanente — DoS trivial).
+   */
+  @Column({ name: 'bloqueado_hasta', type: 'timestamptz', nullable: true })
+  bloqueadoHasta: Date | null;
+
   @Column({ name: 'comercial_id', type: 'uuid', nullable: true })
   comercialId: string | null;
 

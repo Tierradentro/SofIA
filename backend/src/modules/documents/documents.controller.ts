@@ -48,7 +48,10 @@ export class DocumentsController {
     if (!logo || !existsSync(logo.absolutePath)) {
       throw new NotFoundException('No hay logo configurado');
     }
+    // Seguridad (auditoría #3): el MIME ya es el verificado por bytes;
+    // nosniff impide la reinterpretación como HTML/JS
     res.setHeader('Content-Type', logo.doc.mime);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     createReadStream(logo.absolutePath).pipe(res);
   }
 

@@ -134,7 +134,12 @@ export class ProductsController {
   async verFoto(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
     const { doc, absolutePath } = await this.products.obtenerFoto(id);
     if (!doc || !absolutePath) throw new NotFoundException('El producto no tiene foto');
+    // Seguridad (auditoría #3): la imagen se descarga, nunca se ejecuta en
+    // el origen; nosniff impide que el navegador la reinterprete como HTML/JS
     res.setHeader('Content-Type', doc.mime);
+    res.setHeader('Content-Disposition', 'attachment');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'");
     res.setHeader('Cache-Control', 'no-store');
     createReadStream(absolutePath).pipe(res);
   }

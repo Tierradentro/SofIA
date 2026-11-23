@@ -146,6 +146,7 @@ export class UsersService {
     user.fechaClave = new Date();
     user.debeCambiarClave = true;
     user.intentosFallidos = 0;
+    user.bloqueadoHasta = null;
     if (user.estado === UserStatus.BLOQUEADO) user.estado = UserStatus.ACTIVO;
     await this.users.save(user);
     await this.audit.log({
