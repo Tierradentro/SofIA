@@ -10,7 +10,8 @@ export default function Home() {
     const sesion = obtenerSesion();
     if (!sesion) router.replace('/login');
     else if (sesion.usuario.debeCambiarClave) router.replace('/cambiar-clave');
-    else router.replace('/dashboard');
+    // I76: la portada del Comercial es su tablero, no el dashboard operativo
+    else router.replace(sesion.usuario.rol === 'COMERCIAL' ? '/tablero' : '/dashboard');
   }, [router]);
   return null;
 }

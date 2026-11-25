@@ -66,7 +66,9 @@ function LoginInterno() {
       const { status, body } = await login(username, password);
       if (status === 200 && body.access_token && body.usuario) {
         guardarSesion({ token: body.access_token, usuario: body.usuario });
-        router.replace(body.usuario.debeCambiarClave ? '/cambiar-clave' : '/dashboard');
+        // I76: la portada del Comercial es su tablero, no el dashboard operativo
+        const destino = body.usuario.rol === 'COMERCIAL' ? '/tablero' : '/dashboard';
+        router.replace(body.usuario.debeCambiarClave ? '/cambiar-clave' : destino);
       } else if (status === 200 && body.dispositivoAutorizado === false) {
         // I57: credenciales válidas pero el navegador no está autorizado
         if (body.estadoDispositivo === 'PENDIENTE') {

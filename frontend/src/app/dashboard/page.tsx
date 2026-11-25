@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  CheckCircle2,
   Clock,
   Download,
   Package,
@@ -283,6 +282,9 @@ export default function DashboardPage() {
     const s = obtenerSesion();
     if (!s) return router.replace('/login');
     if (s.usuario.debeCambiarClave) return router.replace('/cambiar-clave');
+    // I76: el dashboard operativo ya no se ofrece al Comercial (su portada
+    // es «Mi tablero»); si llega por URL directa se le redirige.
+    if (s.usuario.rol === 'COMERCIAL') return router.replace('/tablero');
     setSesion(s);
 
     api<Empresa[]>('/companies').then(async ({ status, body }) => {
@@ -639,17 +641,6 @@ export default function DashboardPage() {
         </div>
       </Tarjeta>
 
-      {/* Acceso rápido para el rol comercial */}
-      {sesion.usuario.rol === 'COMERCIAL' && (
-        <div className="mt-6">
-          <button
-            onClick={() => router.push('/tablero')}
-            className="flex items-center gap-2 rounded-lg bg-sofia-700 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-sofia-600"
-          >
-            <CheckCircle2 size={16} /> Ir a mi tablero
-          </button>
-        </div>
-      )}
     </AppShell>
   );
 }

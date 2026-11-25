@@ -87,6 +87,8 @@ export default function ComercialesPage() {
   useEffect(() => {
     const s = obtenerSesion();
     if (!s) return router.replace('/login');
+    // I76: el catálogo de comerciales ya no se ofrece al rol Comercial
+    if (s.usuario.rol === 'COMERCIAL') return router.replace('/tablero');
     setSesion(s);
     cargar('');
     // eslint-disable-next-line react-hooks/exhaustive-deps

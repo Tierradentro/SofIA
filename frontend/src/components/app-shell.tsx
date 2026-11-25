@@ -51,11 +51,14 @@ const GOA = ['GENERADOR', 'OPERADOR', 'ADMINISTRADOR'];
 const GOCA = [...GOA, 'COMERCIAL'];
 
 const NAV_OPERACIONES: ItemNav[] = [
-  { href: '/dashboard', etiqueta: 'Dashboard', icono: LayoutDashboard, roles: TODOS },
+  // I76: «Mi tablero» es la portada del rol Comercial (va de primero); el
+  // Dashboard y el catálogo de Comerciales ya no se ofrecen a ese rol.
+  { href: '/tablero', etiqueta: 'Mi tablero', icono: KanbanSquare, roles: ['COMERCIAL'] },
+  { href: '/dashboard', etiqueta: 'Dashboard', icono: LayoutDashboard, roles: GOA },
   { href: '/productos', etiqueta: 'Productos', icono: Package, roles: TODOS },
   { href: '/clientes', etiqueta: 'Clientes', icono: Users, roles: TODOS },
   // I21: Comerciales y Movimientos ya no se ofrecen al perfil Operador
-  { href: '/comerciales', etiqueta: 'Comerciales', icono: Briefcase, roles: ['ADMINISTRADOR', 'GENERADOR', 'COMERCIAL'] },
+  { href: '/comerciales', etiqueta: 'Comerciales', icono: Briefcase, roles: ['ADMINISTRADOR', 'GENERADOR'] },
   { href: '/ingresos', etiqueta: 'Ingresos', icono: Inbox, roles: GOA },
   { href: '/pedidos', etiqueta: 'Pedidos', icono: ShoppingCart, roles: GOCA },
   { href: '/despachos', etiqueta: 'Despachos', icono: Truck, roles: GOCA },
@@ -63,7 +66,6 @@ const NAV_OPERACIONES: ItemNav[] = [
   { href: '/movimientos', etiqueta: 'Movimientos', icono: ArrowLeftRight, roles: ['ADMINISTRADOR', 'GENERADOR'] },
   { href: '/inventarios', etiqueta: 'Inventarios', icono: Warehouse, roles: GOA },
   { href: '/mapa', etiqueta: 'Mapa', icono: MapPin, roles: GOA },
-  { href: '/tablero', etiqueta: 'Mi tablero', icono: KanbanSquare, roles: ['COMERCIAL'] },
 ];
 
 const NAV_ADMIN: ItemNav[] = [
