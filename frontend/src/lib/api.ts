@@ -15,6 +15,7 @@ export interface Sesion {
     username: string;
     rol: string;
     debeCambiarClave: boolean;
+    comercialId?: string | null;
   };
 }
 

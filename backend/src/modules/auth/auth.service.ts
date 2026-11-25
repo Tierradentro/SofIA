@@ -211,6 +211,8 @@ export class AuthService {
         username: user.username,
         rol: user.rol,
         debeCambiarClave: user.debeCambiarClave,
+        // I75: el tablero del comercial avisa cuando no hay asociación
+        comercialId: user.comercialId ?? null,
       },
     };
   }

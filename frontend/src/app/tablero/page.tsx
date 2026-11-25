@@ -61,6 +61,14 @@ export default function TableroPage() {
       <EncabezadoPagina titulo="Mi tablero"
       descripcion="Pedidos, despachos y devoluciones asociados a su comercial." />
 
+      {/* I75: sin comercial asociado el backend no devuelve registros (fail-closed) */}
+      {sesion.usuario.rol === 'COMERCIAL' && !sesion.usuario.comercialId && (
+        <p className="mb-4 rounded bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Su usuario aún no está asociado a un comercial, por eso el tablero aparece vacío.
+          Pídale al administrador que lo asocie desde Gestión de usuarios.
+        </p>
+      )}
+
       <div className="mb-4 grid grid-cols-3 gap-3 text-center">
         <div className="rounded-lg bg-white p-4 shadow">
           <p className="text-2xl font-bold text-sofia-700">{activos.length}</p>

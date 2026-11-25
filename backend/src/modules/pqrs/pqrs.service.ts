@@ -548,7 +548,10 @@ export class PqrsService {
   // ------------------------------------------------------------------
   // Consultas (M11: consultar caso; dashboard del cliente muestra sus PQRS)
   // ------------------------------------------------------------------
-  async list(filters: { estado?: PqrsStatus; clienteId?: string; comercialId?: string }) {
+  async list(filters: { estado?: PqrsStatus; clienteId?: string; comercialId?: string | null }) {
+    // I75: un COMERCIAL sin comercial asociado no ve ningún caso
+    // (fail-closed; antes el filtro se omitía y los veía todos).
+    if (filters.comercialId === null) return [];
     const qb = this.dataSource
       .getRepository(PqrsCase)
       .createQueryBuilder('c')
@@ -574,9 +577,10 @@ export class PqrsService {
 
   async get(id: string, user?: Usuario) {
     const caso = await this.findCase(id);
-    // Tablero del comercial (M02): solo casos de su comercial
-    if (user?.rol === 'COMERCIAL' && (user as any).comercialId
-        && caso.comercialId !== (user as any).comercialId) {
+    // Tablero del comercial (M02): solo casos de su comercial.
+    // I75 fail-closed: sin comercial asociado no alcanza ningún caso.
+    if (user?.rol === 'COMERCIAL'
+        && (!(user as any).comercialId || caso.comercialId !== (user as any).comercialId)) {
       throw new NotFoundException('Caso PQRS no encontrado');
     }
     const cliente = await this.dataSource

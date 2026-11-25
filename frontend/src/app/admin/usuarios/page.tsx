@@ -13,6 +13,21 @@ interface Usuario {
   email: string;
   rol: string;
   estado: string;
+  comercialId: string | null;
+}
+
+interface Comercial {
+  id: string;
+  nombre: string;
+  activo: boolean;
+}
+
+/** I75: resultado de la asociación usuario→comercial que devuelve el backend. */
+interface AsociacionComercial {
+  estado: 'MANUAL' | 'AUTO' | 'SIN_COINCIDENCIA' | 'AMBIGUA' | 'YA_ASIGNADO';
+  comercialId: string | null;
+  comercialNombre: string | null;
+  mensaje: string;
 }
 
 const ROLES = ['OPERADOR', 'GENERADOR', 'ADMINISTRADOR', 'COMERCIAL', 'API'];
@@ -22,6 +37,7 @@ export default function UsuariosPage() {
   const router = useRouter();
   const [sesion, setSesion] = useState<Sesion | null>(null);
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+  const [comerciales, setComerciales] = useState<Comercial[]>([]);
   // I43: cuántos registros muestra la lista (100, 500 o todos)
   const [limite, setLimite] = useState<LimiteLista>(100);
   // I56: paginación en cliente sobre la lista completa
@@ -31,15 +47,22 @@ export default function UsuariosPage() {
     username: '',
     email: '',
     rol: 'OPERADOR',
+    comercialId: '', // '' = automático por nombre (solo rol COMERCIAL)
     claveInicial: '',
   });
   const [mensaje, setMensaje] = useState('');
+  const [aviso, setAviso] = useState('');
   const [error, setError] = useState('');
+
+  const nombreComercial = (id: string | null) =>
+    id ? (comerciales.find((c) => c.id === id)?.nombre ?? '—') : null;
 
   async function cargar() {
     const { status, body } = await api<Usuario[]>('/users');
     if (status === 200) setUsuarios(body);
-    else if (status === 403) router.replace('/dashboard');
+    else if (status === 403) return router.replace('/dashboard');
+    const com = await api<Comercial[]>('/comerciales');
+    if (com.status === 200) setComerciales(com.body);
   }
 
   useEffect(() => {
@@ -50,21 +73,54 @@ export default function UsuariosPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
+  /** I75: muestra el resultado de la asociación comercial (éxito o aviso). */
+  function reportarAsociacion(asociacion?: AsociacionComercial) {
+    if (!asociacion) return;
+    if (asociacion.estado === 'AUTO' || asociacion.estado === 'MANUAL') {
+      setMensaje((m) => `${m} ${asociacion.mensaje}.`);
+    } else {
+      setAviso(asociacion.mensaje);
+    }
+  }
+
   async function crear(e: React.FormEvent) {
     e.preventDefault();
     setError('');
     setMensaje('');
+    setAviso('');
+    const payload: Record<string, unknown> = { ...form };
+    // El comercialId solo aplica al rol COMERCIAL; '' = llave por nombre
+    if (form.rol !== 'COMERCIAL' || !form.comercialId) delete payload.comercialId;
     const { status, body } = await api('/users', {
       method: 'POST',
-      body: JSON.stringify(form),
+      body: JSON.stringify(payload),
     });
     if (status === 201) {
       setMensaje(`Usuario ${body.username} creado. Debe cambiar la clave en su primer login.`);
-      setForm({ nombre: '', username: '', email: '', rol: 'OPERADOR', claveInicial: '' });
+      reportarAsociacion(body.asociacionComercial);
+      setForm({ nombre: '', username: '', email: '', rol: 'OPERADOR', comercialId: '', claveInicial: '' });
       cargar();
     } else {
       const detalle = Array.isArray(body.detalles) ? `: ${body.detalles.join(', ')}` : '';
       setError(mensajeError(body, 'No se pudo crear el usuario') + detalle);
+    }
+  }
+
+  /** I75: asociación manual posterior (corrige sin-coincidencia o ambigüedad). */
+  async function asignarComercial(u: Usuario, comercialId: string) {
+    setError('');
+    setAviso('');
+    const { status, body } = await api(`/users/${u.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ comercialId: comercialId || null }),
+    });
+    if (status === 200) {
+      reportarAsociacion(body.asociacionComercial);
+      if (!body.asociacionComercial) setAviso('');
+      cargar();
+    } else {
+      setError(mensajeError(body, 'No se pudo asociar el comercial'));
+      cargar();
     }
   }
 
@@ -123,7 +179,7 @@ export default function UsuariosPage() {
         <select
           className="rounded border px-3 py-2"
           value={form.rol}
-          onChange={(e) => setForm({ ...form, rol: e.target.value })}
+          onChange={(e) => setForm({ ...form, rol: e.target.value, comercialId: '' })}
         >
           {ROLES.map((r) => (
             <option key={r} value={r}>
@@ -131,6 +187,29 @@ export default function UsuariosPage() {
             </option>
           ))}
         </select>
+        {form.rol === 'COMERCIAL' && (
+          <div className="col-span-2">
+            <select
+              className="w-full rounded border px-3 py-2"
+              value={form.comercialId}
+              onChange={(e) => setForm({ ...form, comercialId: e.target.value })}
+            >
+              <option value="">Automático por nombre (recomendado)</option>
+              {comerciales
+                .filter((c) => c.activo)
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nombre}
+                  </option>
+                ))}
+            </select>
+            <p className="mt-1 text-xs text-slate-500">
+              En automático el sistema asocia el usuario al comercial cuyo nombre coincida con el
+              campo Nombre (sin importar mayúsculas ni tildes). Si no hay coincidencia exacta, el
+              usuario queda sin comercial y podrá asociarlo manualmente en la tabla.
+            </p>
+          </div>
+        )}
         <input
           placeholder="Clave inicial (May/Min/Núm, min 6)"
           className="rounded border px-3 py-2"
@@ -143,15 +222,17 @@ export default function UsuariosPage() {
         </button>
         {error && <p className="col-span-2 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
         {mensaje && <p className="col-span-2 rounded bg-green-50 px-3 py-2 text-sm text-green-700">{mensaje}</p>}
+        {aviso && <p className="col-span-2 rounded bg-amber-50 px-3 py-2 text-sm text-amber-800">{aviso}</p>}
       </form>
 
       <div className="overflow-x-auto">
-      <table className="w-full max-w-4xl rounded-lg bg-white text-sm shadow">
+      <table className="w-full max-w-5xl rounded-lg bg-white text-sm shadow">
         <thead>
           <tr className="border-b text-left">
             <th className="p-3">Nombre</th>
             <th className="p-3">Usuario</th>
             <th className="p-3">Rol</th>
+            <th className="p-3">Comercial</th>
             <th className="p-3">Estado</th>
             <th className="p-3">Acciones</th>
           </tr>
@@ -162,6 +243,24 @@ export default function UsuariosPage() {
               <td className="p-3">{u.nombre}</td>
               <td className="p-3">{u.username}</td>
               <td className="p-3">{u.rol}</td>
+              <td className="p-3">
+                {u.rol === 'COMERCIAL' ? (
+                  <select
+                    className={`rounded border px-2 py-1 ${u.comercialId ? '' : 'border-amber-400 bg-amber-50 text-amber-800'}`}
+                    value={u.comercialId ?? ''}
+                    onChange={(e) => asignarComercial(u, e.target.value)}
+                  >
+                    <option value="">Sin asociar</option>
+                    {comerciales.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nombre}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  (nombreComercial(u.comercialId) ?? '—')
+                )}
+              </td>
               <td className="p-3">{u.estado}</td>
               <td className="flex gap-2 p-3">
                 {u.estado === 'ACTIVO' ? (

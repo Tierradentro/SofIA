@@ -109,6 +109,15 @@ describe('I65 ajustes (e2e)', () => {
     t = await createTestApp();
     adminToken = await loginAndSetPassword(t.http, ADMIN.username, ADMIN.password, ADMIN_NUEVA_CLAVE);
 
+    // El comercial se crea antes que los usuarios para poder asociarlo:
+    // desde I75 un COMERCIAL sin comercial asociado no alcanza ningún pedido.
+    const com = await t.http
+      .post('/api/v1/comerciales')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'Comercial I65', identificacion: 'C-I65' });
+    expect(com.status).toBe(201);
+    comercialId = com.body.id;
+
     for (const [username, rol] of [
       ['generador.i65', 'GENERADOR'],
       ['operador.i65', 'OPERADOR'],
@@ -123,6 +132,7 @@ describe('I65 ajustes (e2e)', () => {
           email: `${username}@sofia.local`,
           rol,
           claveInicial: 'ClaveInicial1',
+          ...(rol === 'COMERCIAL' ? { comercialId } : {}),
         });
     }
     generadorToken = await loginAndSetPassword(t.http, 'generador.i65', 'ClaveInicial1', 'ClaveNueva123');
@@ -138,13 +148,6 @@ describe('I65 ajustes (e2e)', () => {
       .send({ nombre: 'Cliente I65', identificacion: '900-I65', ciudad: 'Bogotá' });
     expect(cli.status).toBe(201);
     clienteId = cli.body.id;
-
-    const com = await t.http
-      .post('/api/v1/comerciales')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ nombre: 'Comercial I65', identificacion: 'C-I65' });
-    expect(com.status).toBe(201);
-    comercialId = com.body.id;
 
     // Bodega con bahía de empaque (área fija del asistente)
     const conf = await t.http

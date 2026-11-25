@@ -509,6 +509,9 @@ export class OrdersService {
    */
   async revertirAlistamiento(id: string, user: Usuario) {
     const order = await this.findOne(id);
+    // I75: el endpoint admite COMERCIAL pero solo sobre pedidos de su
+    // comercial (antes podía devolver a Abierto pedidos de cualquiera).
+    this.assertAccesoComercial(order, user);
     if (order.estado !== OrderStatus.ALISTADO) {
       throw new BadRequestException(
         `Solo se puede devolver a Abierto un pedido Alistado (actual: ${order.estado})`,
@@ -596,6 +599,9 @@ export class OrdersService {
 
   async correct(id: string, dto: CorrectOrderDto, user: Usuario) {
     const order = await this.findOne(id);
+    // I75: un COMERCIAL creador solo corrige pedidos que sigan siendo de su
+    // comercial (un Generador pudo reasignarlo después de la creación).
+    this.assertAccesoComercial(order, user);
     if (order.estado !== OrderStatus.PENDIENTE_CORRECCION) {
       throw new BadRequestException(
         'Solo se puede corregir un pedido en estado Pendiente_Corrección',
@@ -1696,10 +1702,13 @@ export class OrdersService {
     empresaId?: string,
     estado?: OrderStatus,
     clienteId?: string,
-    comercialId?: string,
+    comercialId?: string | null,
     limite?: number,
     pagina = 1,
   ) {
+    // I75: un COMERCIAL sin comercial asociado no ve ningún pedido
+    // (fail-closed; antes el filtro se omitía y veía todos los pedidos).
+    if (comercialId === null) return { items: [], total: 0 };
     const where: any = {};
     if (empresaId) where.empresaId = empresaId;
     if (estado) where.estado = estado;
@@ -1735,13 +1744,22 @@ export class OrdersService {
     return { items, total };
   }
 
+  /**
+   * I75: un COMERCIAL solo alcanza pedidos de su comercial. Fail-closed:
+   * si no tiene comercial asociado no alcanza ninguno (respuesta 404 para
+   * no revelar la existencia del registro).
+   */
+  private assertAccesoComercial(order: { comercialId: string | null }, user?: Usuario) {
+    if (user?.rol === 'COMERCIAL'
+        && (!(user as any).comercialId || order.comercialId !== (user as any).comercialId)) {
+      throw new NotFoundException('Pedido no encontrado');
+    }
+  }
+
   async getDetalle(id: string, user?: Usuario) {
     const order = await this.findOne(id);
     // Tablero del comercial (M02): solo pedidos de su comercial
-    if (user?.rol === 'COMERCIAL' && (user as any).comercialId
-        && order.comercialId !== (user as any).comercialId) {
-      throw new NotFoundException('Pedido no encontrado');
-    }
+    this.assertAccesoComercial(order, user);
     const items = await this.items.find({
       where: { orderId: id },
       order: { createdAt: 'ASC' },

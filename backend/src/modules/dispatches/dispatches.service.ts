@@ -330,8 +330,11 @@ export class DispatchesService {
     documento?: string;
     boxId?: string;
     guia?: string;
-    comercialId?: string;
+    comercialId?: string | null;
   }) {
+    // I75: un COMERCIAL sin comercial asociado no ve ningún despacho
+    // (fail-closed; antes el filtro se omitía y los veía todos).
+    if (filters.comercialId === null) return [];
     const qb = this.dataSource
       .getRepository(Dispatch)
       .createQueryBuilder('d')
@@ -427,13 +430,16 @@ export class DispatchesService {
     const links = await this.dataSource
       .getRepository(DispatchOrder)
       .find({ where: { dispatchId: id }, order: { createdAt: 'ASC' } });
-    // Tablero del comercial (M02): solo despachos con pedidos de su comercial
-    if (user?.rol === 'COMERCIAL' && (user as any).comercialId) {
+    // Tablero del comercial (M02): solo despachos con pedidos de su comercial.
+    // I75 fail-closed: sin comercial asociado no alcanza ningún despacho.
+    if (user?.rol === 'COMERCIAL') {
+      const comercialId = (user as any).comercialId;
+      if (!comercialId) throw new NotFoundException('Despacho no encontrado');
       const propio = await this.dataSource.query(
         `SELECT 1 FROM dispatch_orders do2
          JOIN orders o ON o.id = do2.order_id
          WHERE do2.dispatch_id = $1 AND o.comercial_id = $2 LIMIT 1`,
-        [id, (user as any).comercialId],
+        [id, comercialId],
       );
       if (propio.length === 0) throw new NotFoundException('Despacho no encontrado');
     }
