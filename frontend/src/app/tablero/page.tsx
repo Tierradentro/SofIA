@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   AlertTriangle,
-  Clock,
   PackageSearch,
   RotateCcw,
   ShoppingCart,
@@ -13,8 +12,6 @@ import {
 } from 'lucide-react';
 import { api, obtenerSesion, Sesion } from '@/lib/api';
 import { AppShell } from '@/components/app-shell';
-import { COLORES_PESTANA, Insignia, Tarjeta } from '@/components/ui';
-import { tiempoRelativo } from '@/lib/tiempo';
 
 interface Pedido {
   id: string;
@@ -57,11 +54,10 @@ const PERIODOS: { id: Periodo; etiqueta: string }[] = [
   { id: 'TODOS', etiqueta: 'Todos' },
 ];
 
-/** I40: misma regla del Dashboard — tope de tarjetas por pestaña. */
+/** I40: misma regla del Dashboard — tope de tarjetas por columna. */
 const MAX_TARJETAS = 16;
 
-/** I76: agrupaciones del canvas de pedidos — el viaje del pedido. */
-const COLUMNAS: {
+interface ColumnaKanban {
   id: string;
   titulo: string;
   estados: string[];
@@ -69,58 +65,64 @@ const COLUMNAS: {
   fondoColumna: string;
   punto: string;
   chip: string;
-}[] = [
-  {
-    id: 'abiertos',
-    titulo: 'Abiertos',
-    estados: ['ABIERTO', 'PENDIENTE_CORRECCION'],
-    acento: 'border-t-amber-400',
-    fondoColumna: 'bg-amber-50/60',
-    punto: 'bg-amber-400',
-    chip: 'bg-amber-100 text-amber-700',
-  },
-  {
-    id: 'alistamiento',
-    titulo: 'En alistamiento',
-    estados: ['ALISTADO'],
-    acento: 'border-t-sofia-500',
-    fondoColumna: 'bg-sofia-50/70',
-    punto: 'bg-sofia-500',
-    chip: 'bg-sofia-100 text-sofia-700',
-  },
-  {
-    id: 'despacho',
-    titulo: 'En despacho',
-    estados: ['APROBADO', 'DESPACHADO'],
-    acento: 'border-t-menta-400',
-    fondoColumna: 'bg-menta-50/60',
-    punto: 'bg-menta-400',
-    chip: 'bg-menta-100 text-menta-700',
-  },
+  mensajeVacio: string;
+}
+
+/** Construye la definición visual de una columna kanban. */
+function kanban(
+  id: string,
+  titulo: string,
+  estados: string[],
+  acento: string,
+  fondoColumna: string,
+  punto: string,
+  chip: string,
+  mensajeVacio: string,
+): ColumnaKanban {
+  return { id, titulo, estados, acento, fondoColumna, punto, chip, mensajeVacio };
+}
+
+/** I76: columnas del canvas de pedidos — el viaje del pedido. */
+const COLUMNAS: ColumnaKanban[] = [
+  kanban('abiertos', 'Abiertos', ['ABIERTO', 'PENDIENTE_CORRECCION'],
+    'border-t-amber-400', 'bg-amber-50/60', 'bg-amber-400', 'bg-amber-100 text-amber-700',
+    'Sin pedidos en esta etapa'),
+  kanban('alistamiento', 'En alistamiento', ['ALISTADO'],
+    'border-t-sky-400', 'bg-sky-50/60', 'bg-sky-500', 'bg-sky-100 text-sky-700',
+    'Sin pedidos en esta etapa'),
+  kanban('despacho', 'En despacho', ['APROBADO', 'DESPACHADO'],
+    'border-t-menta-400', 'bg-menta-50/60', 'bg-menta-400', 'bg-menta-100 text-menta-700',
+    'Sin pedidos en esta etapa'),
 ];
 
-/** I40: mismas pestañas de la Cola de Despachos del Dashboard (sin «Creado»). */
-const PESTANAS_DESPACHO: { valor: string; etiqueta: string }[] = [
-  { valor: 'ABIERTO', etiqueta: 'Abierto' },
-  { valor: 'PARCIAL', etiqueta: 'Parcial' },
-  { valor: 'DESPACHADO', etiqueta: 'Despachado' },
-  { valor: 'PENDIENTE_CORRECCION', etiqueta: 'Pendiente corrección' },
+/** I79: columnas kanban de Despachos (mismos estados de la Cola del Dashboard, sin «Creado»). */
+const COLUMNAS_DESPACHO: ColumnaKanban[] = [
+  kanban('d-abierto', 'Abierto', ['ABIERTO'],
+    'border-t-amber-400', 'bg-amber-50/60', 'bg-amber-400', 'bg-amber-100 text-amber-700',
+    'Sin despachos abiertos'),
+  kanban('d-parcial', 'Parcial', ['PARCIAL'],
+    'border-t-orange-400', 'bg-orange-50/60', 'bg-orange-500', 'bg-orange-100 text-orange-700',
+    'Sin despachos parciales'),
+  kanban('d-despachado', 'Despachado', ['DESPACHADO'],
+    'border-t-emerald-400', 'bg-emerald-50/60', 'bg-emerald-500', 'bg-emerald-100 text-emerald-700',
+    'Sin despachos despachados'),
+  kanban('d-correccion', 'Pendiente corrección', ['PENDIENTE_CORRECCION'],
+    'border-t-red-400', 'bg-red-50/60', 'bg-red-500', 'bg-red-100 text-red-700',
+    'Sin despachos por corregir'),
 ];
 
-/** Pestañas de PQRS (mismos colores compartidos por estado). */
-const PESTANAS_PQRS: { valor: string; etiqueta: string }[] = [
-  { valor: 'ABIERTA', etiqueta: 'Abierta' },
-  { valor: 'PENDIENTE_CORRECCION', etiqueta: 'Pendiente corrección' },
-  { valor: 'CERRADA', etiqueta: 'Cerrada' },
+/** I79: columnas kanban de PQRS. */
+const COLUMNAS_PQRS: ColumnaKanban[] = [
+  kanban('q-abierta', 'Abierta', ['ABIERTA'],
+    'border-t-amber-400', 'bg-amber-50/60', 'bg-amber-400', 'bg-amber-100 text-amber-700',
+    'Sin casos abiertos'),
+  kanban('q-correccion', 'Pendiente corrección', ['PENDIENTE_CORRECCION'],
+    'border-t-red-400', 'bg-red-50/60', 'bg-red-500', 'bg-red-100 text-red-700',
+    'Sin casos por corregir'),
+  kanban('q-cerrada', 'Cerrada', ['CERRADA'],
+    'border-t-emerald-400', 'bg-emerald-50/60', 'bg-emerald-500', 'bg-emerald-100 text-emerald-700',
+    'Sin casos cerrados'),
 ];
-
-/** I40: mismos colores de pestaña del Dashboard para los estados PQRS. */
-const COLORES_PQRS: Record<string, { activa: string; punto: string }> = {
-  ABIERTA: COLORES_PESTANA.ABIERTO,
-  PENDIENTE_CORRECCION: COLORES_PESTANA.PENDIENTE_CORRECCION,
-  CERRADA: COLORES_PESTANA.DESPACHADO,
-  CANCELADA: COLORES_PESTANA.CANCELADO,
-};
 
 function inicioPeriodo(periodo: Periodo): Date | null {
   if (periodo === 'TODOS') return null;
@@ -171,53 +173,88 @@ function Kpi({
   );
 }
 
-/** I40: pestaña con punto de color y conteo — la misma regla del Dashboard. */
-function Pestañas({
-  pestanas,
-  conteo,
-  activa,
-  alCambiar,
-  colores = COLORES_PESTANA,
+/**
+ * I79: sección kanban reutilizable — la misma forma para Pedidos,
+ * Despachos y PQRS: título, columnas por estado con color propio y
+ * tarjetas con tope por columna + enlace «Más…» a la vista completa.
+ */
+function SeccionKanban<T extends { id: string; estado: string }>({
+  titulo,
+  descripcion,
+  columnas,
+  items,
+  renderTarjeta,
+  enlaceMas,
+  alVerMas,
+  columnasCss = 'lg:grid-cols-3',
 }: {
-  pestanas: { valor: string; etiqueta: string }[];
-  conteo: (valor: string) => number;
-  activa: string;
-  alCambiar: (valor: string) => void;
-  colores?: Record<string, { activa: string; punto: string }>;
+  titulo: string;
+  descripcion: string;
+  columnas: ColumnaKanban[];
+  items: T[];
+  renderTarjeta: (item: T) => React.ReactNode;
+  enlaceMas: string;
+  alVerMas: () => void;
+  columnasCss?: string;
 }) {
   return (
-    <div className="mb-4 flex flex-wrap gap-1 border-b border-slate-200">
-      {pestanas.map((p) => {
-        const n = conteo(p.valor);
-        const esActiva = activa === p.valor;
-        const color = colores[p.valor] ?? COLORES_PESTANA.OTROS;
-        return (
-          <button
-            key={p.valor}
-            type="button"
-            onClick={() => alCambiar(p.valor)}
-            className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-2 text-sm transition-colors ${
-              esActiva
-                ? `${color.activa} font-semibold`
-                : 'border-transparent text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            <span className={`h-2 w-2 rounded-full ${color.punto}`} />
-            {p.etiqueta} <span className="text-xs text-slate-400">({n})</span>
-          </button>
-        );
-      })}
-    </div>
+    <section className="mb-8">
+      <div className="mb-3">
+        <h2 className="text-lg font-semibold text-sofia-900">{titulo}</h2>
+        <p className="text-sm text-slate-500">{descripcion}</p>
+      </div>
+      <div className={`grid gap-4 ${columnasCss}`}>
+        {columnas.map((col) => {
+          const enColumna = items.filter((i) => col.estados.includes(i.estado));
+          const tarjetas = enColumna.slice(0, MAX_TARJETAS);
+          return (
+            <div
+              key={col.id}
+              className={`flex max-h-[70vh] flex-col rounded-2xl border-t-4 ${col.acento} ${col.fondoColumna} p-3 shadow-sm ring-1 ring-slate-200/70`}
+            >
+              <header className="mb-3 flex items-center justify-between px-1">
+                <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-sofia-900">
+                  <span className={`h-2.5 w-2.5 rounded-full ${col.punto}`} />
+                  {col.titulo}
+                </h3>
+                <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${col.chip}`}>
+                  {enColumna.length}
+                </span>
+              </header>
+              <div className="flex-1 space-y-2.5 overflow-y-auto pr-1">
+                {tarjetas.map(renderTarjeta)}
+                {!enColumna.length && (
+                  <p className="rounded-xl border border-dashed border-slate-300 py-8 text-center text-xs text-slate-400">
+                    {col.mensajeVacio}
+                  </p>
+                )}
+              </div>
+              {/* I40/I79: tope por columna con enlace a la vista completa */}
+              {enColumna.length > MAX_TARJETAS && (
+                <div className="mt-2 border-t border-slate-200/70 pt-2 text-center">
+                  <button
+                    type="button"
+                    onClick={alVerMas}
+                    className="text-xs font-medium text-sofia-700 hover:text-sofia-600"
+                  >
+                    Más ({enColumna.length - MAX_TARJETAS} en «{enlaceMas}») →
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
 /**
- * I76/I78 — «Mi tablero» (portada del Comercial): canvas del viaje del
- * pedido (Abiertos → En alistamiento → En despacho) más las secciones
- * «Despachos» y «PQRS» con tarjetas de detalle, siguiendo las reglas del
- * Dashboard (pestañas por estado con conteo, tope de 16 tarjetas y enlace
- * «Más…» a la vista completa). Solo registros de su comercial: el backend
- * aplica el filtro. El período (Hoy/Semana/Todos) recorta las tres secciones.
+ * I76/I78/I79 — «Mi tablero» (portada del Comercial): tres secciones
+ * kanban — «Pedidos» (viaje del pedido), «Despachos» (estado de salida)
+ * y «PQRS» (seguimiento del caso) — solo con los registros de su
+ * comercial; el backend aplica el filtro. Las píldoras Hoy / Semana /
+ * Todos filtran las tres secciones por fecha de creación.
  */
 export default function TableroPage() {
   const router = useRouter();
@@ -227,9 +264,6 @@ export default function TableroPage() {
   const [casos, setCasos] = useState<Caso[]>([]);
   // I77: «Hoy» es el período por defecto
   const [periodo, setPeriodo] = useState<Periodo>('HOY');
-  // I40: pestaña activa por sección (como en el Dashboard; arranca en Abierto/a)
-  const [pestanaDespacho, setPestanaDespacho] = useState<string>('ABIERTO');
-  const [pestanaPqrs, setPestanaPqrs] = useState<string>('ABIERTA');
 
   useEffect(() => {
     const s = obtenerSesion();
@@ -273,12 +307,6 @@ export default function TableroPage() {
   const casosAbiertos = casosFiltrados.filter(
     (c) => c.estado === 'ABIERTA' || c.estado === 'PENDIENTE_CORRECCION',
   );
-
-  // I40: tarjetas de la pestaña activa con tope y enlace «Más…»
-  const despachosPestana = despachosFiltrados.filter((d) => d.estado === pestanaDespacho);
-  const tarjetasDespachos = despachosPestana.slice(0, MAX_TARJETAS);
-  const casosPestana = casosFiltrados.filter((c) => c.estado === pestanaPqrs);
-  const tarjetasCasos = casosPestana.slice(0, MAX_TARJETAS);
 
   if (!sesion) return null;
 
@@ -350,203 +378,151 @@ export default function TableroPage() {
         />
       </div>
 
-      {/* Sección: Pedidos — canvas kanban del viaje del pedido */}
-      <section className="mb-8">
-        <div className="mb-3">
-          <h2 className="text-lg font-semibold text-sofia-900">Pedidos</h2>
-          <p className="text-sm text-slate-500">Tus pedidos según su etapa del flujo.</p>
-        </div>
-        <div className="grid gap-4 lg:grid-cols-3">
-          {porColumna.map((col) => (
-            <div
-              key={col.id}
-              className={`flex max-h-[70vh] flex-col rounded-2xl border-t-4 ${col.acento} ${col.fondoColumna} p-3 shadow-sm ring-1 ring-slate-200/70`}
-            >
-              <header className="mb-3 flex items-center justify-between px-1">
-                <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-sofia-900">
-                  <span className={`h-2.5 w-2.5 rounded-full ${col.punto}`} />
-                  {col.titulo}
-                </h3>
-                <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${col.chip}`}>
-                  {col.pedidos.length}
+      {/* I79: las tres secciones comparten el mismo formato kanban */}
+      <SeccionKanban
+        titulo="Pedidos"
+        descripcion="Tus pedidos según su etapa del flujo."
+        columnas={COLUMNAS}
+        items={pedidosFiltrados}
+        enlaceMas="Pedidos"
+        alVerMas={() => router.push('/pedidos')}
+        renderTarjeta={(p) => (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => router.push(`/pedidos?abrir=${p.id}`)}
+            className="block w-full rounded-xl bg-white p-3.5 text-left shadow-sm ring-1 ring-slate-200/80 transition-all hover:-translate-y-0.5 hover:shadow-md hover:ring-sofia-300"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <p className="font-bold text-sofia-900">{p.numero}</p>
+              <span className="text-xs text-slate-400">{fechaCorta(p.createdAt)}</span>
+            </div>
+            <p className="mt-0.5 truncate text-sm text-slate-600">
+              {p.cliente?.nombre ?? '—'}
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {p.estado === 'PENDIENTE_CORRECCION' && (
+                <span className="flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700">
+                  <AlertTriangle size={11} /> Corrección
                 </span>
-              </header>
-              <div className="flex-1 space-y-2.5 overflow-y-auto pr-1">
-                {col.pedidos.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => router.push(`/pedidos?abrir=${p.id}`)}
-                    className="block w-full rounded-xl bg-white p-3.5 text-left shadow-sm ring-1 ring-slate-200/80 transition-all hover:-translate-y-0.5 hover:shadow-md hover:ring-sofia-300"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="font-bold text-sofia-900">{p.numero}</p>
-                      <span className="text-xs text-slate-400">{fechaCorta(p.createdAt)}</span>
-                    </div>
-                    <p className="mt-0.5 truncate text-sm text-slate-600">
-                      {p.cliente?.nombre ?? '—'}
-                    </p>
-                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                      {p.estado === 'PENDIENTE_CORRECCION' && (
-                        <span className="flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700">
-                          <AlertTriangle size={11} /> Corrección
-                        </span>
-                      )}
-                      {p.numeroFactura && (
-                        <span className="rounded-full bg-menta-100 px-2 py-0.5 text-[11px] font-semibold text-menta-700">
-                          Fact. {p.numeroFactura}
-                        </span>
-                      )}
-                      {p.ciudad && (
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
-                          {p.ciudad}
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                ))}
-                {!col.pedidos.length && (
-                  <p className="rounded-xl border border-dashed border-slate-300 py-8 text-center text-xs text-slate-400">
-                    Sin pedidos en esta etapa
-                  </p>
-                )}
-              </div>
+              )}
+              {p.numeroFactura && (
+                <span className="rounded-full bg-menta-100 px-2 py-0.5 text-[11px] font-semibold text-menta-700">
+                  Fact. {p.numeroFactura}
+                </span>
+              )}
+              {p.ciudad && (
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
+                  {p.ciudad}
+                </span>
+              )}
             </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Sección: Despachos — mismas reglas de la Cola de Despachos del Dashboard */}
-      <Tarjeta className="mb-8 p-5">
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold text-sofia-900">Despachos</h2>
-          <p className="text-sm text-slate-500">Tus despachos según su estado de salida.</p>
-        </div>
-        <Pestañas
-          pestanas={PESTANAS_DESPACHO}
-          conteo={(v) => despachosFiltrados.filter((d) => d.estado === v).length}
-          activa={pestanaDespacho}
-          alCambiar={setPestanaDespacho}
-        />
-        {tarjetasDespachos.length ? (
-          <>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {tarjetasDespachos.map((d) => (
-                <button
-                  key={d.id}
-                  type="button"
-                  onClick={() => router.push(`/despachos?abrir=${d.id}`)}
-                  className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 text-left transition-shadow hover:shadow-md"
-                >
-                  <div className="mb-6 flex items-start justify-between">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-sofia-700">
-                      <Truck size={18} />
-                    </span>
-                    {d.estado === 'PENDIENTE_CORRECCION' && <Insignia tono="rojo">Corrección</Insignia>}
-                    {d.estado === 'DESPACHADO' && <Insignia tono="verde">Salió</Insignia>}
-                    {d.estado === 'PARCIAL' && <Insignia tono="ambar">Parcial</Insignia>}
-                  </div>
-                  <p className="font-semibold text-slate-800">{d.numero}</p>
-                  <p className="truncate text-sm font-medium text-sofia-700">
-                    {d.clienteNombre ?? 'Sin cliente'}
-                  </p>
-                  <p className="mt-1 truncate text-xs text-slate-500">
-                    {d.nombreTransporte || (d.tipoTransporte ? `Transporte ${d.tipoTransporte}` : 'Sin transporte')}
-                    {d.guia ? ` · Guía ${d.guia}` : ''}
-                  </p>
-                  {d.facturas && d.facturas.length > 0 && (
-                    <p className="mt-1 truncate text-xs text-menta-700">
-                      Fact. {d.facturas.join(', ')}
-                    </p>
-                  )}
-                  <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-400">
-                    <Clock size={13} /> {tiempoRelativo(d.createdAt)}
-                  </p>
-                </button>
-              ))}
-            </div>
-            {despachosPestana.length > MAX_TARJETAS && (
-              <div className="mt-4 text-center">
-                <button
-                  type="button"
-                  onClick={() => router.push('/despachos')}
-                  className="text-sm font-medium text-sofia-700 hover:text-sofia-600"
-                >
-                  Más ({despachosPestana.length - MAX_TARJETAS} despachos adicionales) →
-                </button>
-              </div>
-            )}
-          </>
-        ) : (
-          <p className="py-8 text-center text-sm text-slate-400">
-            No hay despachos en estado «{PESTANAS_DESPACHO.find((p) => p.valor === pestanaDespacho)?.etiqueta}».
-          </p>
+          </button>
         )}
-      </Tarjeta>
+      />
 
-      {/* Sección: PQRS — misma forma de tarjetas por estado */}
-      <Tarjeta className="mb-8 p-5">
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold text-sofia-900">PQRS</h2>
-          <p className="text-sm text-slate-500">Devoluciones y reclamos de tus clientes.</p>
-        </div>
-        <Pestañas
-          pestanas={PESTANAS_PQRS}
-          conteo={(v) => casosFiltrados.filter((c) => c.estado === v).length}
-          activa={pestanaPqrs}
-          alCambiar={setPestanaPqrs}
-          colores={COLORES_PQRS}
-        />
-        {tarjetasCasos.length ? (
-          <>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {tarjetasCasos.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => router.push('/devoluciones')}
-                  className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 text-left transition-shadow hover:shadow-md"
-                >
-                  <div className="mb-6 flex items-start justify-between">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-rose-500">
-                      <RotateCcw size={18} />
-                    </span>
-                    {c.estado === 'ABIERTA' && <Insignia tono="rojo">Abierta</Insignia>}
-                    {c.estado === 'PENDIENTE_CORRECCION' && <Insignia tono="ambar">Corrección</Insignia>}
-                    {c.estado === 'CERRADA' && <Insignia tono="verde">Cerrada</Insignia>}
-                  </div>
-                  <p className="font-semibold text-slate-800">{c.codigo}</p>
-                  <p className="truncate text-sm font-medium text-sofia-700">
-                    {c.clienteNombre ?? 'Sin cliente'}
-                  </p>
-                  <p className="mt-1 truncate text-xs text-slate-500">
-                    {c.motivoCodigo} · {c.cantidad} und
-                    {c.empresaNombre ? ` · ${c.empresaNombre}` : ''}
-                  </p>
-                  <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-400">
-                    <Clock size={13} /> {tiempoRelativo(c.createdAt)}
-                  </p>
-                </button>
-              ))}
+      <SeccionKanban
+        titulo="Despachos"
+        descripcion="Tus despachos según su estado de salida."
+        columnas={COLUMNAS_DESPACHO}
+        items={despachosFiltrados}
+        enlaceMas="Despachos"
+        alVerMas={() => router.push('/despachos')}
+        columnasCss="sm:grid-cols-2 xl:grid-cols-4"
+        renderTarjeta={(d) => (
+          <button
+            key={d.id}
+            type="button"
+            onClick={() => router.push(`/despachos?abrir=${d.id}`)}
+            className="block w-full rounded-xl bg-white p-3.5 text-left shadow-sm ring-1 ring-slate-200/80 transition-all hover:-translate-y-0.5 hover:shadow-md hover:ring-sofia-300"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <p className="font-bold text-sofia-900">{d.numero}</p>
+              <span className="text-xs text-slate-400">{fechaCorta(d.createdAt)}</span>
             </div>
-            {casosPestana.length > MAX_TARJETAS && (
-              <div className="mt-4 text-center">
-                <button
-                  type="button"
-                  onClick={() => router.push('/devoluciones')}
-                  className="text-sm font-medium text-sofia-700 hover:text-sofia-600"
-                >
-                  Más ({casosPestana.length - MAX_TARJETAS} casos adicionales) →
-                </button>
-              </div>
-            )}
-          </>
-        ) : (
-          <p className="py-8 text-center text-sm text-slate-400">
-            No hay casos en estado «{PESTANAS_PQRS.find((p) => p.valor === pestanaPqrs)?.etiqueta}».
-          </p>
+            <p className="mt-0.5 truncate text-sm text-slate-600">
+              {d.clienteNombre ?? 'Sin cliente'}
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {d.estado === 'PENDIENTE_CORRECCION' && (
+                <span className="flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700">
+                  <AlertTriangle size={11} /> Corrección
+                </span>
+              )}
+              {d.estado === 'DESPACHADO' && (
+                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                  Salió
+                </span>
+              )}
+              {d.estado === 'PARCIAL' && (
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-semibold text-orange-700">
+                  Parcial
+                </span>
+              )}
+              {d.facturas && d.facturas.length > 0 && (
+                <span className="rounded-full bg-menta-100 px-2 py-0.5 text-[11px] font-semibold text-menta-700">
+                  Fact. {d.facturas.join(', ')}
+                </span>
+              )}
+            </div>
+            <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-400">
+              <Truck size={12} className="shrink-0" />
+              <span className="truncate">
+                {d.nombreTransporte || (d.tipoTransporte ? `Transporte ${d.tipoTransporte}` : 'Sin transporte')}
+                {d.guia ? ` · Guía ${d.guia}` : ''}
+              </span>
+            </p>
+          </button>
         )}
-      </Tarjeta>
+      />
+
+      <SeccionKanban
+        titulo="PQRS"
+        descripcion="Devoluciones y reclamos de tus clientes."
+        columnas={COLUMNAS_PQRS}
+        items={casosFiltrados}
+        enlaceMas="Devoluciones"
+        alVerMas={() => router.push('/devoluciones')}
+        renderTarjeta={(c) => (
+          <button
+            key={c.id}
+            type="button"
+            onClick={() => router.push('/devoluciones')}
+            className="block w-full rounded-xl bg-white p-3.5 text-left shadow-sm ring-1 ring-slate-200/80 transition-all hover:-translate-y-0.5 hover:shadow-md hover:ring-sofia-300"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <p className="font-bold text-sofia-900">{c.codigo}</p>
+              <span className="text-xs text-slate-400">{fechaCorta(c.createdAt)}</span>
+            </div>
+            <p className="mt-0.5 truncate text-sm text-slate-600">
+              {c.clienteNombre ?? 'Sin cliente'}
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {c.estado === 'PENDIENTE_CORRECCION' && (
+                <span className="flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700">
+                  <AlertTriangle size={11} /> Corrección
+                </span>
+              )}
+              {c.estado === 'CERRADA' && (
+                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                  Cerrada
+                </span>
+              )}
+              {c.empresaNombre && (
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
+                  {c.empresaNombre}
+                </span>
+              )}
+            </div>
+            <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-400">
+              <RotateCcw size={12} className="shrink-0" />
+              <span className="truncate">
+                {c.motivoCodigo} · {c.cantidad} und
+              </span>
+            </p>
+          </button>
+        )}
+      />
     </AppShell>
   );
 }
