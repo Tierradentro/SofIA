@@ -22,9 +22,9 @@ interface Comercial {
   activo: boolean;
 }
 
-/** I75: resultado de la asociación usuario→comercial que devuelve el backend. */
+/** I75/I77: resultado de la asociación usuario→comercial que devuelve el backend. */
 interface AsociacionComercial {
-  estado: 'MANUAL' | 'AUTO' | 'SIN_COINCIDENCIA' | 'AMBIGUA' | 'YA_ASIGNADO';
+  estado: 'MANUAL' | 'SIN_ASOCIAR';
   comercialId: string | null;
   comercialNombre: string | null;
   mensaje: string;
@@ -47,7 +47,7 @@ export default function UsuariosPage() {
     username: '',
     email: '',
     rol: 'OPERADOR',
-    comercialId: '', // '' = automático por nombre (solo rol COMERCIAL)
+    comercialId: '', // '' = sin asociar (solo aplica al rol COMERCIAL)
     claveInicial: '',
   });
   const [mensaje, setMensaje] = useState('');
@@ -73,10 +73,10 @@ export default function UsuariosPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
-  /** I75: muestra el resultado de la asociación comercial (éxito o aviso). */
+  /** I75/I77: muestra el resultado de la asociación comercial (éxito o aviso). */
   function reportarAsociacion(asociacion?: AsociacionComercial) {
     if (!asociacion) return;
-    if (asociacion.estado === 'AUTO' || asociacion.estado === 'MANUAL') {
+    if (asociacion.estado === 'MANUAL') {
       setMensaje((m) => `${m} ${asociacion.mensaje}.`);
     } else {
       setAviso(asociacion.mensaje);
@@ -89,7 +89,7 @@ export default function UsuariosPage() {
     setMensaje('');
     setAviso('');
     const payload: Record<string, unknown> = { ...form };
-    // El comercialId solo aplica al rol COMERCIAL; '' = llave por nombre
+    // El comercialId solo aplica al rol COMERCIAL; '' = sin asociar
     if (form.rol !== 'COMERCIAL' || !form.comercialId) delete payload.comercialId;
     const { status, body } = await api('/users', {
       method: 'POST',
@@ -194,7 +194,7 @@ export default function UsuariosPage() {
               value={form.comercialId}
               onChange={(e) => setForm({ ...form, comercialId: e.target.value })}
             >
-              <option value="">Automático por nombre (recomendado)</option>
+              <option value="">Sin asociar</option>
               {comerciales
                 .filter((c) => c.activo)
                 .map((c) => (
@@ -204,9 +204,9 @@ export default function UsuariosPage() {
                 ))}
             </select>
             <p className="mt-1 text-xs text-slate-500">
-              En automático el sistema asocia el usuario al comercial cuyo nombre coincida con el
-              campo Nombre (sin importar mayúsculas ni tildes). Si no hay coincidencia exacta, el
-              usuario queda sin comercial y podrá asociarlo manualmente en la tabla.
+              La asociación es manual: elija el comercial del usuario. Cada comercial admite un
+              solo usuario activo; si el que busca no aparece disponible, primero desasocie al
+              usuario anterior en la tabla. También puede dejarlo sin asociar y asignarlo después.
             </p>
           </div>
         )}

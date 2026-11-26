@@ -1,15 +1,15 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
-import { UsersService, normalizarNombreClave } from './users.service';
+import { UsersService } from './users.service';
 import { Role } from '../../common/enums/role.enum';
 import { UserStatus } from '../../common/enums/user-status.enum';
 
 /**
- * I75 — Asociación usuario↔comercial con el nombre como llave.
- * El servicio se prueba con repositorios simulados (sin BD): lo importante
- * es la lógica de normalización, la fail-safe ante ambigüedad/ocupación y
- * la validación del comercial explícito.
+ * I77 — Asociación usuario↔comercial SIEMPRE manual (la decide el
+ * administrador; el nombre del usuario no es llave) y exclusiva: un
+ * comercial no admite dos usuarios comerciales activos.
+ * El servicio se prueba con repositorios simulados (sin BD).
  */
-describe('UsersService — asociación comercial por nombre (I75)', () => {
+describe('UsersService — asociación comercial manual (I77)', () => {
   const ADMIN = { id: 'admin-1', username: 'admin' };
 
   let usersRepo: any;
@@ -20,15 +20,12 @@ describe('UsersService — asociación comercial por nombre (I75)', () => {
 
   const COMERCIALES = [
     { id: 'com-1', nombre: 'Comercial Uno', activo: true },
-    { id: 'com-2', nombre: 'COMERCIAL DOS', activo: true },
-    { id: 'com-3', nombre: 'Repetido Hermanos', activo: true },
-    { id: 'com-4', nombre: 'repetido   hermanos', activo: true }, // duplicado normalizado
-    { id: 'com-5', nombre: 'Comercial Inactivo', activo: false },
+    { id: 'com-2', nombre: 'Comercial Dos', activo: true },
   ];
 
   function dtoBase(extra: Record<string, unknown> = {}) {
     return {
-      nombre: 'Comercial Uno',
+      nombre: 'Comercial Uno', // a propósito igual al comercial: NO es llave
       username: 'comercial.uno',
       email: 'comercial.uno@sofia.local',
       rol: Role.COMERCIAL,
@@ -58,82 +55,57 @@ describe('UsersService — asociación comercial por nombre (I75)', () => {
     service = new UsersService(usersRepo, comercialesRepo, passwordPolicy, audit);
   });
 
-  describe('normalizarNombreClave', () => {
-    it('ignora mayúsculas, tildes y espacios repetidos', () => {
-      expect(normalizarNombreClave('  JUAN   Pérez ')).toBe('juan perez');
-      expect(normalizarNombreClave('juan perez')).toBe('juan perez');
-      expect(normalizarNombreClave('José Ángel Ñúñez')).toBe('jose angel nunez');
-    });
-  });
-
   describe('create', () => {
-    it('asocia automáticamente por nombre exacto (estado AUTO) y lo audita', async () => {
+    it('sin comercialId queda sin asociar aunque el nombre coincida (ya no es llave)', async () => {
       const res: any = await service.create(dtoBase(), ADMIN);
+      expect(res.comercialId).toBeNull();
+      expect(res.asociacionComercial).toMatchObject({
+        estado: 'SIN_ASOCIAR',
+        comercialId: null,
+      });
+      expect(res.asociacionComercial.mensaje).toContain('manualmente');
+    });
+
+    it('comercialId explícito válido asocia (MANUAL)', async () => {
+      const res: any = await service.create(dtoBase({ comercialId: 'com-1' }), ADMIN);
       expect(res.comercialId).toBe('com-1');
       expect(res.asociacionComercial).toMatchObject({
-        estado: 'AUTO',
+        estado: 'MANUAL',
         comercialId: 'com-1',
         comercialNombre: 'Comercial Uno',
       });
-      expect(audit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ motivo: expect.stringContaining('Comercial Uno') }),
-      );
     });
 
-    it('la llave ignora mayúsculas, tildes y espacios', async () => {
-      const res: any = await service.create(
-        dtoBase({ nombre: '  comercial   UNO ' }),
-        ADMIN,
-      );
-      expect(res.asociacionComercial.estado).toBe('AUTO');
-      expect(res.comercialId).toBe('com-1');
+    it('comercialId inexistente → 400 (antes 500 por la FK)', async () => {
+      await expect(
+        service.create(dtoBase({ comercialId: 'no-existe' }), ADMIN),
+      ).rejects.toThrow(BadRequestException);
     });
 
-    it('sin coincidencia queda sin comercial y avisa (SIN_COINCIDENCIA)', async () => {
-      const res: any = await service.create(dtoBase({ nombre: 'Persona Sin Comercial' }), ADMIN);
-      expect(res.comercialId).toBeNull();
-      expect(res.asociacionComercial.estado).toBe('SIN_COINCIDENCIA');
-      expect(res.asociacionComercial.mensaje).toContain('Persona Sin Comercial');
-    });
-
-    it('no asocia contra comerciales inactivos', async () => {
-      const res: any = await service.create(dtoBase({ nombre: 'Comercial Inactivo' }), ADMIN);
-      expect(res.comercialId).toBeNull();
-      expect(res.asociacionComercial.estado).toBe('SIN_COINCIDENCIA');
-    });
-
-    it('con dos comerciales del mismo nombre no adivina (AMBIGUA)', async () => {
-      const res: any = await service.create(dtoBase({ nombre: 'Repetido Hermanos' }), ADMIN);
-      expect(res.comercialId).toBeNull();
-      expect(res.asociacionComercial.estado).toBe('AMBIGUA');
-    });
-
-    it('si el comercial ya tiene usuario activo no lo reasigna (YA_ASIGNADO)', async () => {
+    it('comercial ya asignado a otro usuario activo → 409', async () => {
       usersRepo.findOne.mockImplementation(async ({ where }: any) => {
         if (where?.comercialId === 'com-1') {
           return { id: 'otro', username: 'comercial.previo', estado: UserStatus.ACTIVO };
         }
         return null;
       });
-      const res: any = await service.create(dtoBase(), ADMIN);
-      expect(res.comercialId).toBeNull();
-      expect(res.asociacionComercial.estado).toBe('YA_ASIGNADO');
-      expect(res.asociacionComercial.mensaje).toContain('comercial.previo');
-    });
-
-    it('comercialId explícito válido tiene prioridad (MANUAL)', async () => {
-      const res: any = await service.create(
-        dtoBase({ nombre: 'Nombre Que No Existe', comercialId: 'com-2' }),
-        ADMIN,
-      );
-      expect(res.comercialId).toBe('com-2');
-      expect(res.asociacionComercial.estado).toBe('MANUAL');
-    });
-
-    it('comercialId explícito inexistente → 400 (antes era un 500 por la FK)', async () => {
       await expect(
-        service.create(dtoBase({ comercialId: 'no-existe' }), ADMIN),
-      ).rejects.toThrow(BadRequestException);
+        service.create(dtoBase({ comercialId: 'com-1' }), ADMIN),
+      ).rejects.toThrow(ConflictException);
+      await expect(
+        service.create(dtoBase({ comercialId: 'com-1' }), ADMIN),
+      ).rejects.toThrow(/comercial\.previo/);
+    });
+
+    it('un comercial asignado a un usuario INACTIVO sí se puede reasignar', async () => {
+      // El ocupante solo bloquea si está ACTIVO (estado del filtro)
+      const res: any = await service.create(dtoBase({ comercialId: 'com-1' }), ADMIN);
+      expect(res.comercialId).toBe('com-1');
+      expect(usersRepo.findOne).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ estado: UserStatus.ACTIVO }),
+        }),
+      );
     });
 
     it('roles distintos a COMERCIAL no reciben asociación', async () => {
@@ -160,10 +132,10 @@ describe('UsersService — asociación comercial por nombre (I75)', () => {
   describe('update', () => {
     const existente = {
       id: 'usr-1',
-      nombre: 'Comercial Dos',
+      nombre: 'Vendedor Externo',
       descripcion: '',
-      username: 'comercial.dos',
-      email: 'comercial.dos@sofia.local',
+      username: 'comercial.i77',
+      email: 'comercial.i77@sofia.local',
       rol: Role.COMERCIAL,
       estado: UserStatus.ACTIVO,
       comercialId: null,
@@ -176,39 +148,65 @@ describe('UsersService — asociación comercial por nombre (I75)', () => {
       });
     });
 
-    it('al editar sin tocar el comercial, auto-asocia por el nombre vigente', async () => {
-      const res: any = await service.update('usr-1', { descripcion: 'x' } as any, ADMIN);
-      expect(res.comercialId).toBe('com-2'); // «COMERCIAL DOS» normalizado
-      expect(res.asociacionComercial.estado).toBe('AUTO');
+    it('asigna el comercial indicado (MANUAL)', async () => {
+      const res: any = await service.update('usr-1', { comercialId: 'com-2' } as any, ADMIN);
+      expect(res.comercialId).toBe('com-2');
+      expect(res.asociacionComercial.estado).toBe('MANUAL');
     });
 
-    it('usa el nombre nuevo como llave cuando se edita el nombre', async () => {
-      const res: any = await service.update('usr-1', { nombre: 'Comercial Uno' } as any, ADMIN);
-      expect(res.comercialId).toBe('com-1');
-    });
-
-    it('comercialId null explícito = desasociar (no re-auto-asocia)', async () => {
+    it('comercialId null explícito = desasociar', async () => {
+      usersRepo.findOne.mockImplementation(async ({ where }: any) => {
+        if (where?.id === 'usr-1') return { ...existente, comercialId: 'com-2' };
+        return null;
+      });
       const res: any = await service.update('usr-1', { comercialId: null } as any, ADMIN);
       expect(res.comercialId).toBeNull();
       expect(res.asociacionComercial).toBeUndefined();
     });
 
-    it('comercialId explícito en edición → MANUAL', async () => {
-      const res: any = await service.update('usr-1', { comercialId: 'com-1' } as any, ADMIN);
-      expect(res.comercialId).toBe('com-1');
-      expect(res.asociacionComercial.estado).toBe('MANUAL');
+    it('si el campo no viene, conserva la asociación actual', async () => {
+      usersRepo.findOne.mockImplementation(async ({ where }: any) => {
+        if (where?.id === 'usr-1') return { ...existente, comercialId: 'com-2' };
+        return null;
+      });
+      const res: any = await service.update('usr-1', { descripcion: 'x' } as any, ADMIN);
+      expect(res.comercialId).toBe('com-2');
+      expect(res.asociacionComercial).toBeUndefined();
     });
 
-    it('cambio de rol a COMERCIAL sin comercial → intenta la llave por nombre', async () => {
+    it('reasignar a un comercial ocupado por otro usuario → 409', async () => {
       usersRepo.findOne.mockImplementation(async ({ where }: any) => {
-        if (where?.id === 'usr-1') {
-          return { ...existente, rol: Role.OPERADOR, comercialId: null };
+        if (where?.id === 'usr-1') return { ...existente };
+        if (where?.comercialId === 'com-1') {
+          return { id: 'otro', username: 'comercial.previo', estado: UserStatus.ACTIVO };
         }
         return null;
       });
+      await expect(
+        service.update('usr-1', { comercialId: 'com-1' } as any, ADMIN),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('el ocupante actual puede reafirmar su propio comercial (no se bloquea a sí mismo)', async () => {
+      usersRepo.findOne.mockImplementation(async ({ where }: any) => {
+        if (where?.id === 'usr-1') return { ...existente, comercialId: 'com-1' };
+        if (where?.comercialId === 'com-1') {
+          return { ...existente, comercialId: 'com-1' }; // él mismo
+        }
+        return null;
+      });
+      const res: any = await service.update('usr-1', { comercialId: 'com-1' } as any, ADMIN);
+      expect(res.comercialId).toBe('com-1');
+    });
+
+    it('cambio de rol a COMERCIAL sin comercial → queda sin asociar (manual después)', async () => {
+      usersRepo.findOne.mockImplementation(async ({ where }: any) => {
+        if (where?.id === 'usr-1') return { ...existente, rol: Role.OPERADOR };
+        return null;
+      });
       const res: any = await service.update('usr-1', { rol: Role.COMERCIAL } as any, ADMIN);
-      expect(res.comercialId).toBe('com-2');
-      expect(res.asociacionComercial.estado).toBe('AUTO');
+      expect(res.comercialId).toBeNull();
+      expect(res.asociacionComercial).toBeUndefined();
     });
 
     it('al cambiar a otro rol se limpia el comercial asociado', async () => {
@@ -218,17 +216,6 @@ describe('UsersService — asociación comercial por nombre (I75)', () => {
       });
       const res: any = await service.update('usr-1', { rol: Role.GENERADOR } as any, ADMIN);
       expect(res.comercialId).toBeNull();
-    });
-
-    it('un usuario ya asociado no se reasigna a sí mismo al editarse', async () => {
-      usersRepo.findOne.mockImplementation(async ({ where }: any) => {
-        if (where?.id === 'usr-1') return { ...existente, comercialId: 'com-2' };
-        if (where?.comercialId === 'com-2') return { ...existente, comercialId: 'com-2' };
-        return null;
-      });
-      const res: any = await service.update('usr-1', { descripcion: 'y' } as any, ADMIN);
-      expect(res.comercialId).toBe('com-2'); // conserva su comercial
-      expect(res.asociacionComercial).toBeUndefined(); // no intentó auto
     });
   });
 });

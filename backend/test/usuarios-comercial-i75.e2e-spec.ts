@@ -9,17 +9,16 @@ import {
 } from './helpers/test-app';
 
 /**
- * I75 — Rol COMERCIAL: asociación usuario↔comercial con el nombre como
- * llave y cierre del alcance (fail-closed) cuando no hay comercial asociado.
- *
- * Cubre:
- *  - AUTO/MANUAL/SIN_COINCIDENCIA/AMBIGUA/YA_ASIGNADO en POST /users.
- *  - Asociación manual posterior con PATCH /users/:id (selector de la vista).
- *  - Listados y detalles de pedidos/despachos/PQRS limitados al comercial.
- *  - Sin comercial asociado: listas vacías y detalles 404 (antes veía todo).
- *  - revertir-alistamiento y correct no cruzan comerciales.
+ * I75/I77 — usuarios con rol COMERCIAL:
+ *  - La asociación usuario↔comercial es SIEMPRE manual (el nombre del
+ *    usuario NO es llave — I77 revierte la auto-asociación de I75).
+ *  - Un comercial no admite dos usuarios comerciales activos (409).
+ *  - Alcance fail-closed: sin comercial asociado no ve pedidos, despachos
+ *    ni PQRS (listas vacías, detalles 404) y no puede crear pedidos.
+ *  - Con comercial asociado solo alcanza sus pedidos (detalle,
+ *    revertir-alistamiento y corrección responden 404 sobre ajenos).
  */
-describe('I75 — usuarios comerciales (e2e)', () => {
+describe('I75/I77 — usuarios comerciales (e2e)', () => {
   let t: TestApp;
   let adminToken: string;
   let generadorToken: string;
@@ -38,8 +37,8 @@ describe('I75 — usuarios comerciales (e2e)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         nombre,
-        username: `comercial.i75.${seq}`,
-        email: `comercial.i75.${seq}@sofia.local`,
+        username: `comercial.i77.${seq}`,
+        email: `comercial.i77.${seq}@sofia.local`,
         rol: 'COMERCIAL',
         claveInicial: 'ClaveInicial1',
         ...extra,
@@ -63,24 +62,24 @@ describe('I75 — usuarios comerciales (e2e)', () => {
       .post('/api/v1/users')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        nombre: 'Generador I75',
-        username: 'generador.i75',
-        email: 'generador.i75@sofia.local',
+        nombre: 'Generador I77',
+        username: 'generador.i77',
+        email: 'generador.i77@sofia.local',
         rol: 'GENERADOR',
         claveInicial: 'ClaveInicial1',
       });
-    generadorToken = await login('generador.i75');
+    generadorToken = await login('generador.i77');
 
     const cli = await t.http
       .post('/api/v1/clients')
       .set('Authorization', `Bearer ${generadorToken}`)
-      .send({ nombre: 'Cliente I75', identificacion: '800-I75' });
+      .send({ nombre: 'Cliente I77', identificacion: '800-I77' });
     expect(cli.status).toBe(201);
     clienteId = cli.body.id;
 
     for (const [nombre, ident] of [
-      ['Comercial Alfa', 'I75-A'],
-      ['Comercial Beta', 'I75-B'],
+      ['Comercial Alfa', 'I77-A'],
+      ['Comercial Beta', 'I77-B'],
     ] as const) {
       const res = await t.http
         .post('/api/v1/comerciales')
@@ -97,8 +96,8 @@ describe('I75 — usuarios comerciales (e2e)', () => {
       .set('Authorization', `Bearer ${generadorToken}`)
       .send({
         empresaId: ireId,
-        codigo: 'I75-001',
-        descripcion: 'Producto I75',
+        codigo: 'I77-001',
+        descripcion: 'Producto I77',
         unidadMedida: 'UND',
         precio: 5000,
       });
@@ -116,7 +115,7 @@ describe('I75 — usuarios comerciales (e2e)', () => {
           empresaId: ireId,
           clienteId,
           comercialId,
-          items: [{ referencia: 'I75-001', cantidad: 1 }],
+          items: [{ referencia: 'I77-001', cantidad: 1 }],
         });
       expect(p.status).toBe(201);
       if (destino === 'alfa') pedidoAlfaId = p.body.id;
@@ -129,46 +128,53 @@ describe('I75 — usuarios comerciales (e2e)', () => {
     await t.dataSource.destroy().catch(() => undefined);
   });
 
-  it('AUTO: el nombre del usuario es la llave (ignora mayúsculas/tildes/espacios)', async () => {
-    const res = await crearUsuarioComercial('  comercial   ALFA ');
+  it('el nombre NO es llave: sin comercialId el usuario queda sin asociar', async () => {
+    const res = await crearUsuarioComercial('Comercial Alfa'); // nombre idéntico al comercial
+    expect(res.status).toBe(201);
+    expect(res.body.comercialId).toBeNull();
+    expect(res.body.asociacionComercial.estado).toBe('SIN_ASOCIAR');
+  });
+
+  it('MANUAL: comercialId explícito asocia y el usuario solo alcanza sus pedidos', async () => {
+    const res = await crearUsuarioComercial('Usuario Del Alfa', { comercialId: comercialAlfaId });
     expect(res.status).toBe(201);
     expect(res.body.comercialId).toBe(comercialAlfaId);
     expect(res.body.asociacionComercial).toMatchObject({
-      estado: 'AUTO',
+      estado: 'MANUAL',
       comercialId: comercialAlfaId,
       comercialNombre: 'Comercial Alfa',
     });
-    // La asociación queda auditada
-    const logs = await t.dataSource.query(
-      `SELECT motivo FROM audit_logs WHERE tabla='users' AND registro_id=$1 AND accion='CREAR'`,
-      [res.body.id],
-    );
-    expect(logs[0].motivo).toContain('Comercial Alfa');
+
+    const token = await login('comercial.i77.2');
 
     // El login expone el comercialId (banner del tablero)
-    const token = await login('comercial.i75.1');
-    const detalle = await t.http
+    const sesion = await t.http.post('/api/v1/auth/login').send({
+      username: 'comercial.i77.2',
+      password: 'ClaveNueva123',
+      dispositivo: DISPOSITIVO_TEST,
+    });
+    expect(sesion.status).toBe(200);
+    expect(sesion.body.usuario.comercialId).toBe(comercialAlfaId);
+
+    // Detalle del pedido propio: 200
+    const propio = await t.http
       .get(`/api/v1/orders/${pedidoAlfaId}`)
       .set('Authorization', `Bearer ${token}`);
-    expect(detalle.status).toBe(200);
+    expect(propio.status).toBe(200);
 
-    // No alcanza el pedido de otro comercial ni por detalle…
+    // Pedido de otro comercial: ni detalle ni mutaciones
     const ajeno = await t.http
       .get(`/api/v1/orders/${pedidoBetaId}`)
       .set('Authorization', `Bearer ${token}`);
     expect(ajeno.status).toBe(404);
-
-    // …ni por revertir-alistamiento (I75: alcance en mutaciones)
     const revertir = await t.http
       .post(`/api/v1/orders/${pedidoBetaId}/revertir-alistamiento`)
       .set('Authorization', `Bearer ${token}`);
     expect(revertir.status).toBe(404);
-
-    // …ni por corrección
     const corregir = await t.http
       .patch(`/api/v1/orders/${pedidoBetaId}`)
       .set('Authorization', `Bearer ${token}`)
-      .send({ items: [{ referencia: 'I75-001', cantidad: 1 }] });
+      .send({ items: [{ referencia: 'I77-001', cantidad: 1 }] });
     expect(corregir.status).toBe(404);
 
     // El listado solo muestra sus pedidos
@@ -176,26 +182,20 @@ describe('I75 — usuarios comerciales (e2e)', () => {
       .get('/api/v1/orders')
       .set('Authorization', `Bearer ${token}`);
     expect(lista.status).toBe(200);
-    const numeros = lista.body.map((p: any) => p.id);
-    expect(numeros).toContain(pedidoAlfaId);
-    expect(numeros).not.toContain(pedidoBetaId);
+    const ids = lista.body.map((p: any) => p.id);
+    expect(ids).toContain(pedidoAlfaId);
+    expect(ids).not.toContain(pedidoBetaId);
   });
 
-  it('YA_ASIGNADO: un comercial activo no admite un segundo usuario por nombre', async () => {
-    const res = await crearUsuarioComercial('Comercial Alfa');
-    expect(res.status).toBe(201);
-    expect(res.body.comercialId).toBeNull();
-    expect(res.body.asociacionComercial.estado).toBe('YA_ASIGNADO');
-    expect(res.body.asociacionComercial.mensaje).toContain('comercial.i75.1');
+  it('un comercial ya asignado no admite un segundo usuario (409)', async () => {
+    const res = await crearUsuarioComercial('Otro Del Alfa', { comercialId: comercialAlfaId });
+    expect(res.status).toBe(409);
+    expect(res.body.message).toContain('Comercial Alfa');
+    expect(res.body.message).toContain('comercial.i77.2');
   });
 
-  it('SIN_COINCIDENCIA: sin comercial homónimo queda fail-closed (listas vacías, detalles 404)', async () => {
-    const res = await crearUsuarioComercial('Vendedor Sin Catalogar');
-    expect(res.status).toBe(201);
-    expect(res.body.comercialId).toBeNull();
-    expect(res.body.asociacionComercial.estado).toBe('SIN_COINCIDENCIA');
-
-    const token = await login('comercial.i75.3');
+  it('SIN_ASOCIAR: fail-closed — listas vacías, detalles 404 y no puede crear pedidos', async () => {
+    const token = await login('comercial.i77.1'); // creado sin comercial
     for (const ruta of ['/api/v1/orders', '/api/v1/dispatches', '/api/v1/pqrs']) {
       const lista = await t.http.get(ruta).set('Authorization', `Bearer ${token}`);
       expect(lista.status).toBe(200);
@@ -205,86 +205,65 @@ describe('I75 — usuarios comerciales (e2e)', () => {
       .get(`/api/v1/orders/${pedidoAlfaId}`)
       .set('Authorization', `Bearer ${token}`);
     expect(detalle.status).toBe(404);
-    // Tampoco puede crear pedidos (resolveComercial exige la asociación)
     const crear = await t.http
       .post('/api/v1/orders')
       .set('Authorization', `Bearer ${token}`)
       .send({
         empresaId: ireId,
         clienteId,
-        items: [{ referencia: 'I75-001', cantidad: 1 }],
+        items: [{ referencia: 'I77-001', cantidad: 1 }],
       });
     expect(crear.status).toBe(400);
   });
 
-  it('AMBIGUA: dos comerciales activos con el mismo nombre no se adivinan', async () => {
-    await t.http
-      .post('/api/v1/comerciales')
+  it('PATCH: asignación posterior, conflicto por ocupación y desasociación', async () => {
+    const usuarios = await t.http
+      .get('/api/v1/users')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const pendiente = usuarios.body.find((u: any) => u.username === 'comercial.i77.1');
+
+    // Asignación manual posterior (Comercial Beta está libre)
+    const asignar = await t.http
+      .patch(`/api/v1/users/${pendiente.id}`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ nombre: 'Duplicado I75', identificacion: 'I75-D1' });
-    await t.http
-      .post('/api/v1/comerciales')
+      .send({ comercialId: comercialBetaId });
+    expect(asignar.status).toBe(200);
+    expect(asignar.body.comercialId).toBe(comercialBetaId);
+    expect(asignar.body.asociacionComercial.estado).toBe('MANUAL');
+
+    // Reasignar a un comercial ocupado (Alfa) → 409
+    const ocupado = await t.http
+      .patch(`/api/v1/users/${pendiente.id}`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ nombre: 'duplicado i75', identificacion: 'I75-D2' });
+      .send({ comercialId: comercialAlfaId });
+    expect(ocupado.status).toBe(409);
 
-    const res = await crearUsuarioComercial('Duplicado I75');
-    expect(res.status).toBe(201);
-    expect(res.body.comercialId).toBeNull();
-    expect(res.body.asociacionComercial.estado).toBe('AMBIGUA');
-  });
+    // Reafirmar el suyo no se bloquea a sí mismo
+    const propio = await t.http
+      .patch(`/api/v1/users/${pendiente.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ comercialId: comercialBetaId });
+    expect(propio.status).toBe(200);
+    expect(propio.body.comercialId).toBe(comercialBetaId);
 
-  it('MANUAL: comercialId explícito en creación y corrección posterior con PATCH', async () => {
-    // Explícito válido (tiene prioridad sobre el nombre)
-    const manual = await crearUsuarioComercial('Nombre Cualquiera', { comercialId: comercialBetaId });
-    expect(manual.status).toBe(201);
-    expect(manual.body.asociacionComercial.estado).toBe('MANUAL');
-    expect(manual.body.comercialId).toBe(comercialBetaId);
-
-    // Explícito inválido → 400 (antes 500 por la FK)
-    const invalido = await crearUsuarioComercial('Otro Nombre', {
-      comercialId: '11111111-1111-1111-1111-111111111111',
-    });
-    expect(invalido.status).toBe(400);
-
-    // PATCH: desasociar explícito (null) y reasociar manualmente
+    // Desasociar explícito (null)
     const desasociar = await t.http
-      .patch(`/api/v1/users/${manual.body.id}`)
+      .patch(`/api/v1/users/${pendiente.id}`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ comercialId: null });
     expect(desasociar.status).toBe(200);
     expect(desasociar.body.comercialId).toBeNull();
-
-    const reasociar = await t.http
-      .patch(`/api/v1/users/${manual.body.id}`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ comercialId: comercialAlfaId });
-    expect(reasociar.status).toBe(200);
-    expect(reasociar.body.comercialId).toBe(comercialAlfaId);
-    expect(reasociar.body.asociacionComercial.estado).toBe('MANUAL');
   });
 
-  it('PATCH sin comercialId reintenta la llave por nombre (repara asociaciones)', async () => {
-    // «Vendedor Sin Catalogar» (usuario 3) se renombra a un comercial existente
+  it('PATCH con comercialId inexistente → 400', async () => {
     const usuarios = await t.http
       .get('/api/v1/users')
       .set('Authorization', `Bearer ${adminToken}`);
-    const pendiente = usuarios.body.find((u: any) => u.username === 'comercial.i75.3');
+    const pendiente = usuarios.body.find((u: any) => u.username === 'comercial.i77.1');
     const res = await t.http
       .patch(`/api/v1/users/${pendiente.id}`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ nombre: 'Comercial Beta' });
-    expect(res.status).toBe(200);
-    expect(res.body.comercialId).toBe(comercialBetaId);
-    expect(res.body.asociacionComercial.estado).toBe('AUTO');
-  });
-
-  it('el login del usuario comercial expone comercialId para el banner del tablero', async () => {
-    const res = await t.http.post('/api/v1/auth/login').send({
-      username: 'comercial.i75.1',
-      password: 'ClaveNueva123',
-      dispositivo: DISPOSITIVO_TEST,
-    });
-    expect(res.status).toBe(200);
-    expect(res.body.usuario.comercialId).toBe(comercialAlfaId);
+      .send({ comercialId: '11111111-1111-1111-1111-111111111111' });
+    expect(res.status).toBe(400);
   });
 });

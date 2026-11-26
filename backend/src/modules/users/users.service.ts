@@ -25,27 +25,24 @@ function toSafe(user: User) {
   return rest;
 }
 
-/**
- * I75: normaliza un nombre para usarlo como llave de asociación
- * usuario↔comercial: sin tildes, minúsculas y espacios colapsados, de modo
- * que «Juan Pérez», «JUAN PEREZ» y «juan  pérez» sean la misma llave.
- */
-export function normalizarNombreClave(valor: string): string {
-  return (valor || '')
-    .normalize('NFD')
-    // rango de diacríticos combinantes U+0300–U+036F
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-/** Resultado de la asociación usuario→comercial (I75). */
+/** Resultado de la asociación usuario→comercial (I75/I77). */
 export interface AsociacionComercial {
-  estado: 'MANUAL' | 'AUTO' | 'SIN_COINCIDENCIA' | 'AMBIGUA' | 'YA_ASIGNADO';
+  estado: 'MANUAL' | 'SIN_ASOCIAR';
   comercialId: string | null;
   comercialNombre: string | null;
   mensaje: string;
+}
+
+/** I77: el administrador creó el usuario comercial sin indicar comercial. */
+function sinAsociar(): AsociacionComercial {
+  return {
+    estado: 'SIN_ASOCIAR',
+    comercialId: null,
+    comercialNombre: null,
+    mensaje:
+      'Usuario creado sin comercial asociado: asígnelo manualmente desde esta pantalla ' +
+      'para que pueda ver sus pedidos y despachos.',
+  };
 }
 
 @Injectable()
@@ -67,14 +64,14 @@ export class UsersService {
       throw new ConflictException('El usuario o correo ya existe');
     }
     this.assertComercialAssociation(dto.rol, dto.comercialId);
-    // I75: si no se indica comercial explícito, el nombre del usuario es la
-    // llave de asociación automática con el catálogo de comerciales.
+    // I77: la asociación usuario→comercial es SIEMPRE manual (la decide el
+    // administrador); el nombre del usuario ya no se usa como llave.
     let asociacion: AsociacionComercial | undefined;
     let comercialId: string | null = null;
     if (dto.rol === Role.COMERCIAL) {
       asociacion = dto.comercialId
         ? await this.asociacionManual(dto.comercialId)
-        : await this.resolverComercialPorNombre(dto.nombre);
+        : sinAsociar();
       comercialId = asociacion.comercialId;
     }
     const user = await this.users.save(
@@ -97,9 +94,6 @@ export class UsersService {
       tabla: TABLA,
       registroId: user.id,
       valorNuevo: toSafe(user),
-      ...(asociacion?.estado === 'AUTO'
-        ? { motivo: `Asociación automática usuario→comercial por nombre («${asociacion.comercialNombre}»)` }
-        : {}),
     });
     return { ...toSafe(user), ...(asociacion ? { asociacionComercial: asociacion } : {}) };
   }
@@ -134,21 +128,13 @@ export class UsersService {
       nuevoRol,
       nuevoRol === Role.COMERCIAL ? nuevoComercialId : null,
     );
-    // I75: comercial explícito validado; si queda sin comercial y el rol es
-    // COMERCIAL, se intenta la asociación automática por nombre.
+    // I77: la asociación es siempre manual — comercialId explícito validado
+    // (existencia + que no esté asignado a otro usuario activo). Un null
+    // explícito desasocia; si el campo no viene se conserva lo que tenga.
     let asociacion: AsociacionComercial | undefined;
-    if (nuevoRol === Role.COMERCIAL) {
-      if (dto.comercialId) {
-        asociacion = await this.asociacionManual(dto.comercialId);
-        nuevoComercialId = asociacion.comercialId;
-      } else if (dto.comercialId === undefined && !nuevoComercialId) {
-        // Solo cuando el admin no tocó el campo: null explícito = desasociar.
-        asociacion = await this.resolverComercialPorNombre(
-          dto.nombre ?? user.nombre,
-          id,
-        );
-        nuevoComercialId = asociacion.comercialId;
-      }
+    if (nuevoRol === Role.COMERCIAL && dto.comercialId) {
+      asociacion = await this.asociacionManual(dto.comercialId, id);
+      nuevoComercialId = asociacion.comercialId;
     }
     Object.assign(user, {
       nombre: dto.nombre ?? user.nombre,
@@ -166,9 +152,6 @@ export class UsersService {
       registroId: id,
       valorAnterior: anterior,
       valorNuevo: toSafe(saved),
-      ...(asociacion?.estado === 'AUTO'
-        ? { motivo: `Asociación automática usuario→comercial por nombre («${asociacion.comercialNombre}»)` }
-        : {}),
     });
     return { ...toSafe(saved), ...(asociacion ? { asociacionComercial: asociacion } : {}) };
   }
@@ -236,73 +219,34 @@ export class UsersService {
   }
 
   /**
-   * I75: asociación manual — el administrador indicó el comercial explícito.
-   * Valida que exista (antes un UUID inválido solo fallaba por la FK → 500).
+   * I75/I77: asociación manual — el administrador indica el comercial
+   * explícito. Valida que exista (antes un UUID inválido fallaba por la
+   * FK → 500) y que no esté asignado a otro usuario comercial activo
+   * (la asociación es 1:0..1; `excluirUsuarioId` permite reasignar al
+   * mismo usuario que ya lo tiene).
    */
-  private async asociacionManual(comercialId: string): Promise<AsociacionComercial> {
+  private async asociacionManual(
+    comercialId: string,
+    excluirUsuarioId?: string,
+  ): Promise<AsociacionComercial> {
     const comercial = await this.comerciales.findOne({ where: { id: comercialId } });
     if (!comercial) {
       throw new BadRequestException(`Comercial no encontrado (${comercialId})`);
+    }
+    const ocupante = await this.users.findOne({
+      where: { comercialId: comercial.id, rol: Role.COMERCIAL, estado: UserStatus.ACTIVO },
+    });
+    if (ocupante && ocupante.id !== excluirUsuarioId) {
+      throw new ConflictException(
+        `El comercial «${comercial.nombre}» ya está asignado al usuario «${ocupante.username}». ` +
+        'Inactívelo o desasócielo primero.',
+      );
     }
     return {
       estado: 'MANUAL',
       comercialId: comercial.id,
       comercialNombre: comercial.nombre,
-      mensaje: `Asociado manualmente al comercial «${comercial.nombre}»`,
-    };
-  }
-
-  /**
-   * I75: llave de asociación automática — el nombre del usuario se compara
-   * (normalizado) con los nombres del catálogo de comerciales activos.
-   * Fail-safe: solo asocia cuando hay exactamente un candidato y ese
-   * comercial no tiene ya otro usuario comercial activo (asociación 1:0..1).
-   */
-  private async resolverComercialPorNombre(
-    nombre: string,
-    excluirUsuarioId?: string,
-  ): Promise<AsociacionComercial> {
-    const clave = normalizarNombreClave(nombre);
-    const activos = await this.comerciales.find({ where: { activo: true } });
-    const candidatos = activos.filter((c) => normalizarNombreClave(c.nombre) === clave);
-    const sinAsociar: AsociacionComercial['estado'][] = ['SIN_COINCIDENCIA', 'AMBIGUA', 'YA_ASIGNADO'];
-    const base = { comercialId: null, comercialNombre: null };
-    if (!clave || candidatos.length === 0) {
-      return {
-        ...base,
-        estado: sinAsociar[0],
-        mensaje:
-          `Sin comercial asociado: ningún comercial activo se llama «${nombre}». ` +
-          'El usuario no verá pedidos ni despachos hasta que un administrador lo asocie.',
-      };
-    }
-    if (candidatos.length > 1) {
-      return {
-        ...base,
-        estado: sinAsociar[1],
-        mensaje:
-          `Sin comercial asociado: hay ${candidatos.length} comerciales activos con el nombre «${candidatos[0].nombre}». ` +
-          'Asócielo manualmente desde esta pantalla.',
-      };
-    }
-    const comercial = candidatos[0];
-    const ocupante = await this.users.findOne({
-      where: { comercialId: comercial.id, rol: Role.COMERCIAL, estado: UserStatus.ACTIVO },
-    });
-    if (ocupante && ocupante.id !== excluirUsuarioId) {
-      return {
-        ...base,
-        estado: sinAsociar[2],
-        mensaje:
-          `Sin comercial asociado: «${comercial.nombre}» ya está asignado al usuario «${ocupante.username}». ` +
-          'Inactívelo primero o asócielo manualmente.',
-      };
-    }
-    return {
-      estado: 'AUTO',
-      comercialId: comercial.id,
-      comercialNombre: comercial.nombre,
-      mensaje: `Asociado automáticamente al comercial «${comercial.nombre}» por coincidencia de nombre`,
+      mensaje: `Asociado al comercial «${comercial.nombre}»`,
     };
   }
 

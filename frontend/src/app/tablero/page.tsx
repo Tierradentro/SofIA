@@ -140,7 +140,8 @@ export default function TableroPage() {
   const [sesion, setSesion] = useState<Sesion | null>(null);
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [casos, setCasos] = useState<Caso[]>([]);
-  const [periodo, setPeriodo] = useState<Periodo>('SEMANA');
+  // I77: «Hoy» es el período por defecto
+  const [periodo, setPeriodo] = useState<Periodo>('HOY');
 
   useEffect(() => {
     const s = obtenerSesion();

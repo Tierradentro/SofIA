@@ -147,10 +147,14 @@ export default function ProductosPage() {
   const esGenerador = sesion?.usuario.rol === 'GENERADOR';
   const esAdmin = sesion?.usuario.rol === 'ADMINISTRADOR';
   // I35: el Operador no ve las existencias en la vista de productos.
+  // I77: en su lugar ve una insignia «Con stock» / «Sin stock».
   const esOperador = sesion?.usuario.rol === 'OPERADOR';
   // I65e: el Operador también corrige códigos de barras asociados
   const puedeEditar = esGenerador || esAdmin || esOperador;
   const puedeBarcode = ['OPERADOR', 'GENERADOR'].includes(sesion?.usuario.rol || '');
+  // I77: el mapa de bodega no está disponible para el Comercial (RBAC del
+  // módulo); el enlace se oculta para que no caiga en una vista sin permiso.
+  const puedeVerMapa = ['OPERADOR', 'GENERADOR', 'ADMINISTRADOR'].includes(sesion?.usuario.rol || '');
   // I35: al abrir la ficha se desplaza la vista hasta el cuadro.
   const fichaRef = useRef<HTMLDivElement>(null);
 
@@ -455,13 +459,16 @@ export default function ProductosPage() {
                   Editar
                 </button>
               )}
-              {/* I33: ubicar el producto en el mapa 2D de la bodega */}
-              <a
-                href={`/mapa?q=${encodeURIComponent(ficha.codigo)}`}
-                className="rounded-lg bg-menta-50 px-3 py-1.5 text-sm font-medium text-menta-700 hover:bg-menta-100"
-              >
-                Ver en mapa
-              </a>
+              {/* I33: ubicar el producto en el mapa 2D de la bodega.
+                  I77: oculto para el Comercial (el módulo no le está permitido) */}
+              {puedeVerMapa && (
+                <a
+                  href={`/mapa?q=${encodeURIComponent(ficha.codigo)}`}
+                  className="rounded-lg bg-menta-50 px-3 py-1.5 text-sm font-medium text-menta-700 hover:bg-menta-100"
+                >
+                  Ver en mapa
+                </a>
+              )}
               <button onClick={() => setFicha(null)} className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-200">
                 Cerrar
               </button>
@@ -504,8 +511,9 @@ export default function ProductosPage() {
                 ['Ubicación', ficha.ubicacion],
                 ['Estado', ficha.estado],
                 // I35: existencias ocultas para el Operador
+                // I77: en su lugar, insignia «Con stock» / «Sin stock»
                 ...(esOperador
-                  ? []
+                  ? ([['Stock', Number(ficha.cantidad) > 0 ? 'CON_STOCK' : 'SIN_STOCK']] as [string, unknown][])
                   : ([['Existencia', ficha.cantidad], ['Bloqueada', ficha.cantidadBloqueada]] as [string, unknown][])),
                 ['Código de barras', ficha.codigoBarras ? `${ficha.codigoBarras.barcode} (${ficha.codigoBarras.origen})` : '—'],
               ] as [string, unknown][]
@@ -515,6 +523,10 @@ export default function ProductosPage() {
                 <dd className="mt-0.5 font-medium text-slate-800">
                   {etiqueta === 'Estado' ? (
                     <Insignia tono={valor === 'ACTIVO' ? 'menta' : 'gris'}>{String(valor)}</Insignia>
+                  ) : etiqueta === 'Stock' ? (
+                    <Insignia tono={valor === 'CON_STOCK' ? 'verde' : 'rojo'}>
+                      {valor === 'CON_STOCK' ? 'Con stock' : 'Sin stock'}
+                    </Insignia>
                   ) : valor === null || valor === undefined || valor === '' ? (
                     '—'
                   ) : (
@@ -707,7 +719,9 @@ export default function ProductosPage() {
                 onChange={(e) => setFiltroUbicacion(e.target.value)}
               />
             </label>
-            {!esOperador && (
+            {/* I77: con la insignia de stock el filtro ya no revela cifras;
+                queda disponible también para el Operador */}
+            {(
               <label className="text-xs font-medium text-slate-500">
                 Existencia
                 <select
@@ -735,7 +749,10 @@ export default function ProductosPage() {
                 <th className={CLASES_TABLA.celdaCabecera}>Marca</th>
                 <th className={CLASES_TABLA.celdaCabecera}>Código barras</th>
                 <th className={CLASES_TABLA.celdaCabecera}>Ubicación</th>
-                {!esOperador && (
+                {/* I77: el Operador ve el stock como insignia, no como cifras */}
+                {esOperador ? (
+                  <th className={CLASES_TABLA.celdaCabecera}>Stock</th>
+                ) : (
                   <>
                     <th className={`${CLASES_TABLA.celdaCabecera} text-right`}>Existencia</th>
                     <th className={`${CLASES_TABLA.celdaCabecera} text-right`}>Bloqueada</th>
@@ -777,7 +794,13 @@ export default function ProductosPage() {
                     ) : '—'}
                   </td>
                   <td className={CLASES_TABLA.celda}>{p.ubicacion || '—'}</td>
-                  {!esOperador && (
+                  {esOperador ? (
+                    <td className={CLASES_TABLA.celda}>
+                      <Insignia tono={Number(p.cantidad) > 0 ? 'verde' : 'rojo'}>
+                        {Number(p.cantidad) > 0 ? 'Con stock' : 'Sin stock'}
+                      </Insignia>
+                    </td>
+                  ) : (
                     <>
                       <td className={`${CLASES_TABLA.celda} text-right`}>{p.cantidad}</td>
                       <td className={`${CLASES_TABLA.celda} text-right`}>{p.cantidadBloqueada}</td>
@@ -813,7 +836,7 @@ export default function ProductosPage() {
               ))}
               {productosFiltrados.length === 0 && (
                 <tr>
-                  <td colSpan={esOperador ? 6 : 8} className="px-4 py-8 text-center text-sm text-slate-400">
+                  <td colSpan={esOperador ? 7 : 8} className="px-4 py-8 text-center text-sm text-slate-400">
                     {productos.length === 0
                       ? 'Sin productos en esta empresa'
                       : 'Ningún producto coincide con los filtros'}
