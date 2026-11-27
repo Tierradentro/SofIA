@@ -66,6 +66,8 @@ interface ColumnaKanban {
   punto: string;
   chip: string;
   mensajeVacio: string;
+  /** I80: la columna solo aparece cuando tiene registros en el período. */
+  ocultarSiVacia?: boolean;
 }
 
 /** Construye la definición visual de una columna kanban. */
@@ -78,8 +80,9 @@ function kanban(
   punto: string,
   chip: string,
   mensajeVacio: string,
+  ocultarSiVacia = false,
 ): ColumnaKanban {
-  return { id, titulo, estados, acento, fondoColumna, punto, chip, mensajeVacio };
+  return { id, titulo, estados, acento, fondoColumna, punto, chip, mensajeVacio, ocultarSiVacia };
 }
 
 /** I76: columnas del canvas de pedidos — el viaje del pedido. */
@@ -95,32 +98,35 @@ const COLUMNAS: ColumnaKanban[] = [
     'Sin pedidos en esta etapa'),
 ];
 
-/** I79: columnas kanban de Despachos (mismos estados de la Cola del Dashboard, sin «Creado»). */
+/** I79: columnas kanban de Despachos (mismos estados de la Cola del Dashboard, sin «Creado»).
+ *  I80: sin relleno de color (solo bordes y acentos); Parcial y Pendiente
+ *  corrección solo aparecen cuando tienen registros. */
 const COLUMNAS_DESPACHO: ColumnaKanban[] = [
   kanban('d-abierto', 'Abierto', ['ABIERTO'],
-    'border-t-amber-400', 'bg-amber-50/60', 'bg-amber-400', 'bg-amber-100 text-amber-700',
+    'border-t-amber-400', 'bg-white', 'bg-amber-400', 'bg-amber-100 text-amber-700',
     'Sin despachos abiertos'),
   kanban('d-parcial', 'Parcial', ['PARCIAL'],
-    'border-t-orange-400', 'bg-orange-50/60', 'bg-orange-500', 'bg-orange-100 text-orange-700',
-    'Sin despachos parciales'),
+    'border-t-orange-400', 'bg-white', 'bg-orange-500', 'bg-orange-100 text-orange-700',
+    'Sin despachos parciales', true),
   kanban('d-despachado', 'Despachado', ['DESPACHADO'],
-    'border-t-emerald-400', 'bg-emerald-50/60', 'bg-emerald-500', 'bg-emerald-100 text-emerald-700',
+    'border-t-emerald-400', 'bg-white', 'bg-emerald-500', 'bg-emerald-100 text-emerald-700',
     'Sin despachos despachados'),
   kanban('d-correccion', 'Pendiente corrección', ['PENDIENTE_CORRECCION'],
-    'border-t-red-400', 'bg-red-50/60', 'bg-red-500', 'bg-red-100 text-red-700',
-    'Sin despachos por corregir'),
+    'border-t-red-400', 'bg-white', 'bg-red-500', 'bg-red-100 text-red-700',
+    'Sin despachos por corregir', true),
 ];
 
-/** I79: columnas kanban de PQRS. */
+/** I79: columnas kanban de PQRS.
+ *  I80: sin relleno de color; Pendiente corrección solo si hay registros. */
 const COLUMNAS_PQRS: ColumnaKanban[] = [
   kanban('q-abierta', 'Abierta', ['ABIERTA'],
-    'border-t-amber-400', 'bg-amber-50/60', 'bg-amber-400', 'bg-amber-100 text-amber-700',
+    'border-t-amber-400', 'bg-white', 'bg-amber-400', 'bg-amber-100 text-amber-700',
     'Sin casos abiertos'),
   kanban('q-correccion', 'Pendiente corrección', ['PENDIENTE_CORRECCION'],
-    'border-t-red-400', 'bg-red-50/60', 'bg-red-500', 'bg-red-100 text-red-700',
-    'Sin casos por corregir'),
+    'border-t-red-400', 'bg-white', 'bg-red-500', 'bg-red-100 text-red-700',
+    'Sin casos por corregir', true),
   kanban('q-cerrada', 'Cerrada', ['CERRADA'],
-    'border-t-emerald-400', 'bg-emerald-50/60', 'bg-emerald-500', 'bg-emerald-100 text-emerald-700',
+    'border-t-emerald-400', 'bg-white', 'bg-emerald-500', 'bg-emerald-100 text-emerald-700',
     'Sin casos cerrados'),
 ];
 
@@ -186,7 +192,8 @@ function SeccionKanban<T extends { id: string; estado: string }>({
   renderTarjeta,
   enlaceMas,
   alVerMas,
-  columnasCss = 'lg:grid-cols-3',
+  columnasCss,
+  columnasCssPorCantidad,
 }: {
   titulo: string;
   descripcion: string;
@@ -195,16 +202,26 @@ function SeccionKanban<T extends { id: string; estado: string }>({
   renderTarjeta: (item: T) => React.ReactNode;
   enlaceMas: string;
   alVerMas: () => void;
+  /** Clases de rejilla; si no se indica se calcula por nº de columnas visibles. */
   columnasCss?: string;
+  /** I80: rejillas según la cantidad de columnas visibles (2, 3 o 4). */
+  columnasCssPorCantidad?: [string, string, string];
 }) {
+  // I80: las columnas con `ocultarSiVacia` solo se muestran con registros
+  const visibles = columnas.filter(
+    (col) => !col.ocultarSiVacia || items.some((i) => col.estados.includes(i.estado)),
+  );
+  const rejilla =
+    columnasCss ??
+    (columnasCssPorCantidad?.[visibles.length - 2] || 'lg:grid-cols-3');
   return (
     <section className="mb-8">
       <div className="mb-3">
         <h2 className="text-lg font-semibold text-sofia-900">{titulo}</h2>
         <p className="text-sm text-slate-500">{descripcion}</p>
       </div>
-      <div className={`grid gap-4 ${columnasCss}`}>
-        {columnas.map((col) => {
+      <div className={`grid gap-4 ${rejilla}`}>
+        {visibles.map((col) => {
           const enColumna = items.filter((i) => col.estados.includes(i.estado));
           const tarjetas = enColumna.slice(0, MAX_TARJETAS);
           return (
@@ -428,7 +445,7 @@ export default function TableroPage() {
         items={despachosFiltrados}
         enlaceMas="Despachos"
         alVerMas={() => router.push('/despachos')}
-        columnasCss="sm:grid-cols-2 xl:grid-cols-4"
+        columnasCssPorCantidad={['sm:grid-cols-2', 'sm:grid-cols-2 xl:grid-cols-3', 'sm:grid-cols-2 xl:grid-cols-4']}
         renderTarjeta={(d) => (
           <button
             key={d.id}
@@ -483,6 +500,7 @@ export default function TableroPage() {
         items={casosFiltrados}
         enlaceMas="Devoluciones"
         alVerMas={() => router.push('/devoluciones')}
+        columnasCssPorCantidad={['sm:grid-cols-2', 'lg:grid-cols-3', 'sm:grid-cols-2 xl:grid-cols-4']}
         renderTarjeta={(c) => (
           <button
             key={c.id}
